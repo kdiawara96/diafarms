@@ -27,17 +27,16 @@ public class UsersDetailService implements UserDetailsService {
 
     @Override
     @Transactional
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+    public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
 
-        if (email.trim().isEmpty()){
-            throw new UsernameNotFoundException("Le nom "+email+" n'existe pas!");
+        if (identifier.trim().isEmpty()){
+            throw new UsernameNotFoundException("L'identifiant ou le mot de passe incorrect!");
         }
         //Nous allons recuperer le user par son nom
-        Utilisateurs utilisateurs = repo.findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(email);
-        if (utilisateurs == null){
-            log.info("L'utilisateur"+ email +"n'a pas été trouver!");
-            throw new UsernameNotFoundException("L'utilisateur"+ email +"n'a pas été trouver!");
-        }
+        Utilisateurs utilisateurs =  repo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                    identifier, identifier, identifier)
+            .orElseThrow(() -> new IllegalArgumentException(
+                    "Aucun utilisateur trouvé avec cet identifiant: " + identifier));
 
         Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();
         utilisateurs.getRoles().forEach(role -> authorities.add(new SimpleGrantedAuthority(role.getRole())));

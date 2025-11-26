@@ -2,7 +2,9 @@ package com.diafarms.ml;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.boot.CommandLineRunner;
@@ -19,7 +21,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Roles;
+import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.RolesRepo;
+import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.security.RsakeysConfig;
 
 import lombok.RequiredArgsConstructor;
@@ -32,33 +36,64 @@ import lombok.RequiredArgsConstructor;
 public class MlApplication implements CommandLineRunner {
 	
 	private final RolesRepo rolesRepo;
-
+    private final UtilisateursRepo utilisateursRepo;
 
 	public static void main(String[] args) {
 		loadEnv();
 		SpringApplication.run(MlApplication.class, args);
 	}
-	@Override
-    public void run(String... args) {
+	
 
-        // Le rôle que tu veux créer
+	 @Override
+    public void run(String... args) {
+        PasswordEncoder passwordEncoder = passwordEncoder();
+        // =====================================================
+        // 1️⃣ CREATION DU ROLE ADMIN S’IL N’EXISTE PAS
+        // =====================================================
         String defaultRole = "ROLE_ADMIN";
 
-        // Vérification
-        Roles existing = rolesRepo.findByRole(defaultRole);
-
-        if (existing == null) {
-            Roles role = new Roles();
-            role.setRole(defaultRole);
-            role.setUniqueId(UUID.randomUUID().toString());
-			role.setInitialisation(Initialisation.init());
-
-            rolesRepo.save(role);
+        Roles adminRole = rolesRepo.findByRole(defaultRole);
+        if (adminRole == null) {
+            adminRole = new Roles();
+            adminRole.setRole(defaultRole);
+            adminRole.setUniqueId(UUID.randomUUID().toString());
+            adminRole.setInitialisation(Initialisation.init());
+            rolesRepo.save(adminRole);
 
             System.out.println("✔ ROLE_ADMIN créé !");
         } else {
-            System.out.println("✔ ROLE_ADMIN déjà existant, pas de création.");
+            System.out.println("✔ ROLE_ADMIN déjà existant.");
         }
+
+        // =====================================================
+        // 2️⃣ CREATION DE L’UTILISATEUR ADMIN PAR DEFAUT
+        // =====================================================
+        String adminUsername = "admin";
+
+        if (!utilisateursRepo.existsByUsername(adminUsername)) {
+
+            Utilisateurs admin = new Utilisateurs();
+            admin.setUniqueId(UUID.randomUUID().toString());
+            admin.setFullName("Super Administrateur");
+            admin.setUsername("admin");
+            admin.setEmail("karimdiawara96@gmail.com");
+            admin.setTelephone("83918699");
+            admin.setPassword(passwordEncoder.encode("azerty123")); // 🔥 mot de passe encodé
+            admin.setStatut(true);
+            admin.setInitialisation(Initialisation.init());
+
+            // role
+            Set<Roles> roles = new HashSet<>();
+            roles.add(adminRole);
+            admin.setRoles(roles);
+
+            utilisateursRepo.save(admin);
+
+            System.out.println("✔ Utilisateur ADMIN créé !");
+        } else {
+            System.out.println("✔ Admin déjà existant, pas de création.");
+        }
+
     }
 
 

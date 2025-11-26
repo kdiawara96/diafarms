@@ -23,6 +23,10 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     Optional<Utilisateurs> findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);
     Utilisateurs findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String username);
 
+    Optional<Utilisateurs> findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+        String email, String username, String telephone);
+
+
     // Trouver tous les utilisateurs archivés
     Page<Utilisateurs> findByInitialisationArchiveTrue(Pageable pageable);
 

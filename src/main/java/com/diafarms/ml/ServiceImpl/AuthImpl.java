@@ -16,7 +16,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -33,153 +32,118 @@ import com.diafarms.ml.services.AuthServices;
 
 
 @Service
-// @RequiredArgsConstructor
-public class AuthImpl implements AuthServices{
-    
-    @Autowired
-    private  UtilisateursRepo repo;
-    
-    @Autowired
-    private  PasswordEncoder passwordEncoder;   
-    
-    private  JwtEncoder jwtEncoder;
-    private  JwtDecoder jwtDecoder;
-    private  AuthenticationManager authenticationManager;
-    private  UserDetailsService userDetailsService;
+public class AuthImpl implements AuthServices {
 
+    private final UtilisateursRepo repo;
+    private final JwtEncoder jwtEncoder;
+    private final JwtDecoder jwtDecoder;
+    private final AuthenticationManager authenticationManager;
+    private final UserDetailsService userDetailsService;
 
-  public AuthImpl(
-    JwtEncoder jwtEncoder, 
-    JwtDecoder jwtDecoder,
-    AuthenticationManager authenticationManager, 
-    UserDetailsService 
-    userDetailsService, 
-    UtilisateursRepo repo
+    @Autowired
+    public AuthImpl(
+            JwtEncoder jwtEncoder,
+            JwtDecoder jwtDecoder,
+            AuthenticationManager authenticationManager,
+            UserDetailsService userDetailsService,
+            UtilisateursRepo repo
     ) {
-       this.jwtEncoder = jwtEncoder;
-       this.jwtDecoder = jwtDecoder;
-       this.authenticationManager = authenticationManager;
-       this.userDetailsService = userDetailsService;
+        this.jwtEncoder = jwtEncoder;
+        this.jwtDecoder = jwtDecoder;
+        this.authenticationManager = authenticationManager;
+        this.userDetailsService = userDetailsService;
+        this.repo = repo;
     }
+
     @Override
-    public ResponseEntity<Object> jwt(String grantType, String email, String password, boolean ouiRefresh, String refreshToken) {
-      
+    public ResponseEntity<Object> jwt(String grantType, String identifiant, String password,
+                                      boolean ouiRefresh, String refreshToken) {
+
         String subject = null;
         String scope = null;
-        
-        if (grantType.equals("password")){
-          
+
+        // =============================== LOGIN NORMAL ===============================
+        if (grantType.equals("password")) {
+
+            Authentication authentication;
             try {
-                userVerify(password, email);
+                authentication = authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(identifiant, password)
+                );
             } catch (Exception e) {
-                return new ResponseEntity<>(Map.of("errorMessage",e.getMessage()), HttpStatus.NOT_FOUND);
+                return new ResponseEntity<>(Map.of("errorMessage", "Identifiant ou mot de passe incorrect"),
+                        HttpStatus.UNAUTHORIZED);
             }
 
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(email, password)
-            );
-            subject= authentication.getName();
-            scope = authentication
-                    .getAuthorities()
-                    .stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .collect(Collectors
-                    .joining(" "));
+            subject = authentication.getName(); // username
+            scope = authentication.getAuthorities()
+                    .stream().map(GrantedAuthority::getAuthority)
+                    .collect(Collectors.joining(" "));
+        }
 
+        // =============================== REFRESH TOKEN ===============================
+        else if (grantType.equals("refreshToken")) {
 
-        }else if(grantType.equals("google")){
+            if (refreshToken == null) {
+                return new ResponseEntity<>(Map.of("errorMessage","Refresh Token is required"),
+                        HttpStatus.UNAUTHORIZED);
+            }
 
+            Jwt decodeJWT;
             try {
-                userVerify(password, email);
-            } catch (Exception e) {
-                return new ResponseEntity<>(Map.of("errorMessage",e.getMessage()), HttpStatus.NOT_FOUND);
-            }
-            
-            //NOUS ALLONS VERIFIER L'EXISTANCE DE L'UTILISATEUR AVEC LES INFOS DE GOOGLE
-              Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(email, password));
-                    // new UsernamePasswordAuthenticationToken("mediphax@gmail.com", "mediphax"));
-
-            subject= authentication.getName();
-            scope = authentication
-                    .getAuthorities()
-                    .stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .collect(Collectors
-                    .joining(" "));
-
-          } else if(grantType.equals("refreshToken")){
-
-            if (refreshToken == null){
-                //Un message si la durée du refresh token à expiré
-                return new ResponseEntity<>(Map.of("errorMessage","Refresh Token is requeried"), HttpStatus.UNAUTHORIZED);
-            }
-            Jwt decodeJWT = null;
-            try {
-                //quand nous decodons il va verifier s'il n'est pas expirer
                 decodeJWT = jwtDecoder.decode(refreshToken);
             } catch (JwtException e) {
-                return new ResponseEntity<>(Map.of("errorMessage",e.getMessage()), HttpStatus.UNAUTHORIZED);
+                return new ResponseEntity<>(Map.of("errorMessage", e.getMessage()),
+                        HttpStatus.UNAUTHORIZED);
             }
 
-            //String subjet = decodeJWT.getSubject();
-            subject = decodeJWT.getSubject();
+            subject = decodeJWT.getSubject(); // username
             UserDetails userDetails = userDetailsService.loadUserByUsername(subject);
-            Collection<? extends GrantedAuthority> authorities = userDetails.getAuthorities();
-            scope = authorities.stream().map(GrantedAuthority::getAuthority).collect(Collectors.joining(" "));
+
+            scope = userDetails.getAuthorities()
+                    .stream().map(GrantedAuthority::getAuthority)
+                    .collect(Collectors.joining(" "));
         }
 
+        // =============================== ON RÉCUPÈRE LE USER ===============================
+        Utilisateurs currentUser = repo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                identifiant, identifiant, identifiant
+        ).orElseThrow(() -> new IllegalArgumentException("Identifiant incorrect"));
 
-        UsersAuth_DTO authModel = new UsersAuth_DTO();
-        Utilisateurs currentUser = repo.findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(email);
+        // =============================== CREATION DU JWT ===============================
+        Instant now = Instant.now();
 
-        if(currentUser != null){
-            authModel.setId(currentUser.getId());
-            authModel.setUniqueId(currentUser.getUniqueId());
-            authModel.setNom(currentUser.getFullName());
-            authModel.setRoles(currentUser.getRoles());
-            authModel.setUsername(currentUser.getUsername());
-            authModel.setEmail(currentUser.getEmail());
-        }
-
-        Instant instant = Instant.now();
         JwtClaimsSet jwtClaimsSet = JwtClaimsSet.builder()
                 .subject(subject)
-                .issuedAt(instant)
-                .expiresAt(instant.plus(ouiRefresh?7:7, ChronoUnit.DAYS))
+                .issuedAt(now)
+                .expiresAt(now.plus(7, ChronoUnit.DAYS))
                 .issuer("diafarms")
                 .claim("scope", scope)
-                .claim("uniqueId", currentUser.getUniqueId()) 
+                .claim("uniqueId", currentUser.getUniqueId())
                 .build();
-        String jwtAccesToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet)).getTokenValue();
 
-        authModel.setAccessToken(jwtAccesToken);
-        //lol
-        if(ouiRefresh){
-            JwtClaimsSet jwtClaimsSetRefresh = JwtClaimsSet.builder()
+        String accessToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet)).getTokenValue();
+
+        UsersAuth_DTO authModel = new UsersAuth_DTO();
+        authModel.setId(currentUser.getId());
+        authModel.setUniqueId(currentUser.getUniqueId());
+        authModel.setNom(currentUser.getFullName());
+        authModel.setEmail(currentUser.getEmail());
+        authModel.setUsername(currentUser.getUsername());
+        authModel.setRoles(currentUser.getRoles());
+        authModel.setAccessToken(accessToken);
+
+        if (ouiRefresh) {
+            JwtClaimsSet refreshClaims = JwtClaimsSet.builder()
                     .subject(subject)
-                    .issuedAt(instant)
-                    .expiresAt(instant.plus(7, ChronoUnit.DAYS))
+                    .issuedAt(now)
+                    .expiresAt(now.plus(7, ChronoUnit.DAYS))
                     .issuer("diafarms")
                     .build();
-            String jwtRefreshToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSetRefresh)).getTokenValue();
-        
-            authModel.setRefreshToken(jwtRefreshToken);
+            String refreshTk = jwtEncoder.encode(JwtEncoderParameters.from(refreshClaims)).getTokenValue();
+            authModel.setRefreshToken(refreshTk);
         }
 
-        return  new ResponseEntity<>(authModel, HttpStatus.OK);
+        return new ResponseEntity<>(authModel, HttpStatus.OK);
     }
-
-    ResponseEntity<Object>  userVerify(String password, String email)  {
-
-        Utilisateurs usr = repo.findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(email);
-
-        if (usr == null || !passwordEncoder.matches(password, usr.getPassword())) {
-            throw new NoSuchElementException("L'e-mail ou le mot de passe est incorrect !");
-        }
-        return null;
-    }
-
-    
-
 }

@@ -119,8 +119,8 @@ public class SecurityConfiguration {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers(
-                        "/diafarms/auth/**",
-                        "/diafarms/test"
+                        "/diafarms/api/v1/auth/**",
+                        "/diafarms/api/v1/test"
                     ).permitAll()
                     .anyRequest().authenticated()
                 )
