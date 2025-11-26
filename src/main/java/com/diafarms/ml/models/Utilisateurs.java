@@ -1,5 +1,7 @@
 package com.diafarms.ml.models;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import jakarta.persistence.*;
 
@@ -65,6 +67,10 @@ public class Utilisateurs {
             @JoinColumn(name = "id_roles") })
             
     private Set<Roles> roles;
+
+    @OneToMany(mappedBy = "utilisateur", fetch = FetchType.LAZY)
+    private List<Investissement> investissements = new ArrayList<>();
+
 
 
     
