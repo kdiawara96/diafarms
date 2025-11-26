@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import com.diafarms.ml.DTO.RoleDto;
-import com.diafarms.ml.DTO.mappers.RoleMapper;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
@@ -25,7 +24,7 @@ import com.diafarms.ml.services.RolesServices;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/diafarms/api/v1/users") 
+@RequestMapping("/diafarms/api/v1/roles") 
 @RequiredArgsConstructor
 public class RoleController {
 
