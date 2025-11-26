@@ -24,16 +24,4 @@ public class RoleDto {
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime updatedAt;
 
-
-    public static RoleDto fromRole(Roles role){
-
-        RoleDto rle = new RoleDto();
-
-        rle.setId(role.getId());
-        rle.setUniqueId(role.getUniqueId());
-        rle.setCreatedAt(role.getInitialisation().getCreatedAt());
-        rle.setRole(role.getRole());
-
-        return rle;
-    }
 }

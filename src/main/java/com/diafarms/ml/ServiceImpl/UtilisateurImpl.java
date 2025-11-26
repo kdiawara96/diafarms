@@ -143,35 +143,35 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
    @Override
-public String delete(String uniqueId) {
-    Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
-            .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + uniqueId + "' non trouvé."));
+    public String delete(String uniqueId) {
+        Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + uniqueId + "' non trouvé."));
 
-    utilisateursRepo.delete(user);
+        utilisateursRepo.delete(user);
 
-    // Logs
-    logsServices.addLogs(user.getId(), "UtilisateurImpl", "Suppression de l'utilisateur");
+        // Logs
+        logsServices.addLogs(user.getId(), "UtilisateurImpl", "Suppression de l'utilisateur");
 
-    return "Utilisateur supprimé avec succès";
-}
-
-@Override
-public String archive(String uniqueId) {
-    Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
-            .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + uniqueId + "' non trouvé."));
-
-    if (user.getInitialisation() == null) {
-        user.setInitialisation(Initialisation.init());
+        return "Utilisateur supprimé avec succès";
     }
-    user.getInitialisation().setArchive(true);
 
-    utilisateursRepo.save(user);
+    @Override
+    public String archive(String uniqueId) {
+        Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + uniqueId + "' non trouvé."));
 
-    // Logs
-    logsServices.addLogs(user.getId(), "UtilisateurImpl", "Archivage de l'utilisateur");
+        if (user.getInitialisation() == null) {
+            user.setInitialisation(Initialisation.init());
+        }
+        user.getInitialisation().setArchive(true);
 
-    return "Utilisateur archivé avec succès";
-}
+        utilisateursRepo.save(user);
+
+        // Logs
+        logsServices.addLogs(user.getId(), "UtilisateurImpl", "Archivage de l'utilisateur");
+
+        return "Utilisateur archivé avec succès";
+    }
 
     @Override
     public PaginatedResponse<UtilisateursDto> findAll(int page, int size, String type) {
@@ -204,7 +204,7 @@ public String archive(String uniqueId) {
 
     @Override
     public Utilisateurs readByUsernameOrEmailOrPhone(String usernameOrEmailOrPhone) {
-        return utilisateursRepo.findByUsernameOrEmailOrTelephone(usernameOrEmailOrPhone,
+        return utilisateursRepo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(usernameOrEmailOrPhone,
                                                                 usernameOrEmailOrPhone,
                                                                 usernameOrEmailOrPhone)
                 .orElseThrow(() -> new RuntimeException(
@@ -236,17 +236,55 @@ public String archive(String uniqueId) {
 
     @Override
     public String changeStatut(String uniqueIdUtilisateur) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'changeStatut'");
+
+        Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueIdUtilisateur)
+                .orElseThrow(() -> new RuntimeException(
+                        "Utilisateur avec ID '" + uniqueIdUtilisateur + "' non trouvé."
+                ));
+
+        // toggle
+        user.setStatut(user.getStatut() == null ? false : !user.getStatut());
+
+        utilisateursRepo.save(user);
+
+        logsServices.addLogs(user.getId(), "UtilisateurImpl",
+                "Changement de statut en : " + user.getStatut());
+
+        return "Statut modifié avec succès. Nouveau statut = " + user.getStatut();
     }
 
-    @Override
-    public String sendCodeForChangePassword(String email) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendCodeForChangePassword'");
+
+   @Override
+    public PaginatedResponse<UtilisateursDto> search(String search) {
+
+        List<Utilisateurs> results =
+                utilisateursRepo.searchUsers(search.trim());
+
+        List<UtilisateursDto> dtos = results.stream()
+                .map(utilisateurMapper::toDto)
+                .toList();
+
+        // Ici on met des valeurs fictives juste pour satisfaire PaginatedResponse
+        return new PaginatedResponse<>(
+                dtos,
+                1,              // page
+                dtos.size(),    // size
+                dtos.size(),    // totalElements
+                1               // totalPages
+        );
     }
 
+
     @Override
+    public String updatePassword(UpdatePassResquest data) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'updatePassword'");
+    }
+
+ 
+
+
+     @Override
     public String verifyCodeOtpEnvoyeParMail(OTP_Request otp) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'verifyCodeOtpEnvoyeParMail'");
@@ -258,21 +296,11 @@ public String archive(String uniqueId) {
         throw new UnsupportedOperationException("Unimplemented method 'verificationDesInformations'");
     }
 
-    @Override
-    public String updatePassword(UpdatePassResquest data) {
+
+     @Override
+    public String sendCodeForChangePassword(String email) {
         // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'updatePassword'");
+        throw new UnsupportedOperationException("Unimplemented method 'sendCodeForChangePassword'");
     }
-
-    @Override
-    public PaginatedResponse<UtilisateursDto> search(String search) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'search'");
-    }
-
-
-
-
-  
   
 }

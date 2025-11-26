@@ -1,10 +1,13 @@
 package com.diafarms.ml.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.diafarms.ml.models.Utilisateurs;
@@ -32,6 +35,19 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
 
     // Trouver tous les utilisateurs actifs (non archivés)
     Page<Utilisateurs> findByInitialisationArchiveFalse(Pageable pageable);
+
+    @Query("SELECT u FROM Utilisateurs u " +
+        "WHERE u.initialisation.removed = false " +
+        "AND u.initialisation.archive = false " +
+        "AND (" +
+        "   LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "   LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "   LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+        "   LOWER(u.telephone) LIKE LOWER(CONCAT('%', :search, '%')) " +
+        ") " +
+        "ORDER BY u.initialisation.createdAt DESC")
+    List<Utilisateurs> searchUsers(@Param("search") String search);
+
 
 
 

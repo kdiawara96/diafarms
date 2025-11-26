@@ -35,33 +35,7 @@ public class UtilisateursDto {
     private LocalDateTime updatedAt;
     private List<RoleDto> roles;
 
-    public static UtilisateursDto fromUser(Utilisateurs user) {
 
-        if (user.getId() == null) return null;
-
-        UtilisateursDto utilisateursDto = new UtilisateursDto();
-
-        utilisateursDto.setId(user.getId());
-        utilisateursDto.setUniqueId(user.getUniqueId());
-        utilisateursDto.setUsername(user.getUsername());
-        utilisateursDto.setEmail(user.getEmail());
-        utilisateursDto.setFullName(user.getFullName());
-        utilisateursDto.setTelephone(user.getTelephone());
-        utilisateursDto.setCreatedAt(user.getInitialisation().getCreatedAt());
-        utilisateursDto.setUpdatedAt(user.getInitialisation().getUpdatedAt());
-        utilisateursDto.setStatut(user.getStatut());
-        if (user.getRoles() != null && !user.getRoles().isEmpty()) {
-            List<RoleDto> roleDtos = user.getRoles().stream()
-                    .map(RoleDto::fromRole)
-                    .sorted(Comparator.comparing(RoleDto::getRole))
-                    .collect(Collectors.toList());
-            utilisateursDto.setRoles(roleDtos);
-        } else {
-            utilisateursDto.setRoles(Collections.emptyList());
-        }
-
-        return utilisateursDto;
-    }
 
   }
 

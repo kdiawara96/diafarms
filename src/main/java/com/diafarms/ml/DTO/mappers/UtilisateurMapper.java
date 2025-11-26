@@ -17,5 +17,6 @@ public interface UtilisateurMapper {
     @Mapping(source = "statut", target = "statut")
     UtilisateursDto toDto(Utilisateurs user);
 
+
     List<UtilisateursDto> toDtoList(List<Utilisateurs> users);
 }
