@@ -2,9 +2,7 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -127,7 +125,12 @@ public class AuthImpl implements AuthServices {
         UsersAuth_DTO authModel = new UsersAuth_DTO();
         authModel.setId(currentUser.getId());
         authModel.setUniqueId(currentUser.getUniqueId());
-        authModel.setNom(currentUser.getFullName());
+        authModel.setFullName(currentUser.getFullName());
+        authModel.setTelephone(currentUser.getTelephone());
+        authModel.setFarmName(currentUser.getFarmName());
+        authModel.setRegion(currentUser.getRegion());
+        authModel.setCity(currentUser.getCity());
+        authModel.setPhoto(currentUser.getPhoto());
         authModel.setEmail(currentUser.getEmail());
         authModel.setUsername(currentUser.getUsername());
         authModel.setRoles(currentUser.getRoles());

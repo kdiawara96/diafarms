@@ -17,10 +17,14 @@ import lombok.Setter;
 public class UsersAuth_DTO {
     
     Long id;
-    String nom;
+    String fullName;
     String email;
     String photo;
     String username;
+    String telephone;
+    String FarmName;
+    String region;
+    String city;
     String uniqueId;
     Set<Roles> roles;
     String refreshToken;

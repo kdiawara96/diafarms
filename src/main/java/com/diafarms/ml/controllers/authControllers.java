@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -25,7 +26,12 @@ public class authControllers {
     
 
   @PostMapping("/auth")
-    public ResponseEntity<ApiResponse<Object>> auth(String grantType, String identifiant, String password, boolean ouiRefresh, String refreshToken){
+    public ResponseEntity<ApiResponse<Object>> auth(       
+        @RequestParam("grantType") String grantType,
+        @RequestParam("identifiant") String identifiant,
+        @RequestParam("password") String password,
+        @RequestParam(value = "ouiRefresh", defaultValue = "false") boolean ouiRefresh,
+        @RequestParam(value = "refreshToken", required = false) String refreshToken){
         try {
             // Réponse réussie
             return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, serives.jwt(grantType, identifiant, password, ouiRefresh, refreshToken), null);

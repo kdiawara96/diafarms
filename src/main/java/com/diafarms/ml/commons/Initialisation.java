@@ -30,7 +30,7 @@ public class Initialisation {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private Boolean archive = false;
 
-        public Initialisation() {
+    public Initialisation() {
         // Ne rien faire, on laissera le service définir createAt
     }
 

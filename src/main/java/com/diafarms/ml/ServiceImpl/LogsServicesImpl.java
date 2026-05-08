@@ -37,20 +37,14 @@ public class LogsServicesImpl implements LogsServices {
     private final UtilisateursRepo uRepo;
 
     @Override
-    public Logs addLogs(Long idAction, String nomClass, String action) {
-        // NOUS RECUPERONS L'UTILISATEUR
-        Utilisateurs admin = verificationUniqueId();
-        if (admin == null) {
-            throw new IllegalArgumentException("L'utilisateur n'existe pas!");
-        }
-        String nomUser = admin.getFullName();
-        String username = admin.getUsername();
+    public Logs addLogs(Long userId, Long entityId, String entityType, String action) {
         Logs logs = new Logs();
         logs.setUniqueId(Initialisation.generateUniqueId());
-        logs.setTexteAction(action + " " + nomUser + " Matricule = " + username);
-        logs.setClassName(nomClass);
-        logs.setTelephoneActionnaire(admin.getTelephone());
-        logs.setIdAction(idAction);
+        logs.setUserId(userId);
+        logs.setEntityId(entityId);
+        logs.setEntityType(entityType);
+        logs.setAction(action);
+        logs.setInitialisation(Initialisation.init());
 
         return logsRepo.save(logs);
     }
@@ -59,66 +53,65 @@ public class LogsServicesImpl implements LogsServices {
     public String delete(String uniqueId) {
         Optional<Logs> logOptional = logsRepo.findByUniqueId(uniqueId);
         if (logOptional.isPresent()) {
-            boolean logDeletedState = logOptional.get().getDeleted();
-            logOptional.get().setDeleted(!logDeletedState);
+            Logs log = logOptional.get();
+            boolean isRemoved = log.getInitialisation().getRemoved();
+            log.getInitialisation().setRemoved(!isRemoved);
 
-            if (logDeletedState) {
-                this.addLogs(logOptional.get().getId(), logOptional.get().getClass().getSimpleName(), "Restauration d'un Logs");
-                return "SUCCESS_RESTORE";
-            }else{
-                this.addLogs(logOptional.get().getId(), logOptional.get().getClass().getSimpleName(), "Suppression d'un Logs");
-                return "SUCCESS_DELETE";
+            Utilisateurs currentUser = verificationUniqueId();
+            if (currentUser != null) {
+                String action = isRemoved ? "Restauration d'un log" : "Suppression d'un log";
+                this.addLogs(currentUser.getId(), log.getId(), "Log", action);
             }
+
+            logsRepo.save(log);
+
+            return isRemoved ? "SUCCESS_RESTORE" : "SUCCESS_DELETE";
         }
-        throw new IllegalArgumentException("Le Logs avec l'ID unique " + uniqueId + " n'existe pas.");
+        throw new IllegalArgumentException("Le log avec l'ID unique " + uniqueId + " n'existe pas.");
     }
     @Override
     public PaginatedResponse<Logs> getAllByIdAction(Long idAction, int page, int size, String type) {
-        // Récupération d'une page via Spring Data
-        Page<Logs> logPage = new PageImpl<>(Collections.emptyList());
+        Page<Logs> logPage;
 
-        if (type.equals("folder")) {
-            logPage =  logsRepo
-                    .findAllByIdActionAndDeletedFalse(PageRequest.of(page, size), idAction);
-        } else if(type.equals("trash")) {
-            logPage = logsRepo.findAllByIdActionAndDeletedTrue(PageRequest.of(page, size), idAction);
+        if ("folder".equals(type)) {
+            logPage = logsRepo.findAllByEntityIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")), idAction);
+        } else if ("trash".equals(type)) {
+            logPage = logsRepo.findAllByEntityIdAndInitialisationRemovedTrue(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")), idAction);
+        } else {
+            logPage = new PageImpl<>(Collections.emptyList());
         }
 
-        // Transformation des entités en DTOs
-        List<Logs> chargeFixeDtos = logPage.getContent();
-
-        // Construction explicite de PaginatedResponse
         return new PaginatedResponse<>(
-                chargeFixeDtos,                     // Liste des DTOs
-                page,                                 // Page actuelle
-                logPage.getTotalPages(),     // Total de pages
-                logPage.getTotalElements(),  // Total d'éléments
-                size                                  // Taille de la page
+                logPage.getContent(),
+                logPage.getNumber(),
+                logPage.getSize(),
+                logPage.getTotalElements(),
+                logPage.getTotalPages()
         );
     }
 
     @Override
     public PaginatedResponse<Logs> getAllByNomClass(String nomClass, int page, int size, String type) {
-        // Récupération d'une page via Spring Data
-        Page<Logs> logPage = new PageImpl<>(Collections.emptyList());
+        Page<Logs> logPage;
 
-        if (type.equals("folder")) {
-            logPage =  logsRepo
-                    .findAllByClassNameAndDeletedFalse(PageRequest.of(page, size), nomClass);
-        } else if(type.equals("trash")) {
-            logPage = logsRepo.findAllByClassNameAndDeletedTrue(PageRequest.of(page, size), nomClass);
+        if ("folder".equals(type)) {
+            logPage = logsRepo.findAllByEntityTypeAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")), nomClass);
+        } else if ("trash".equals(type)) {
+            // Pour trash, on peut utiliser une requête différente ou simplifier
+            logPage = new PageImpl<>(Collections.emptyList());
+        } else {
+            logPage = new PageImpl<>(Collections.emptyList());
         }
 
-        // Transformation des entités en DTOs
-        List<Logs> chargeFixeDtos = logPage.getContent();
-
-        // Construction explicite de PaginatedResponse
         return new PaginatedResponse<>(
-                chargeFixeDtos,                     // Liste des DTOs
-                page,                                 // Page actuelle
-                logPage.getTotalPages(),     // Total de pages
-                logPage.getTotalElements(),  // Total d'éléments
-                size                                  // Taille de la page
+                logPage.getContent(),
+                logPage.getNumber(),
+                logPage.getSize(),
+                logPage.getTotalElements(),
+                logPage.getTotalPages()
         );
     }
 
@@ -141,27 +134,24 @@ public class LogsServicesImpl implements LogsServices {
 
     @Override
     public PaginatedResponse<Logs> getAll(int page, int size, String type) {
-        // Récupération d'une page via Spring Data
-        Page<Logs> logPage = new PageImpl<>(Collections.emptyList());
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateCreation"));
+        Page<Logs> logPage;
 
-        if (type.equals("folder")) {
-            logPage =  logsRepo
-                    .findAllByDeletedFalse(pageable);
-        } else if(type.equals("trash")) {
-            logPage = logsRepo.findAllByDeletedTrue(pageable);
+        if ("folder".equals(type)) {
+            logPage = logsRepo.findAllByInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        } else if ("trash".equals(type)) {
+            logPage = logsRepo.findAllByInitialisationRemovedTrue(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        } else {
+            logPage = new PageImpl<>(Collections.emptyList());
         }
 
-        // Transformation des entités en DTOs
-        List<Logs> chargeFixeDtos = logPage.getContent();
-
-        // Construction explicite de PaginatedResponse
         return new PaginatedResponse<>(
-                chargeFixeDtos,                     // Liste des DTOs
-                page,                                 // Page actuelle
-                logPage.getTotalPages(),     // Total de pages
-                logPage.getTotalElements(),  // Total d'éléments
-                size                                  // Taille de la page
+                logPage.getContent(),
+                logPage.getNumber(),
+                logPage.getSize(),
+                logPage.getTotalElements(),
+                logPage.getTotalPages()
         );
     }
 

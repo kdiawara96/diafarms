@@ -50,7 +50,7 @@ public class MlApplication implements CommandLineRunner {
         // =====================================================
         // 1️⃣ CREATION DU ROLE ADMIN S’IL N’EXISTE PAS
         // =====================================================
-        String defaultRole = "ROLE_ADMIN";
+        String defaultRole = "ADMIN";
 
         Roles adminRole = rolesRepo.findByRole(defaultRole);
         if (adminRole == null) {

@@ -13,10 +13,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -64,11 +63,8 @@ public class SecurityConfiguration {
         }
 
         @Bean
-        public AuthenticationManager authenticationManager() {
-            var authProvider = new DaoAuthenticationProvider();
-            authProvider.setPasswordEncoder(passwordEncoder);
-            authProvider.setUserDetailsService(userDetailsService);
-            return new ProviderManager(authProvider);
+        public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+            return config.getAuthenticationManager();
         }
 
         public UserDetailsService userDetailsService(AuthenticationManagerBuilder auth) throws Exception {
@@ -97,7 +93,6 @@ public class SecurityConfiguration {
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
                     "/templates/**",
-                    // "/excel/**",
                     "/diafarms/files/**",
                     "/webjars/**",
                     "/swagger-resources/**",
@@ -120,6 +115,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers(
                         "/diafarms/api/v1/auth/**",
+                        "/diafarms/api/v1/users/create",
                         "/diafarms/api/v1/test"
                     ).permitAll()
                     .anyRequest().authenticated()
@@ -133,7 +129,13 @@ public class SecurityConfiguration {
         CorsConfigurationSource corsConfigurationSource(){
             CorsConfiguration configuration = new CorsConfiguration();
             
-            configuration.setAllowedOrigins(List.of("http://localhost:3000","https://batimanager.mediphax.com"));
+            // configuration.setAllowedOrigins(List.of("http://localhost:8080","https://api.diafarms.com"));
+            configuration.setAllowedOrigins(List.of(
+                "http://localhost:8080",
+                "http://192.168.1.40:8080", 
+                "https://api.diafarms.com"
+            ));
+
             configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
             configuration.setAllowCredentials(true);  // Autoriser les cookies et les credentials
             configuration.addAllowedHeader("*");

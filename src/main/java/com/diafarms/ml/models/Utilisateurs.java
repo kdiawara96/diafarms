@@ -32,6 +32,18 @@ public class Utilisateurs {
     @Column(name = "full_name", nullable = false, length = 50)
     private String fullName;
 
+    @Column(name = "region", length = 50)
+    private String region;
+
+    @Column(name = "city", length = 50)
+    private String city;
+
+    @Column(name = "farm_name", length = 50)
+    private String farmName;
+
+    @Column(name = "photo", length = 50)
+    private String photo;
+
     @Column(name = "username", nullable = false, length = 50, unique = true)
     private String username;
 

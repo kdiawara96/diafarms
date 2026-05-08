@@ -15,6 +15,7 @@ import com.diafarms.ml.models.Roles;
 public interface RolesRepo extends JpaRepository<Roles, Long> {
 
     Roles findByRole(String role);
+    Optional<Roles> findByRoleAndInitialisationRemovedFalse(String role);
     Optional<Roles> findByUniqueId(String uniqueId);
     Roles findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);
     Roles findByRoleAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String roleUserAdmin);

@@ -1,21 +1,14 @@
 package com.diafarms.ml.ServiceImpl;
 
-
 import lombok.RequiredArgsConstructor;
-
 import java.util.HashSet;
-import java.util.List;
-import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.UtilisateursDto;
@@ -23,36 +16,28 @@ import com.diafarms.ml.DTO.mappers.UtilisateurMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
-import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.RolesRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
-import com.diafarms.ml.request.OTP_Request;
-import com.diafarms.ml.request.UpdatePassResquest;
 import com.diafarms.ml.request.UserRequest;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
 
-
-
+/**
+ * Implementation of user service for creating users.
+ */
 @Service
 @RequiredArgsConstructor
 public class UtilisateurImpl implements UtilisateursServices {
-    
-    
+
     private final UtilisateursRepo utilisateursRepo;
     private final UtilisateurMapper utilisateurMapper;
     private final PasswordEncoder encoder;
     private final LogsServices logsServices;
     private final RolesRepo roleRepo;
 
-    
-    
     @Override
     public UtilisateursDto save(UserRequest data) {
-        // =================== Vérifications ===================
-        if (utilisateursRepo.existsByUsername(data.getUsername())) {
-            throw new IllegalArgumentException("Le nom d'utilisateur '" + data.getUsername() + "' existe déjà.");
-        }
+        // Validate input data
         if (utilisateursRepo.existsByEmail(data.getEmail())) {
             throw new IllegalArgumentException("L'email '" + data.getEmail() + "' existe déjà.");
         }
@@ -60,247 +45,162 @@ public class UtilisateurImpl implements UtilisateursServices {
             throw new IllegalArgumentException("Le numéro de téléphone '" + data.getTelephone() + "' existe déjà.");
         }
 
-        // =================== Création utilisateur ===================
+        // Create new user
         Utilisateurs user = new Utilisateurs();
         user.setFullName(data.getFullName());
-        user.setUsername(data.getUsername());
+        user.setRegion(data.getRegion());
+        user.setCity(data.getCity());
+        user.setFarmName(data.getFarmName());
         user.setEmail(data.getEmail());
         user.setTelephone(data.getTelephone());
-        user.setPassword(encoder.encode(data.getPassword()));
         user.setUniqueId(UUID.randomUUID().toString());
         user.setInitialisation(Initialisation.init());
 
-        // =================== Gestion des roles ===================
+        // Generate unique username
+        String generatedUsername = generateUsername(data.getFullName());
+        user.setUsername(generatedUsername);
+
+        // Generate random 8-digit password
+        String generatedPassword = generatePassword(data.getFullName());
+        user.setPassword(encoder.encode(generatedPassword));
+
+        // Assign roles
         Set<Roles> rolesToAdd = new HashSet<>();
-        if (data.getRoles() != null) { // utiliser getRole()
-            for (String roleUniqueId : data.getRoles()) {
-                Roles role = roleRepo.findByUniqueId(roleUniqueId)
-                        .orElseThrow(() -> new IllegalArgumentException("Le rôle avec ID '" + roleUniqueId + "' n'existe pas."));
-                rolesToAdd.add(role);
+        if (data.getRoles() != null) {
+            for (String role : data.getRoles()) {
+                Roles role_geting = roleRepo.findByRoleAndInitialisationRemovedFalse(role)
+                        .orElseThrow(() -> new IllegalArgumentException("Le rôle '" + role + "' n'existe pas."));
+                rolesToAdd.add(role_geting);
             }
         }
         user.setRoles(rolesToAdd);
 
-
-        // =================== Sauvegarde ===================
+        // Save user
         utilisateursRepo.save(user);
 
-        // =================== Logs ===================
-        logsServices.addLogs(user.getId(), "UtilisateurImpl", "Création de l'utilisateur");
+        // Log creation
+        // Utilisateurs currentUser = getCurrentUser();
+        if (user != null) {
+            logsServices.addLogs(user.getId(), user.getId(), "User", "Création de l'utilisateur");
+        }
 
-        return utilisateurMapper.toDto(user);
+        return UtilisateursDto.fromEntity(user, generatedPassword);
     }
 
-
-   @Override
-    public UtilisateursDto update(String user_unique_id, UserRequest data) {
-        Utilisateurs user = utilisateursRepo.findByUniqueId(user_unique_id)
-                .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + user_unique_id + "' non trouvé."));
-
-        // =================== Vérification doublons ===================
-        if (!user.getUsername().equals(data.getUsername()) && utilisateursRepo.existsByUsername(data.getUsername())) {
-            throw new IllegalArgumentException("Le nom d'utilisateur '" + data.getUsername() + "' existe déjà.");
-        }
-        if (!user.getEmail().equals(data.getEmail()) && utilisateursRepo.existsByEmail(data.getEmail())) {
-            throw new IllegalArgumentException("L'email '" + data.getEmail() + "' existe déjà.");
-        }
-        if (!user.getTelephone().equals(data.getTelephone()) && utilisateursRepo.existsByTelephone(data.getTelephone())) {
-            throw new IllegalArgumentException("Le numéro de téléphone '" + data.getTelephone() + "' existe déjà.");
+    /**
+     * Generates a unique username based on the full name.
+     *
+     * @param fullName the user's full name
+     * @return a unique username
+     */
+    private String generateUsername(String fullName) {
+        if (fullName == null || fullName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Le nom complet ne peut pas être vide.");
         }
 
-        // =================== Mise à jour ===================
-        user.setFullName(data.getFullName());
-        user.setUsername(data.getUsername());
-        user.setEmail(data.getEmail());
-        user.setTelephone(data.getTelephone());
-        if (data.getPassword() != null && !data.getPassword().isEmpty()) {
-            user.setPassword(encoder.encode(data.getPassword()));
-        }
+        String baseUsername = fullName.toLowerCase()
+                .replaceAll("[^a-z]", "")
+                .substring(0, Math.min(10, fullName.length()));
 
-        if (user.getInitialisation() == null) {
-            user.setInitialisation(Initialisation.init());
-        } else {
-            Initialisation.updateDate(user.getInitialisation());
-        }
+        Random random = new Random();
+        String username;
 
-        // =================== Gestion des roles ===================
-        if (data.getRoles() != null) {
-            Set<Roles> rolesToAdd = new HashSet<>();
-            for (String roleUniqueId : data.getRoles()) {
-                Roles role = roleRepo.findByUniqueId(roleUniqueId)
-                        .orElseThrow(() -> new IllegalArgumentException("Le rôle avec ID '" + roleUniqueId + "' n'existe pas."));
-                rolesToAdd.add(role);
+        do {
+            int number = random.nextInt(90) + 10; // génère un nombre entre 10 et 99
+            username = baseUsername + number;
+        } while (utilisateursRepo.existsByUsername(username));
+
+        return username;
+    }
+
+    /**
+     * Generates an 8-digit numeric password.
+     *
+     * @return an 8-digit password string
+     */
+    private String generatePassword(String fullName) {
+        if (fullName == null || fullName.trim().isEmpty()) {
+            return generateFallbackPassword();
+        }
+        
+        String[] parts = fullName.trim().toLowerCase().split("\\s+");
+        StringBuilder result = new StringBuilder();
+        
+        // Remplir avec les initiales ou syllabes
+        for (String part : parts) {
+            if (result.length() >= 6) break; // Réserver 2 places pour les chiffres
+            
+            if (part.length() >= 2) {
+                // 2 premières lettres : première majuscule, deuxième minuscule
+                result.append(Character.toUpperCase(part.charAt(0)));
+                if (result.length() < 6) {
+                    result.append(Character.toLowerCase(part.charAt(1)));
+                }
+            } else if (part.length() == 1) {
+                result.append(Character.toUpperCase(part.charAt(0)));
             }
-            user.setRoles(rolesToAdd);
         }
-
-        utilisateursRepo.save(user);
-
-        // =================== Logs ===================
-        logsServices.addLogs(user.getId(), "UtilisateurImpl", "Mise à jour de l'utilisateur");
-
-        return utilisateurMapper.toDto(user);
-    }
-
-   @Override
-    public String delete(String uniqueId) {
-        Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + uniqueId + "' non trouvé."));
-
-        utilisateursRepo.delete(user);
-
-        // Logs
-        logsServices.addLogs(user.getId(), "UtilisateurImpl", "Suppression de l'utilisateur");
-
-        return "Utilisateur supprimé avec succès";
-    }
-
-    @Override
-    public String archive(String uniqueId) {
-        Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur avec ID '" + uniqueId + "' non trouvé."));
-
-        if (user.getInitialisation() == null) {
-            user.setInitialisation(Initialisation.init());
+        
+        // Compléter avec des lettres du premier mot si moins de 6 caractères
+        String firstWord = parts[0];
+        while (result.length() < 6 && result.length() < firstWord.length()) {
+            result.append(Character.toLowerCase(firstWord.charAt(result.length())));
         }
-        user.getInitialisation().setArchive(true);
-
-        utilisateursRepo.save(user);
-
-        // Logs
-        logsServices.addLogs(user.getId(), "UtilisateurImpl", "Archivage de l'utilisateur");
-
-        return "Utilisateur archivé avec succès";
-    }
-
-    @Override
-    public PaginatedResponse<UtilisateursDto> findAll(int page, int size, String type) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by("initialisation.createdAt").descending());
-        Page<Utilisateurs> usersPage;
-
-        switch (type != null ? type.toLowerCase() : "") {
-            case "archived":
-                usersPage = utilisateursRepo.findByInitialisationArchiveTrue(pageable);
-                break;
-            case "active":
-                usersPage = utilisateursRepo.findByInitialisationArchiveFalse(pageable);
-                break;
-            default:
-                usersPage = utilisateursRepo.findAll(pageable);
-                break;
+        
+        // Si toujours pas assez, compléter avec des lettres fixes
+        String filler = "farm";
+        int fillerIndex = 0;
+        while (result.length() < 6) {
+            result.append(filler.charAt(fillerIndex % filler.length()));
+            fillerIndex++;
         }
-
-        List<UtilisateursDto> dtos = utilisateurMapper.toDtoList(usersPage.getContent());
-
-        return new PaginatedResponse<>(
-                dtos,
-                usersPage.getNumber(),
-                usersPage.getSize(),
-                usersPage.getTotalElements(),
-                usersPage.getTotalPages()
-        );
-    }
-
-
-    @Override
-    public Utilisateurs readByUsernameOrEmailOrPhone(String usernameOrEmailOrPhone) {
-        return utilisateursRepo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(usernameOrEmailOrPhone,
-                                                                usernameOrEmailOrPhone,
-                                                                usernameOrEmailOrPhone)
-                .orElseThrow(() -> new RuntimeException(
-                        "Aucun utilisateur trouvé avec le nom d'utilisateur, l'email ou le téléphone : '" 
-                        + usernameOrEmailOrPhone + "'"
-                ));
-    }
-
-    @Override
-    public Utilisateurs readByUserName(String username) {
-        Utilisateurs user = utilisateursRepo.findByUsername(username);
-        if (user == null) {
-            throw new RuntimeException("Aucun utilisateur trouvé avec le nom d'utilisateur : '" + username + "'");
+        
+        // 2 chiffres dérivés du nom (somme ASCII des initiales % 100)
+        int seed = 0;
+        for (String part : parts) {
+            seed += part.charAt(0);
         }
-        return user;
+        int number = (seed * parts.length) % 100;
+        String numberPart = String.format("%02d", number);
+        
+        // Assembler : exactement 6 lettres + 2 chiffres = 8 caractères
+        String password = result.substring(0, 6) + numberPart;
+        return password;
+    }
+
+    private String generateFallbackPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        StringBuilder password = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            password.append(chars.charAt((int) (Math.random() * chars.length())));
+        }
+        // 2 chiffres
+        password.append((int) (Math.random() * 10));
+        password.append((int) (Math.random() * 10));
+        return password.toString();
+    }
+
+    /**
+     * Gets the currently authenticated user.
+     *
+     * @return the authenticated user
+     */
+    private Utilisateurs getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            String username = jwt.getSubject();
+            return utilisateursRepo.findByUsername(username).orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+        }
+        return null;
     }
 
     @Override
     public Utilisateurs readByUsernameOrEmail(String usernameOrEmail) {
-        Utilisateurs user = utilisateursRepo.findByUsernameOrEmailOrTelephone(usernameOrEmail,
-                                                                            usernameOrEmail,
-                                                                            usernameOrEmail)
+        return utilisateursRepo.findByUsernameOrEmailOrTelephone(usernameOrEmail,
+                                                                usernameOrEmail,
+                                                                usernameOrEmail)
                 .orElseThrow(() -> new RuntimeException(
                         "Aucun utilisateur trouvé avec le nom d'utilisateur ou l'email : '" + usernameOrEmail + "'"
                 ));
-        return user;
     }
-
-
-    @Override
-    public String changeStatut(String uniqueIdUtilisateur) {
-
-        Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueIdUtilisateur)
-                .orElseThrow(() -> new RuntimeException(
-                        "Utilisateur avec ID '" + uniqueIdUtilisateur + "' non trouvé."
-                ));
-
-        // toggle
-        user.setStatut(user.getStatut() == null ? false : !user.getStatut());
-
-        utilisateursRepo.save(user);
-
-        logsServices.addLogs(user.getId(), "UtilisateurImpl",
-                "Changement de statut en : " + user.getStatut());
-
-        return "Statut modifié avec succès. Nouveau statut = " + user.getStatut();
-    }
-
-
-   @Override
-    public PaginatedResponse<UtilisateursDto> search(String search) {
-
-        List<Utilisateurs> results =
-                utilisateursRepo.searchUsers(search.trim());
-
-        List<UtilisateursDto> dtos = results.stream()
-                .map(utilisateurMapper::toDto)
-                .toList();
-
-        // Ici on met des valeurs fictives juste pour satisfaire PaginatedResponse
-        return new PaginatedResponse<>(
-                dtos,
-                1,              // page
-                dtos.size(),    // size
-                dtos.size(),    // totalElements
-                1               // totalPages
-        );
-    }
-
-
-    @Override
-    public String updatePassword(UpdatePassResquest data) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'updatePassword'");
-    }
-
- 
-
-
-     @Override
-    public String verifyCodeOtpEnvoyeParMail(OTP_Request otp) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'verifyCodeOtpEnvoyeParMail'");
-    }
-
-    @Override
-    public boolean verificationDesInformations(String email, String telephone) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'verificationDesInformations'");
-    }
-
-
-     @Override
-    public String sendCodeForChangePassword(String email) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'sendCodeForChangePassword'");
-    }
-  
 }

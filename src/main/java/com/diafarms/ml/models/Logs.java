@@ -1,9 +1,8 @@
 package com.diafarms.ml.models;
 
-import java.time.LocalDateTime;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonFormat.Shape;
+import com.diafarms.ml.commons.Initialisation;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -21,36 +20,32 @@ import lombok.Setter;
 @NoArgsConstructor
 @Getter
 @Setter
-
 public class Logs {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "unique_id", nullable = false, unique = true)
     private String uniqueId;
-    
+
+    @Column(name = "user_id", nullable = false)
+    private Long userId; // ID de l'utilisateur qui fait l'action
+
+    @Column(name = "entity_id")
+    private Long entityId; // ID de l'entité affectée (optionnel)
+
+    @Column(name = "entity_type")
+    private String entityType; // Type d'entité (User, Role, etc.)
+
     @Lob
     @Column(name = "action", nullable = false)
-    private String texteAction;
-  
-    @Column(name="id_action", nullable = false)
-    private Long idAction;
-    
-    @Column(name="class_name", nullable = false)
-    private String className;
+    private String action; // Description de l'action
 
-    @Column(name="telephone_actionnaire", nullable = false)
-    private String telephoneActionnaire;
+    @Column(name = "ip_address")
+    private String ipAddress; // Adresse IP (optionnel)
 
-    @Column(name = "vu")
-    private Boolean vu = false;
 
-    @Column(name = "deleted")
-    private Boolean deleted = false;
-    
-    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = Shape.STRING)
-    @Column(name = "date_creation", length = 50)
-    private LocalDateTime dateCreation = LocalDateTime.now();
+    @Embedded
+    private Initialisation initialisation;
 }

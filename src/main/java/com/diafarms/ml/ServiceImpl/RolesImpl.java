@@ -9,14 +9,19 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.RoleDto;
 import com.diafarms.ml.DTO.mappers.RoleMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Roles;
+import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.RolesRepo;
+import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.selectClass.RolesSelect;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.RolesServices;
@@ -30,6 +35,7 @@ public class RolesImpl implements RolesServices{
     private final RolesRepo repo;
     private final LogsServices logs;
     private final RoleMapper roleMapper;
+    private final UtilisateursRepo utilisateursRepo;
 
     @Override
     public RoleDto create(Roles role) {
@@ -42,7 +48,10 @@ public class RolesImpl implements RolesServices{
         role.setInitialisation(Initialisation.init());
 
         Roles saved = repo.save(role);
-        logs.addLogs(saved.getId(), "Roles", "Ajout d'un rôle avec succès !");
+        Utilisateurs currentUser = getCurrentUser();
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Role", "Ajout d'un rôle avec succès !");
+        }
 
         return roleMapper.toDto(saved); // 🔥 PLUS de fromRole
     }
@@ -64,9 +73,12 @@ public class RolesImpl implements RolesServices{
         dbRole.setRole(role.getRole().toUpperCase());
         Roles updated = repo.save(dbRole);
 
-        logs.addLogs(dbRole.getId(), "Roles", "Mise à jour d'un rôle");
+        Utilisateurs currentUser = getCurrentUser();
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), dbRole.getId(), "Roles", "Mise à jour d'un rôle");
+        }
 
-        return roleMapper.toDto(updated); // 🔥
+        return roleMapper.toDto(updated); 
     }
 
     @Override
@@ -80,7 +92,10 @@ public class RolesImpl implements RolesServices{
         repo.save(dbRole);
 
         String action = isNowRemoved ? "Suppression" : "Récupération";
-        logs.addLogs(dbRole.getId(), "Roles", action + " d'un rôle");
+        Utilisateurs currentUser = getCurrentUser();
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), dbRole.getId(), "Roles", action + " d'un rôle");
+        }
 
         return action + " réussie";
     }
@@ -131,7 +146,10 @@ public class RolesImpl implements RolesServices{
         repo.save(dbRole);
 
         String action = isArchive ? "Archivage" : "Récupération";
-        logs.addLogs(dbRole.getId(), "Roles", action + " d'un rôle");
+        Utilisateurs currentUser = getCurrentUser();
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), dbRole.getId(), "Roles", action + " d'un rôle");
+        }
 
         return action + " réussie";
     }
@@ -149,6 +167,20 @@ public class RolesImpl implements RolesServices{
                 dtos.size(),
                 dtos.size()
         );
+    }
+
+    /**
+     * Gets the currently authenticated user.
+     *
+     * @return the authenticated user
+     */
+    private Utilisateurs getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            String username = jwt.getSubject();
+            return utilisateursRepo.findByUsername(username).orElse(null);
+        }
+        return null;
     }
 }
 

@@ -10,9 +10,10 @@ import lombok.Setter;
 
 public class UserRequest {
     private String fullName;
+    private String region;
+    private String city;
+    private String farmName;
     private String email;
-    private String password;
-    private String username;
     private String telephone;
     private List<String> roles; 
 

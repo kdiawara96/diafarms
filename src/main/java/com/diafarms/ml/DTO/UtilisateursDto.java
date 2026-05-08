@@ -1,16 +1,16 @@
 package com.diafarms.ml.DTO;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -19,23 +19,75 @@ import lombok.Setter;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 public class UtilisateursDto {
     
     private Long id;
     private String fullName;
+    private String region;
+    private String city;
+    private String farmName;
+    private String photo;
     private String uniqueId;
     private String username;
     private String email;
     private String telephone;
     private boolean statut;
     private String password;
+    
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime createdAt;
+    
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime updatedAt;
-    private List<RoleDto> roles;
+    
+    private Set<RoleDto> roles;
+
+    /**
+     * Construit un DTO depuis l'entité Utilisateurs.
+     * 
+     * @param utilisateur l'entité persistée
+     * @param plainPassword le mot de passe en clair (pour affichage initial)
+     * @return le DTO formaté
+     */
+    public static UtilisateursDto fromEntity(Utilisateurs utilisateur, String plainPassword) {
+        if (utilisateur == null) {
+            return null;
+        }
+
+        return UtilisateursDto.builder()
+                .id(utilisateur.getId())
+                .fullName(utilisateur.getFullName())
+                .region(utilisateur.getRegion())
+                .city(utilisateur.getCity())
+                .photo(utilisateur.getPhoto())
+                .farmName(utilisateur.getFarmName())
+                .uniqueId(utilisateur.getUniqueId())
+                .username(utilisateur.getUsername())
+                .email(utilisateur.getEmail())
+                .telephone(utilisateur.getTelephone())
+                .statut(utilisateur.getStatut())
+                .password(plainPassword)
+                .createdAt(utilisateur.getInitialisation().getCreatedAt())
+                .updatedAt(utilisateur.getInitialisation().getUpdatedAt())
+                .roles(mapToRoleDtos(utilisateur.getRoles()))
+                .build();
+    }
+
+    /**
+     * Version sans mot de passe (pour les requêtes ultérieures).
+     */
+    public static UtilisateursDto fromEntity(Utilisateurs utilisateur) {
+        return fromEntity(utilisateur, null);
+    }
+
+    private static Set<RoleDto> mapToRoleDtos(Set<Roles> roles) {
+        if (roles == null) return null;
+        return roles.stream()
+                .map(RoleDto::fromEntity)
+                .collect(Collectors.toSet());
+    }
+}
 
 
-
-  }
 
