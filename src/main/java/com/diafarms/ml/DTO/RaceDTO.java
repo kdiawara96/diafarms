@@ -1,15 +1,19 @@
 package com.diafarms.ml.DTO;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 public class RaceDTO {
     private Long id;
     private String uniqueId;
     private String nom;
+     private String identifiant; // Un identifiant court et lisible pour les utilisateurs (ex: RAC-001, RAC-002, etc.)
     private String type;
     private String origine;
     private String description;
-    private LocalDate dateCreation;
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime createdAt;
     private Integer esperanceVieAnnees;
     private Double poidsAdulteKg;
     private Integer productionOeufsAn;
@@ -25,6 +29,8 @@ public class RaceDTO {
     public void setId(Long id) { this.id = id; }
     public String getUniqueId() { return uniqueId; }
     public void setUniqueId(String uniqueId) { this.uniqueId = uniqueId; }
+    public String getIdentifiant() { return identifiant; }
+    public void setIdentifiant(String identifiant) { this.identifiant = identifiant; }
     public String getNom() { return nom; }
     public void setNom(String nom) { this.nom = nom; }
     public String getType() { return type; }
@@ -33,8 +39,8 @@ public class RaceDTO {
     public void setOrigine(String origine) { this.origine = origine; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
-    public LocalDate getDateCreation() { return dateCreation; }
-    public void setDateCreation(LocalDate dateCreation) { this.dateCreation = dateCreation; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public Integer getEsperanceVieAnnees() { return esperanceVieAnnees; }
     public void setEsperanceVieAnnees(Integer esperanceVieAnnees) { this.esperanceVieAnnees = esperanceVieAnnees; }
     public Double getPoidsAdulteKg() { return poidsAdulteKg; }

@@ -1,6 +1,8 @@
 package com.diafarms.ml.models;
 
-import java.time.LocalDate;
+
+import com.diafarms.ml.commons.Initialisation;
+
 import jakarta.persistence.*;
 
 import lombok.AllArgsConstructor;
@@ -23,6 +25,9 @@ public class Race {
     @Column(name = "unique_id", nullable = false, unique = true, length = 50)
     private String uniqueId;
 
+    @Column(name = "identifiant",  length = 50)
+    private String identifiant; // Un identifiant court et lisible pour les utilisateurs (ex: RAC-001, RAC-002, etc.)
+
     @Column(name = "nom", nullable = false, length = 100)
     private String nom;
 
@@ -35,9 +40,6 @@ public class Race {
 
     @Column(name = "description", length = 1000)
     private String description;
-
-    @Column(name = "date_creation")
-    private LocalDate dateCreation;
 
     @Column(name = "esperance_vie_annees")
     private Integer esperanceVieAnnees;
@@ -77,6 +79,9 @@ public class Race {
     @Column(name = "certification_race", length = 30)
     private CertificationRace certificationRace;
 
+    @Embedded
+    private Initialisation initialisation;
+
     // ============================================================
     // ENUMERATIONS
     // ============================================================
@@ -108,7 +113,7 @@ public class Race {
         CHOCOLAT("Chocolat"),
         GRIS("Gris"),
         TACHETE("Tachete"),
-        NON_APPLICABLE("N/A");
+        NON_APPLICABLE("NA");
 
         private final String value;
 
@@ -128,7 +133,7 @@ public class Race {
         MOYEN("Moyen", "45-60 jours"),
         LENT("Lent", "60-90 jours"),
         TRES_LENT("Tres lent", "90+ jours"),
-        NON_APPLICABLE("N/A", "Race pondeuse");
+        NON_APPLICABLE("NA", "Race pondeuse");
 
         private final String label;
         private final String description;
@@ -154,7 +159,7 @@ public class Race {
         STANDARD("Standard", "2.5 - 3.5 kg"),
         GROS("Gros", "3.5 - 5.0 kg"),
         TRES_GROS("Tres gros", "> 5.0 kg"),
-        NON_APPLICABLE("N/A", "Race pondeuse");
+        NON_APPLICABLE("NA", "Race pondeuse");
 
         private final String label;
         private final String description;

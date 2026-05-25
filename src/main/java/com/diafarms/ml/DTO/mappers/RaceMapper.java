@@ -2,6 +2,7 @@ package com.diafarms.ml.DTO.mappers;
 
 import com.diafarms.ml.models.Race;
 import com.diafarms.ml.DTO.RaceDTO;
+import com.diafarms.ml.commons.Initialisation;
 
 public class RaceMapper {
     public static RaceDTO toDTO(Race race) {
@@ -9,11 +10,12 @@ public class RaceMapper {
         RaceDTO dto = new RaceDTO();
         dto.setId(race.getId());
         dto.setUniqueId(race.getUniqueId());
+        dto.setIdentifiant(race.getIdentifiant());
         dto.setNom(race.getNom());
         dto.setType(race.getType() != null ? race.getType().name() : null);
         dto.setOrigine(race.getOrigine());
         dto.setDescription(race.getDescription());
-        dto.setDateCreation(race.getDateCreation());
+        dto.setCreatedAt(race.getInitialisation().getCreatedAt());
         dto.setEsperanceVieAnnees(race.getEsperanceVieAnnees());
         dto.setPoidsAdulteKg(race.getPoidsAdulteKg());
         dto.setProductionOeufsAn(race.getProductionOeufsAn());
@@ -31,13 +33,14 @@ public class RaceMapper {
         Race race = new Race();
         race.setId(dto.getId());
         race.setUniqueId(dto.getUniqueId());
+        race.setIdentifiant(dto.getIdentifiant());
         race.setNom(dto.getNom());
         if (dto.getType() != null) {
             race.setType(Race.TypeRace.valueOf(dto.getType()));
         }
         race.setOrigine(dto.getOrigine());
         race.setDescription(dto.getDescription());
-        race.setDateCreation(dto.getDateCreation());
+        race.setInitialisation(new Initialisation());
         race.setEsperanceVieAnnees(dto.getEsperanceVieAnnees());
         race.setPoidsAdulteKg(dto.getPoidsAdulteKg());
         race.setProductionOeufsAn(dto.getProductionOeufsAn());
