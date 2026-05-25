@@ -38,8 +38,7 @@ public class Logs {
     @Column(name = "entity_type")
     private String entityType; // Type d'entité (User, Role, etc.)
 
-    @Lob
-    @Column(name = "action", nullable = false)
+    @Column(name = "action", nullable = false, length = 500)
     private String action; // Description de l'action
 
     @Column(name = "ip_address")

@@ -18,7 +18,6 @@ import com.diafarms.ml.repository.LogsRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.services.LogsServices;
 
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.util.Collections;
