@@ -11,7 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
-import com.diafarms.ml.DTO.UtilisateursDto;
+import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.DTO.mappers.UtilisateurMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Roles;
@@ -36,7 +36,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final RolesRepo roleRepo;
 
     @Override
-    public UtilisateursDto save(UserRequest data) {
+    public UtilisateursDTO save(UserRequest data) {
         // Validate input data
         if (utilisateursRepo.existsByEmail(data.getEmail())) {
             throw new IllegalArgumentException("L'email '" + data.getEmail() + "' existe déjà.");
@@ -84,7 +84,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             logsServices.addLogs(user.getId(), user.getId(), "User", "Création de l'utilisateur");
         }
 
-        return UtilisateursDto.fromEntity(user, generatedPassword);
+        return UtilisateursDTO.fromEntity(user, generatedPassword);
     }
 
     /**

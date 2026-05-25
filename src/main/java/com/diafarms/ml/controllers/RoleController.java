@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 
-import com.diafarms.ml.DTO.RoleDto;
+import com.diafarms.ml.DTO.RoleDTO;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
@@ -33,9 +33,9 @@ public class RoleController {
     // 🔵 CREATE
     // --------------------------------------------------------
     @PostMapping("/create")
-    public ResponseEntity<ApiResponse<RoleDto>> create(@RequestBody Roles request) {
+    public ResponseEntity<ApiResponse<RoleDTO>> create(@RequestBody Roles request) {
         try {
-            RoleDto result = services.create(request);
+            RoleDTO result = services.create(request);
 
             return ApiResponse.createResponse(
                     "Rôle créé avec succès",
@@ -72,12 +72,12 @@ public class RoleController {
     // 🟦 UPDATE
     // --------------------------------------------------------
     @PutMapping("/update/{uniqueId}")
-    public ResponseEntity<ApiResponse<RoleDto>> update(
+    public ResponseEntity<ApiResponse<RoleDTO>> update(
             @RequestBody Roles request,
             @PathVariable("uniqueId") String uniqueId
     ) {
         try {
-            RoleDto result = services.update(request, uniqueId);
+            RoleDTO result = services.update(request, uniqueId);
 
             return ApiResponse.createResponse(
                     "Rôle mis à jour avec succès",
@@ -160,13 +160,13 @@ public class RoleController {
     // 📄 LIST with pagination
     // --------------------------------------------------------
     @GetMapping("/list")
-    public ResponseEntity<ApiResponse<PaginatedResponse<RoleDto>>> list(
+    public ResponseEntity<ApiResponse<PaginatedResponse<RoleDTO>>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "folder") String type
     ) {
         try {
-            PaginatedResponse<RoleDto> result = services.findAll(page, size, type);
+            PaginatedResponse<RoleDTO> result = services.findAll(page, size, type);
 
             return ApiResponse.createResponse(
                     "Liste récupérée",
@@ -189,11 +189,11 @@ public class RoleController {
     // 🔍 SEARCH (sans pagination)
     // --------------------------------------------------------
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<PaginatedResponse<RoleDto>>> search(
+    public ResponseEntity<ApiResponse<PaginatedResponse<RoleDTO>>> search(
             @RequestParam("keyword") String keyword
     ) {
         try {
-            PaginatedResponse<RoleDto> result = services.search(keyword);
+            PaginatedResponse<RoleDTO> result = services.search(keyword);
 
             return ApiResponse.createResponse(
                     "Recherche réussie",

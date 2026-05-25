@@ -20,7 +20,7 @@ public class Race {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "unique_id", nullable = false, unique = true, length = 20)
+    @Column(name = "unique_id", nullable = false, unique = true, length = 50)
     private String uniqueId;
 
     @Column(name = "nom", nullable = false, length = 100)

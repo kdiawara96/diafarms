@@ -20,7 +20,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class UtilisateursDto {
+public class UtilisateursDTO {
     
     private Long id;
     private String fullName;
@@ -41,7 +41,7 @@ public class UtilisateursDto {
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime updatedAt;
     
-    private Set<RoleDto> roles;
+    private Set<RoleDTO> roles;
 
     /**
      * Construit un DTO depuis l'entité Utilisateurs.
@@ -50,12 +50,12 @@ public class UtilisateursDto {
      * @param plainPassword le mot de passe en clair (pour affichage initial)
      * @return le DTO formaté
      */
-    public static UtilisateursDto fromEntity(Utilisateurs utilisateur, String plainPassword) {
+    public static UtilisateursDTO fromEntity(Utilisateurs utilisateur, String plainPassword) {
         if (utilisateur == null) {
             return null;
         }
 
-        return UtilisateursDto.builder()
+        return UtilisateursDTO.builder()
                 .id(utilisateur.getId())
                 .fullName(utilisateur.getFullName())
                 .region(utilisateur.getRegion())
@@ -77,14 +77,14 @@ public class UtilisateursDto {
     /**
      * Version sans mot de passe (pour les requêtes ultérieures).
      */
-    public static UtilisateursDto fromEntity(Utilisateurs utilisateur) {
+    public static UtilisateursDTO fromEntity(Utilisateurs utilisateur) {
         return fromEntity(utilisateur, null);
     }
 
-    private static Set<RoleDto> mapToRoleDtos(Set<Roles> roles) {
+    private static Set<RoleDTO> mapToRoleDtos(Set<Roles> roles) {
         if (roles == null) return null;
         return roles.stream()
-                .map(RoleDto::fromEntity)
+                .map(RoleDTO::fromEntity)
                 .collect(Collectors.toSet());
     }
 }

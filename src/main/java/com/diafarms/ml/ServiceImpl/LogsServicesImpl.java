@@ -26,6 +26,7 @@ import java.util.Collections;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 
 
@@ -39,7 +40,7 @@ public class LogsServicesImpl implements LogsServices {
     @Override
     public Logs addLogs(Long userId, Long entityId, String entityType, String action) {
         Logs logs = new Logs();
-        logs.setUniqueId(Initialisation.generateUniqueId());
+        logs.setUniqueId(UUID.randomUUID().toString());
         logs.setUserId(userId);
         logs.setEntityId(entityId);
         logs.setEntityType(entityType);

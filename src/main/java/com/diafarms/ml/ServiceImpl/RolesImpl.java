@@ -1,27 +1,21 @@
 package com.diafarms.ml.ServiceImpl;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
-import com.diafarms.ml.DTO.RoleDto;
+import com.diafarms.ml.DTO.RoleDTO;
 import com.diafarms.ml.DTO.mappers.RoleMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.RolesRepo;
-import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.selectClass.RolesSelect;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.RolesServices;
@@ -35,20 +29,26 @@ public class RolesImpl implements RolesServices{
     private final RolesRepo repo;
     private final LogsServices logs;
     private final RoleMapper roleMapper;
-    private final UtilisateursRepo utilisateursRepo;
+    private final OtherService OtherService;
 
     @Override
-    public RoleDto create(Roles role) {
+    public RoleDTO create(Roles role) {
     
         if (repo.findByRoleAndInitialisationRemovedFalseAndInitialisationArchiveFalse(role.getRole().toUpperCase()) != null) {
             throw new RuntimeException("Le rôle existe déjà !");
         }
 
-        role.setUniqueId(Initialisation.generateUniqueId());
+        role.setUniqueId(UUID.randomUUID().toString());
         role.setInitialisation(Initialisation.init());
 
         Roles saved = repo.save(role);
-        Utilisateurs currentUser = getCurrentUser();
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Role", "Ajout d'un rôle avec succès !");
         }
@@ -57,7 +57,7 @@ public class RolesImpl implements RolesServices{
     }
 
     @Override
-    public RoleDto update(Roles role, String uniqueIdRole) {
+    public RoleDTO update(Roles role, String uniqueIdRole) {
 
         Roles dbRole = repo.findByUniqueId(uniqueIdRole)
             .orElseThrow(() -> new RuntimeException("Le rôle avec ID '" + uniqueIdRole + "' n'existe pas !"));
@@ -73,7 +73,13 @@ public class RolesImpl implements RolesServices{
         dbRole.setRole(role.getRole().toUpperCase());
         Roles updated = repo.save(dbRole);
 
-        Utilisateurs currentUser = getCurrentUser();
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), dbRole.getId(), "Roles", "Mise à jour d'un rôle");
         }
@@ -92,7 +98,13 @@ public class RolesImpl implements RolesServices{
         repo.save(dbRole);
 
         String action = isNowRemoved ? "Suppression" : "Récupération";
-        Utilisateurs currentUser = getCurrentUser();
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), dbRole.getId(), "Roles", action + " d'un rôle");
         }
@@ -101,7 +113,7 @@ public class RolesImpl implements RolesServices{
     }
 
     @Override
-    public PaginatedResponse<RoleDto> findAll(int page, int size, String type) {
+    public PaginatedResponse<RoleDTO> findAll(int page, int size, String type) {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createAt"));
         Page<Roles> rolePage = Page.empty();
@@ -114,7 +126,7 @@ public class RolesImpl implements RolesServices{
             rolePage = repo.findByInitialisationRemovedTrue(pageable);
         }
 
-        List<RoleDto> roleDtos = roleMapper.toDtoList(rolePage.getContent()); // 🔥
+        List<RoleDTO> roleDtos = roleMapper.toDtoList(rolePage.getContent()); // 🔥
 
         return new PaginatedResponse<>(
                 roleDtos,
@@ -146,7 +158,14 @@ public class RolesImpl implements RolesServices{
         repo.save(dbRole);
 
         String action = isArchive ? "Archivage" : "Récupération";
-        Utilisateurs currentUser = getCurrentUser();
+
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), dbRole.getId(), "Roles", action + " d'un rôle");
         }
@@ -155,10 +174,10 @@ public class RolesImpl implements RolesServices{
     }
 
     @Override
-    public PaginatedResponse<RoleDto> search(String search) {
+    public PaginatedResponse<RoleDTO> search(String search) {
 
         List<Roles> roles = repo.searchRoles(search.trim());
-        List<RoleDto> dtos = roleMapper.toDtoList(roles); // 🔥 
+        List<RoleDTO> dtos = roleMapper.toDtoList(roles); // 🔥 
 
         return new PaginatedResponse<>(
                 dtos,
@@ -169,18 +188,5 @@ public class RolesImpl implements RolesServices{
         );
     }
 
-    /**
-     * Gets the currently authenticated user.
-     *
-     * @return the authenticated user
-     */
-    private Utilisateurs getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
-            String username = jwt.getSubject();
-            return utilisateursRepo.findByUsername(username).orElse(null);
-        }
-        return null;
-    }
 }
 

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
-import com.diafarms.ml.DTO.UtilisateursDto;
+import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.request.UserRequest;
 import com.diafarms.ml.services.UtilisateursServices;
@@ -30,9 +30,9 @@ public class usersControllers {
      * @return response with created user data
      */
     @PostMapping("/create")
-    public ResponseEntity<ApiResponse<UtilisateursDto>> createUser(@RequestBody UserRequest request) {
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> createUser(@RequestBody UserRequest request) {
         try {
-            UtilisateursDto dto = services.save(request);
+            UtilisateursDTO dto = services.save(request);
             return ApiResponse.createResponse(
                     "Utilisateur créé avec succès!",
                     HttpStatus.OK,

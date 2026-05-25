@@ -18,7 +18,7 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class RoleDto {
+public class RoleDTO {
     
     private Long id;
     private String uniqueId;
@@ -36,12 +36,12 @@ public class RoleDto {
      * @param role l'entité role
      * @return le DTO formaté
      */
-    public static RoleDto fromEntity(Roles role) {
+    public static RoleDTO fromEntity(Roles role) {
         if (role == null) {
             return null;
         }
 
-        return RoleDto.builder()
+        return RoleDTO.builder()
                 .id(role.getId())
                 .uniqueId(role.getUniqueId())
                 .role(role.getRole())
@@ -56,12 +56,12 @@ public class RoleDto {
      * @param roles liste des entités roles
      * @return liste des DTOs formatés
      */
-    public static List<RoleDto> fromEntities(List<Roles> roles) {
+    public static List<RoleDTO> fromEntities(List<Roles> roles) {
         if (roles == null) {
             return null;
         }
         return roles.stream()
-                .map(RoleDto::fromEntity)
+                .map(RoleDTO::fromEntity)
                 .collect(Collectors.toList());
     }
 }

@@ -28,7 +28,7 @@ public class Projets {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "unique_id", nullable = false, unique = true, length = 20)
+    @Column(name = "unique_id", nullable = false, unique = true, length = 50)
     private String uniqueId;   // ex: "P-001" → correspond à project.id du front
 
     @Column(name = "titre", nullable = false, length = 100)

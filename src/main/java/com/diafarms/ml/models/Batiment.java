@@ -1,13 +1,9 @@
 package com.diafarms.ml.models;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
 import jakarta.persistence.*;
 
 import com.diafarms.ml.commons.Initialisation;
-import com.diafarms.ml.enums.StatutProjets;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -26,8 +22,8 @@ public class Batiment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "unique_id", nullable = false, unique = true, length = 20)
-    private String uniqueId;   // ex: "B-001"
+    @Column(name = "unique_id", nullable = false, unique = true, length = 50)
+    private String uniqueId;  
 
     @Column(name = "nom", nullable = false, length = 100)
     private String nom;
@@ -41,23 +37,16 @@ public class Batiment {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "statut", nullable = false, length = 20)
-    private StatutBatiment statut;
-
+    private StatutBatiment statut = StatutBatiment.DISPONIBLE;
 
     @Column(name = "description", length = 500)
     private String description;
-
-    @Column(name = "date_creation")
-    private LocalDate dateCreation;
 
     @Column(name = "date_derniere_maintenance")
     private LocalDate dateDerniereMaintenance;
 
     @Column(name = "superficie_m2")
     private Double superficieM2;
-
-    @Column(name = "localisation", length = 200)
-    private String localisation;
 
 
     @Embedded
