@@ -33,7 +33,7 @@ public class RaceController {
     @PutMapping("/update/{uniqueId}")
     public ResponseEntity<ApiResponse<RaceDTO>> update(@RequestBody Race request, @PathVariable("uniqueId") String uniqueId) {
         try {
-            RaceDTO result = services.update(request);
+            RaceDTO result = services.update(uniqueId, request);
             return ApiResponse.createResponse("Race mise à jour avec succès", HttpStatus.OK, result, null);
         } catch (RuntimeException e) {
             return ApiResponse.createResponse("Erreur de validation", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));

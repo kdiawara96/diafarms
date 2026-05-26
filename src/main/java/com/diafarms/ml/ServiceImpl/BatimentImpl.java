@@ -40,10 +40,12 @@ public class BatimentImpl implements BatimentServices {
             e.printStackTrace();
         }
 
-    if (currentUser != null) {
-        logs.addLogs(currentUser.getId(), batiment.getId(), "Batiment", "Ajout d'un bâtiment avec succès !");
-    }
-        return BatimentMapper.toDTO(batimentRepo.save(batiment));
+        Batiment savedBatiment = batimentRepo.save(batiment);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), savedBatiment.getId(), "Batiment", "Ajout d'un bâtiment avec succès !");
+        }
+        return BatimentMapper.toDTO(savedBatiment);
     }
 
     @Transactional

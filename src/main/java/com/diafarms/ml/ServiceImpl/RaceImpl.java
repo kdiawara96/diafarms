@@ -36,12 +36,13 @@ public class RaceImpl implements RaceServices {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        
+        Race savedRace = raceRepo.save(race);
         if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), race.getId(), "Race", "Ajout d'une race avec succès !");
+            logs.addLogs(currentUser.getId(), savedRace.getId(), "Race", "Ajout d'une race avec succès !");
         }
-        return RaceMapper.toDTO(raceRepo.save(race));
+        return RaceMapper.toDTO(savedRace);
     }
-
 
     private String genererIdentifiantUnique() {
         long count = raceRepo.count() + 1;
@@ -54,10 +55,11 @@ public class RaceImpl implements RaceServices {
         
         return identifiant;
     }
+   
     @Transactional
     @Override
-    public RaceDTO update(Race race) {
-        Race existingRace = raceRepo.findByUniqueId(race.getUniqueId());
+    public RaceDTO update(String uniqueId, Race race) {
+        Race existingRace = raceRepo.findByUniqueId(uniqueId);
         if (existingRace == null) {
             throw new RuntimeException("Race non trouvée !");
         }
@@ -67,7 +69,7 @@ public class RaceImpl implements RaceServices {
                 Optional<Race> raceExistant = raceRepo.findOptionalByNom(nouveauNom.trim());
                 if (raceExistant.isPresent()) {
                     Race autreRace = raceExistant.get();
-                    if (!autreRace.getUniqueId().equals(race.getUniqueId())) {
+                    if (!autreRace.getUniqueId().equals(uniqueId)) {
                         throw new RuntimeException("Une race avec ce nom existe déjà !");
                     }
                 }
@@ -75,11 +77,12 @@ public class RaceImpl implements RaceServices {
         } else {
             throw new RuntimeException("Le nom de la race est obligatoire !");
         }
+
         existingRace.setNom(nouveauNom.trim());
+        existingRace.setIdentifiant(existingRace.getIdentifiant()); // L'identifiant ne change pas
         existingRace.setType(race.getType());
         existingRace.setOrigine(race.getOrigine());
         existingRace.setDescription(race.getDescription());
-        existingRace.setInitialisation(Initialisation.updateDate(existingRace.getInitialisation()));
         existingRace.setEsperanceVieAnnees(race.getEsperanceVieAnnees());
         existingRace.setPoidsAdulteKg(race.getPoidsAdulteKg());
         existingRace.setProductionOeufsAn(race.getProductionOeufsAn());
@@ -90,6 +93,7 @@ public class RaceImpl implements RaceServices {
         existingRace.setAdaptationClimat(race.getAdaptationClimat());
         existingRace.setCertificationRace(race.getCertificationRace());
         existingRace.setInitialisation(Initialisation.updateDate(existingRace.getInitialisation()));
+
         Utilisateurs currentUser = null;
         try {
             currentUser = OtherService.getCurrentUser();
