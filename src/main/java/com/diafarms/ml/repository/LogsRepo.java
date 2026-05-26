@@ -28,13 +28,13 @@ public interface LogsRepo extends JpaRepository<Logs, Long>{
 
     Page<Logs> findAllByEntityTypeAndInitialisationRemovedFalseAndInitialisationArchiveFalse(Pageable pageable, String entityType);
 
+      // ✅ CORRIGÉ : retourne Page + utilise Pageable pour le tri
     @Query("SELECT l FROM Logs l " +
         "WHERE l.initialisation.removed = false " +
         "AND l.initialisation.archive = false " +
         "AND (" +
         "   l.action LIKE CONCAT('%', :search, '%') OR " +
         "   l.entityType LIKE CONCAT('%', :search, '%') " +
-        ") " +
-        "ORDER BY l.initialisation.createdAt DESC")
-    List<Logs> searchLogs(@Param("search") String search);
+        ")")
+    Page<Logs> searchLogs(@Param("search") String search, Pageable pageable);
 }

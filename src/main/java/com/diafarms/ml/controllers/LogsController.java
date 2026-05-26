@@ -28,9 +28,9 @@ public class LogsController {
     public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> getAll(
             @RequestParam int page,
             @RequestParam int size,
-            @RequestParam(defaultValue = "folder") String type
+            @RequestParam(required = false) String search
     ) {
-        PaginatedResponse<Logs> response = logsServices.getAll(page, size, type);
+        PaginatedResponse<Logs> response = logsServices.getAll(page, size, search);
 
         return ApiResponse.createResponse(
                 "Liste des logs récupérée",
@@ -45,10 +45,9 @@ public class LogsController {
     public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> getAllByIdAction(
             @RequestParam Long idAction,
             @RequestParam int page,
-            @RequestParam int size,
-            @RequestParam(defaultValue = "folder") String type
+            @RequestParam int size
     ) {
-        PaginatedResponse<Logs> response = logsServices.getAllByIdAction(idAction, page, size, type);
+        PaginatedResponse<Logs> response = logsServices.getAllByIdAction(idAction, page, size);
 
         return ApiResponse.createResponse(
                 "Logs par idAction récupérés",
@@ -63,10 +62,9 @@ public class LogsController {
     public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> getAllByNomClass(
             @RequestParam String nomClass,
             @RequestParam int page,
-            @RequestParam int size,
-            @RequestParam(defaultValue = "folder") String type
+            @RequestParam int size
     ) {
-        PaginatedResponse<Logs> response = logsServices.getAllByNomClass(nomClass, page, size, type);
+        PaginatedResponse<Logs> response = logsServices.getAllByNomClass(nomClass, page, size);
 
         return ApiResponse.createResponse(
                 "Logs filtrés par nom de classe récupérés",
@@ -76,20 +74,6 @@ public class LogsController {
         );
     }
 
-    /** Recherche simple */
-    @GetMapping("/search")
-    public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> search(
-            @RequestParam("search") String search
-    ) {
-        PaginatedResponse<Logs> result = logsServices.search(search.trim());
-
-        return ApiResponse.createResponse(
-                "Résultat de recherche",
-                HttpStatus.OK,
-                result,
-                null
-        );
-    }
 
     /** Soft delete ou restore */
     @DeleteMapping("/delete")

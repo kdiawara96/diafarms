@@ -17,13 +17,10 @@ import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.LogsRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.services.LogsServices;
+import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.domain.Sort;
 
-import java.util.Collections;
-
-
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -70,18 +67,12 @@ public class LogsServicesImpl implements LogsServices {
         throw new IllegalArgumentException("Le log avec l'ID unique " + uniqueId + " n'existe pas.");
     }
     @Override
-    public PaginatedResponse<Logs> getAllByIdAction(Long idAction, int page, int size, String type) {
+    public PaginatedResponse<Logs> getAllByIdAction(Long idAction, int page, int size) {
         Page<Logs> logPage;
 
-        if ("folder".equals(type)) {
-            logPage = logsRepo.findAllByEntityIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")), idAction);
-        } else if ("trash".equals(type)) {
-            logPage = logsRepo.findAllByEntityIdAndInitialisationRemovedTrue(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")), idAction);
-        } else {
-            logPage = new PageImpl<>(Collections.emptyList());
-        }
+
+        logPage = logsRepo.findAllByEntityIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt")), idAction);
 
         return new PaginatedResponse<>(
                 logPage.getContent(),
@@ -93,18 +84,11 @@ public class LogsServicesImpl implements LogsServices {
     }
 
     @Override
-    public PaginatedResponse<Logs> getAllByNomClass(String nomClass, int page, int size, String type) {
+    public PaginatedResponse<Logs> getAllByNomClass(String nomClass, int page, int size) {
         Page<Logs> logPage;
 
-        if ("folder".equals(type)) {
-            logPage = logsRepo.findAllByEntityTypeAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")), nomClass);
-        } else if ("trash".equals(type)) {
-            // Pour trash, on peut utiliser une requête différente ou simplifier
-            logPage = new PageImpl<>(Collections.emptyList());
-        } else {
-            logPage = new PageImpl<>(Collections.emptyList());
-        }
+          logPage = logsRepo.findAllByEntityTypeAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt")), nomClass);
 
         return new PaginatedResponse<>(
                 logPage.getContent(),
@@ -132,42 +116,29 @@ public class LogsServicesImpl implements LogsServices {
         }
     }
 
-    @Override
-    public PaginatedResponse<Logs> getAll(int page, int size, String type) {
-        Page<Logs> logPage;
+   @Override
+    public PaginatedResponse<Logs> getAll(int page, int size, String search) {
+        Pageable pageable = PageRequest.of(
+            page, 
+            size, 
+            Sort.by(Sort.Direction.DESC, "initialisation.createdAt")
+        );
 
-        if ("folder".equals(type)) {
-            logPage = logsRepo.findAllByInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
-        } else if ("trash".equals(type)) {
-            logPage = logsRepo.findAllByInitialisationRemovedTrue(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        Page<Logs> logPage;
+        
+        if (search != null && !search.isBlank()) {
+            logPage = logsRepo.searchLogs(search, pageable);
         } else {
-            logPage = new PageImpl<>(Collections.emptyList());
+            logPage = logsRepo.findAllByInitialisationRemovedFalseAndInitialisationArchiveFalse(pageable);
         }
 
+        // ✅ CORRECTION DE L'ORDRE DES PARAMÈTRES ICI :
         return new PaginatedResponse<>(
-                logPage.getContent(),
-                logPage.getNumber(),
-                logPage.getSize(),
-                logPage.getTotalElements(),
-                logPage.getTotalPages()
-        );
-    }
-
-
-
-    @Override
-    public PaginatedResponse<Logs> search(String search) {
-        List<Logs> logs = logsRepo.searchLogs(search.trim());
-
-        // Construction explicite de PaginatedResponse avec des valeurs fictives pour la pagination
-        return new PaginatedResponse<>(
-                logs,                  
-                1,                                    
-                1,                                   
-                logs.size(),             
-                logs.size()               
+            logPage.getContent(),        // 1. data
+            logPage.getNumber(),         // 2. currentPage
+            logPage.getTotalPages(),     // 3. totalPages (C'était logPage.getSize())
+            logPage.getTotalElements(),  // 4. totalItems
+            logPage.getSize()            // 5. size (C'était logPage.getTotalPages())
         );
     }
    
