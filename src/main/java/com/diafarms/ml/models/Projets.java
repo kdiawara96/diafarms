@@ -7,6 +7,8 @@ import java.util.List;
 import jakarta.persistence.*;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.Objectif;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -48,13 +50,19 @@ public class Projets {
     @Column(name = "nb_sujets")
     private Integer nbSujets;
 
+    @Column(name = "pu_sujet")
+    private Double puSujet;
+
+    @Column(name = "autres_depense")
+    private Double autresDepense; 
+
     @Column(name = "chiffre_affaire")
     private Double chiffreAffaire;                 // chiffre d'affaire ex: "1.56M"
 
-    @Column(name = "autres_depense")
-    private Double autresDepense;    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "objectif", nullable = false, length = 20)
+    private Objectif objectif;
 
-    
     @Embedded
     private Initialisation initialisation;
 
