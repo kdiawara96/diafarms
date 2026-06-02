@@ -1,5 +1,6 @@
 package com.diafarms.ml.services;
 
+import com.diafarms.ml.DTO.LogsDTO;
 import com.diafarms.ml.models.Logs;
 import com.diafarms.ml.others.PaginatedResponse;
 
@@ -18,6 +19,6 @@ public interface LogsServices {
     String delete(String uniqueId);
     PaginatedResponse<Logs> getAllByIdAction(Long idAction, int page, int size);
     PaginatedResponse<Logs> getAllByNomClass(String nomClass, int page, int size);
-    PaginatedResponse<Logs> getAll(int page, int size, String search);
+    PaginatedResponse<LogsDTO> getAll(int page, int size, String search);
 
 }

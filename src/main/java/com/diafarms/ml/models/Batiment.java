@@ -1,6 +1,9 @@
 package com.diafarms.ml.models;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
 import jakarta.persistence.*;
 
 import com.diafarms.ml.commons.Initialisation;
@@ -48,9 +51,15 @@ public class Batiment {
     @Column(name = "superficie_m2")
     private Double superficieM2;
 
-
     @Embedded
     private Initialisation initialisation;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "farm_id")
+    private Farm farm;
+
+    @OneToMany(mappedBy = "batiment", fetch = FetchType.LAZY)
+    private List<OccupationBatiment> historiqueOccupations = new ArrayList<>();
 
 
     // Enumération pour le type de bâtiment

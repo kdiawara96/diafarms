@@ -20,6 +20,8 @@ public interface LogsRepo extends JpaRepository<Logs, Long>{
 
     Page<Logs> findAllByInitialisationRemovedFalseAndInitialisationArchiveFalse(Pageable pageable);
 
+    Page<Logs> findByFarmIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(Long farmId, Pageable pageable);
+
     Page<Logs> findAllByInitialisationRemovedTrue(Pageable pageable);
 
     Page<Logs> findAllByEntityIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(Pageable pageable, Long entityId);

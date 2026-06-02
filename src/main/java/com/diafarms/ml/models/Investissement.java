@@ -29,7 +29,7 @@ public class Investissement {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long idInvestissement;
 
-    @Column(name = "unique_id", nullable = false, unique = true)
+    @Column(name = "unique_id", nullable = false, unique = true, length = 50)
     private String uniqueId;
 
     @Column(nullable = false)
@@ -51,11 +51,14 @@ public class Investissement {
     @Embedded
     private Initialisation initialisation ;
     
-
      // ============================================
     // RELATION AVEC UTILISATEUR (ManyToOne)
     // ============================================
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_utilisateur", nullable = false)
     private Utilisateurs utilisateur;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "farm_id")
+    private Farm farm;
 }

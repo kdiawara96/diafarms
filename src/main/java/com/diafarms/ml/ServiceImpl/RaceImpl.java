@@ -11,6 +11,8 @@ import com.diafarms.ml.services.LogsServices;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -36,7 +38,11 @@ public class RaceImpl implements RaceServices {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+
+        if (currentUser != null) {
+            race.setFarm(currentUser.getFarm());
+        }
+
         Race savedRace = raceRepo.save(race);
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), savedRace.getId(), "Race", "Ajout d'une race avec succès !");
@@ -137,8 +143,23 @@ public class RaceImpl implements RaceServices {
 
     @Override
     public List<RaceDTO> findAll() {
-        List<Race> races = raceRepo.findAllActive(); // À créer dans le repo
-        return races.stream().map(RaceMapper::toDTO).collect(Collectors.toList());
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
+        // Si un utilisateur est connecté, on filtre par sa ferme
+        if (currentUser != null && currentUser.getFarm() != null) {
+            return raceRepo.findAllActiveByFarm(currentUser.getFarm().getId()).stream()
+                    .map(RaceMapper::toDTO)
+                    .collect(Collectors.toList());
+        }
+
+        // Cas de secours (ex: pas d'utilisateur connecté ou pas de ferme associée)
+        // Vous pouvez soit lever une exception, soit retourner une liste vide, soit tout afficher
+        return Collections.emptyList(); 
     }
 
     @Override
@@ -146,7 +167,23 @@ public class RaceImpl implements RaceServices {
         if (search == null || search.trim().isEmpty()) {
             return findAll();
         }
-        List<Race> races = raceRepo.searchRaces(search.trim());
-        return races.stream().map(RaceMapper::toDTO).collect(Collectors.toList());
+
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
+        // Si un utilisateur est connecté, on recherche uniquement dans sa ferme
+        if (currentUser != null && currentUser.getFarm() != null) {
+            return raceRepo.searchRacesByFarm(currentUser.getFarm().getId(), search.trim()).stream()
+                    .map(RaceMapper::toDTO)
+                    .collect(Collectors.toList());
+        }
+
+        // Cas de secours si aucun utilisateur/ferme n'est trouvé
+        return Collections.emptyList();
     }
+
 }

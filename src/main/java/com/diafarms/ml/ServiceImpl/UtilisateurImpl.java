@@ -12,15 +12,18 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.UtilisateursDTO;
-import com.diafarms.ml.DTO.mappers.UtilisateurMapper;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.repository.FarmsRepo;
 import com.diafarms.ml.repository.RolesRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.UserRequest;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
+
+import jakarta.transaction.Transactional;
 
 /**
  * Implementation of user service for creating users.
@@ -30,13 +33,15 @@ import com.diafarms.ml.services.UtilisateursServices;
 public class UtilisateurImpl implements UtilisateursServices {
 
     private final UtilisateursRepo utilisateursRepo;
-    private final UtilisateurMapper utilisateurMapper;
     private final PasswordEncoder encoder;
     private final LogsServices logsServices;
     private final RolesRepo roleRepo;
+    private final FarmsRepo farmsRepo;
 
-    @Override
+     @Override
+    @Transactional
     public UtilisateursDTO save(UserRequest data) {
+
         // Validate input data
         if (utilisateursRepo.existsByEmail(data.getEmail())) {
             throw new IllegalArgumentException("L'email '" + data.getEmail() + "' existe déjà.");
@@ -55,6 +60,21 @@ public class UtilisateurImpl implements UtilisateursServices {
         user.setTelephone(data.getTelephone());
         user.setUniqueId(UUID.randomUUID().toString());
         user.setInitialisation(Initialisation.init());
+
+        // ==========================================
+        // ETAPE NOUVELLE : Création et liaison de la ferme
+        // ==========================================
+        Farm newFarm = new Farm();
+        // Génère un identifiant unique de 50 caractères max (ex: UUID tronqué ou complet selon vos besoins)
+        String farmUuid = UUID.randomUUID().toString(); 
+        newFarm.setUniqueId(farmUuid);
+        
+        // On sauvegarde d'abord la ferme pour générer son ID
+        Farm savedFarm = farmsRepo.save(newFarm);
+        
+        // On lie la ferme à l'utilisateur (on suppose que votre entité Utilisateurs possède la méthode setFarm)
+        user.setFarm(savedFarm); 
+        // ==========================================
 
         // Generate unique username
         String generatedUsername = generateUsername(data.getFullName());
@@ -75,13 +95,13 @@ public class UtilisateurImpl implements UtilisateursServices {
         }
         user.setRoles(rolesToAdd);
 
-        // Save user
+        // Save user (maintenant qu'il a son farm_id positionné)
         utilisateursRepo.save(user);
 
         // Log creation
         // Utilisateurs currentUser = getCurrentUser();
         if (user != null) {
-            logsServices.addLogs(user.getId(), user.getId(), "User", "Création de l'utilisateur");
+            logsServices.addLogs(user.getId(), user.getId(), "User", "Création de l'utilisateur et de sa ferme");
         }
 
         return UtilisateursDTO.fromEntity(user, generatedPassword);

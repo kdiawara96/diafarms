@@ -21,11 +21,25 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
     @Query("SELECT b FROM Batiment b WHERE b.initialisation.removed = false")
     List<Batiment> findAllActive();
 
+
+    @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId AND b.initialisation.removed = false")
+    List<Batiment> findActiveByFarmId(@Param("farmId") Long farmId);
+
     // Recherche par nom, localisation, type, etc.
     @Query("SELECT b FROM Batiment b WHERE b.initialisation.removed = false " +
            "AND (LOWER(b.nom) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(b.description) LIKE LOWER(CONCAT('%', :search, '%')))")
     List<Batiment> searchBatiments(@Param("search") String search);
+    
+
+    @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId " +
+           "AND b.initialisation.removed = false " +
+           "AND (LOWER(b.nom) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(b.description) LIKE LOWER(CONCAT('%', :search, '%')))")
+    List<Batiment> searchBatimentsByFarm(
+        @Param("farmId") Long farmId, 
+        @Param("search") String search
+    );
 
     // Optionnel : compter par statut
     long countByStatut(StatutBatiment statut);

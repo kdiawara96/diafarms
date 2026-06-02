@@ -3,13 +3,14 @@ package com.diafarms.ml.ServiceImpl;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
+import com.diafarms.ml.DTO.LogsDTO;
+import com.diafarms.ml.DTO.mappers.LogsMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Logs;
 import com.diafarms.ml.models.Utilisateurs;
@@ -32,6 +33,7 @@ public class LogsServicesImpl implements LogsServices {
 
     private final LogsRepo logsRepo;
     private final UtilisateursRepo uRepo;
+    private final LogsMapper logsMapper;
 
     @Override
     public Logs addLogs(Long userId, Long entityId, String entityType, String action) {
@@ -42,6 +44,12 @@ public class LogsServicesImpl implements LogsServices {
         logs.setEntityType(entityType);
         logs.setAction(action);
         logs.setInitialisation(Initialisation.init());
+
+        Utilisateurs currentUser = verificationUniqueId(); 
+        
+        if (currentUser != null) {
+            logs.setFarm(currentUser.getFarm());
+        }
 
         return logsRepo.save(logs);
     }
@@ -115,31 +123,34 @@ public class LogsServicesImpl implements LogsServices {
             return null;
         }
     }
+ 
 
-   @Override
-    public PaginatedResponse<Logs> getAll(int page, int size, String search) {
-        Pageable pageable = PageRequest.of(
-            page, 
-            size, 
-            Sort.by(Sort.Direction.DESC, "initialisation.createdAt")
-        );
+    @Override
+    public PaginatedResponse<LogsDTO> getAll(int page, int size, String search) {
 
-        Page<Logs> logPage;
-        
-        if (search != null && !search.isBlank()) {
-            logPage = logsRepo.searchLogs(search, pageable);
-        } else {
-            logPage = logsRepo.findAllByInitialisationRemovedFalseAndInitialisationArchiveFalse(pageable);
+            Pageable pageable = PageRequest.of(
+                    page,
+                    size,
+                    Sort.by(Sort.Direction.DESC, "initialisation.createdAt")
+            );
+
+            Page<Logs> logPage;
+            if (search != null && !search.isBlank()) {
+                logPage = logsRepo.searchLogs(search, pageable);
+            } else {
+                logPage = logsRepo.findByFarmIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                    verificationUniqueId().getFarm().getId(), pageable);
+            }
+
+            // Map en DTO avant de renvoyer
+            Page<LogsDTO> dtoPage = logsMapper.toDTOPage(logPage);
+
+            return new PaginatedResponse<>(
+                dtoPage.getContent(),        // 1. data
+                dtoPage.getNumber(),         // 2. currentPage
+                dtoPage.getTotalPages(),     // 3. totalPages (C'était dtoPage.getSize())
+                dtoPage.getTotalElements(),  // 4. totalItems
+                dtoPage.getSize()            // 5. size (C'était logPage.getTotalPages())
+            );
         }
-
-        // ✅ CORRECTION DE L'ORDRE DES PARAMÈTRES ICI :
-        return new PaginatedResponse<>(
-            logPage.getContent(),        // 1. data
-            logPage.getNumber(),         // 2. currentPage
-            logPage.getTotalPages(),     // 3. totalPages (C'était logPage.getSize())
-            logPage.getTotalElements(),  // 4. totalItems
-            logPage.getSize()            // 5. size (C'était logPage.getTotalPages())
-        );
-    }
-   
 }

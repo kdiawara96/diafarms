@@ -39,7 +39,9 @@ public class BatimentImpl implements BatimentServices {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-
+        if (currentUser != null) {
+            batiment.setFarm(currentUser.getFarm());
+        }
         Batiment savedBatiment = batimentRepo.save(batiment);
 
         if (currentUser != null) {
@@ -147,7 +149,19 @@ public class BatimentImpl implements BatimentServices {
 
     @Override
     public List<BatimentsDTO> findAll() {
-        List<Batiment> batiments = batimentRepo.findAllActive(); // À créer dans le repo
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+        List<Batiment> batiments = List.of();
+
+        if (currentUser != null) {
+            batiments = batimentRepo.findActiveByFarmId(currentUser.getFarm().getId()); // À créer dans le repo
+        }
         return batiments.stream()
                         .map(BatimentMapper::toDTO)
                         .collect(Collectors.toList());
@@ -159,7 +173,20 @@ public class BatimentImpl implements BatimentServices {
             return findAll();
         }
 
-        List<Batiment> batiments = batimentRepo.searchBatiments(search.trim());
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+
+        List<Batiment> batiments = List.of();
+
+        if (currentUser != null) {
+            batiments = batimentRepo.searchBatimentsByFarm(currentUser.getFarm().getId(), search.trim());
+        }
         return batiments.stream()
                         .map(BatimentMapper::toDTO)
                         .collect(Collectors.toList());

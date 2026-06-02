@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.diafarms.ml.DTO.LogsDTO;
 import com.diafarms.ml.models.Logs;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
@@ -25,12 +26,12 @@ public class LogsController {
 
     /** Récupération de tous les logs */
     @GetMapping("/list")
-    public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> getAll(
+    public ResponseEntity<ApiResponse<PaginatedResponse<LogsDTO>>> getAll(
             @RequestParam int page,
             @RequestParam int size,
             @RequestParam(required = false) String search
     ) {
-        PaginatedResponse<Logs> response = logsServices.getAll(page, size, search);
+        PaginatedResponse<LogsDTO> response = logsServices.getAll(page, size, search);
 
         return ApiResponse.createResponse(
                 "Liste des logs récupérée",

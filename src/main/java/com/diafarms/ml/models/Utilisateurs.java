@@ -26,7 +26,7 @@ public class Utilisateurs {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "unique_id", nullable = false, unique = true)
+    @Column(name = "unique_id", nullable = false, unique = true, length = 50)
     private String uniqueId;
 
     @Column(name = "full_name", nullable = false, length = 50)
@@ -84,8 +84,16 @@ public class Utilisateurs {
     private List<Investissement> investissements = new ArrayList<>();
 
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "farm_id")
+    private Farm farm;
 
-    
+    @OneToMany(mappedBy = "responsableProduction", fetch = FetchType.LAZY)
+    private List<Projets> projetsEnProduction = new ArrayList<>();
+
+    @OneToMany(mappedBy = "responsableFinance", fetch = FetchType.LAZY)
+    private List<Projets> projetsEnFinance = new ArrayList<>();
+
 
 }
 

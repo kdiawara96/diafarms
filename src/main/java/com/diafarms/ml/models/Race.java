@@ -1,6 +1,9 @@
 package com.diafarms.ml.models;
 
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.diafarms.ml.commons.Initialisation;
 
 import jakarta.persistence.*;
@@ -81,6 +84,14 @@ public class Race {
 
     @Embedded
     private Initialisation initialisation;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "farm_id")
+    private Farm farm;
+
+    @OneToMany(mappedBy = "race", fetch = FetchType.LAZY)
+    private List<Projets> projets = new ArrayList<>();
+
 
     // ============================================================
     // ENUMERATIONS
