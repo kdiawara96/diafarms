@@ -62,6 +62,16 @@ public class RaceController {
         }
     }
 
+    @GetMapping("/select")
+    public ResponseEntity<ApiResponse<List<RaceDTO>>> select() {
+        try {
+            List<RaceDTO> result = services.select();
+            return ApiResponse.createResponse("Liste récupérée", HttpStatus.OK, result, null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<RaceDTO>>> search(@RequestParam("keyword") String keyword) {
         try {

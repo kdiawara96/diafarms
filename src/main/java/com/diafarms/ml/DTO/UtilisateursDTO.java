@@ -23,12 +23,12 @@ import lombok.Setter;
 public class UtilisateursDTO {
     
     private Long id;
+    private String uniqueId;
     private String fullName;
     private String region;
     private String city;
     private String farmName;
     private String photo;
-    private String uniqueId;
     private String username;
     private String email;
     private String telephone;
@@ -57,12 +57,12 @@ public class UtilisateursDTO {
 
         return UtilisateursDTO.builder()
                 .id(utilisateur.getId())
+                .uniqueId(utilisateur.getUniqueId())
                 .fullName(utilisateur.getFullName())
                 .region(utilisateur.getRegion())
                 .city(utilisateur.getCity())
                 .photo(utilisateur.getPhoto())
                 .farmName(utilisateur.getFarmName())
-                .uniqueId(utilisateur.getUniqueId())
                 .username(utilisateur.getUsername())
                 .email(utilisateur.getEmail())
                 .telephone(utilisateur.getTelephone())
@@ -86,6 +86,15 @@ public class UtilisateursDTO {
         return roles.stream()
                 .map(RoleDTO::fromEntity)
                 .collect(Collectors.toSet());
+    }
+
+    public static UtilisateursDTO fromSelect(Utilisateurs utilisateur) {
+
+        return UtilisateursDTO.builder()
+                .id(utilisateur.getId())
+                .uniqueId(utilisateur.getUniqueId())
+                .fullName(utilisateur.getFullName())
+                .build();
     }
 }
 

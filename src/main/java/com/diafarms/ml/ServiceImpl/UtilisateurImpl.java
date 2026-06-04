@@ -2,9 +2,12 @@ package com.diafarms.ml.ServiceImpl;
 
 import lombok.RequiredArgsConstructor;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -222,5 +225,12 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .orElseThrow(() -> new RuntimeException(
                         "Aucun utilisateur trouvé avec le nom d'utilisateur ou l'email : '" + usernameOrEmail + "'"
                 ));
+    }
+
+    @Override
+    public List<UtilisateursDTO> select() {
+        return utilisateursRepo.findAll().stream()
+                .map(UtilisateursDTO::fromSelect)
+                .collect(Collectors.toList());
     }
 }

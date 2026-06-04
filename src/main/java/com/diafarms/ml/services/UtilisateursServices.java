@@ -1,5 +1,7 @@
 package com.diafarms.ml.services;
 
+import java.util.List;
+
 import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.request.create.UserCreate;
@@ -24,4 +26,6 @@ public interface UtilisateursServices {
      * @return the user entity
      */
     Utilisateurs readByUsernameOrEmail(String usernameOrEmail);
+
+    List<UtilisateursDTO> select();
 }
