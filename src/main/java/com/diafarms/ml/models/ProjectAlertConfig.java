@@ -4,8 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.AlertLevel;
@@ -21,12 +19,11 @@ import com.diafarms.ml.enums.AlertType;
 @NoArgsConstructor
 @Getter
 @Setter
-public class ProjectAlertConfig {
+public class ProjectAlertConfig { 
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;    
-
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     //La combinaison nécessaire
     //Champ	        Rôle	                            Exemple
@@ -34,6 +31,7 @@ public class ProjectAlertConfig {
     //alertType	    La catégorie	                    MORTALITE
     //thresholdKey	Le seuil précis dans la catégorie	DAILY_WARNING
     //projectId	    Le projet concerné	                abc-123
+    
     @Enumerated(EnumType.STRING)
     @Column(name = "alert_type", nullable = false)
     private AlertType alertType;     // MORTALITE, ALIMENTATION, VACCINATION, METEO

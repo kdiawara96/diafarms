@@ -19,7 +19,7 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.FarmsRepo;
 import com.diafarms.ml.repository.RolesRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
-import com.diafarms.ml.request.UserRequest;
+import com.diafarms.ml.request.create.UserCreate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
 
@@ -38,9 +38,9 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final RolesRepo roleRepo;
     private final FarmsRepo farmsRepo;
 
-     @Override
+    @Override
     @Transactional
-    public UtilisateursDTO save(UserRequest data) {
+    public UtilisateursDTO save(UserCreate data) {
 
         // Validate input data
         if (utilisateursRepo.existsByEmail(data.getEmail())) {

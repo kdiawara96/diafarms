@@ -48,7 +48,7 @@
 			<scope>runtime</scope>
 			<optional>true</optional>
 		</dependency>
-		<!-- Pour le map struct -->
+		<!-- le map struct -->
 		<dependency>
 			<groupId>org.mapstruct</groupId>
 			<artifactId>mapstruct</artifactId>

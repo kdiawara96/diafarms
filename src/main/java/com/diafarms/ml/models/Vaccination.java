@@ -2,7 +2,6 @@ package com.diafarms.ml.models;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDate;
 
 import com.diafarms.ml.commons.Initialisation;
 
@@ -24,9 +23,6 @@ public class Vaccination {
     @Column(name = "nom_vaccin", nullable = false, length = 100)
     private String nomVaccin; // ex: "Gumboro", "Newcastle", "Bronchite Infectieuse"
 
-    @Column(name = "date_vaccination", nullable = false)
-    private LocalDate dateVaccination;
-
     @Column(name = "quantite", nullable = false)
     private Integer quantite; // Souvent exprimé en nombre de doses (ex: 1000 doses) ou flacons
 
@@ -37,7 +33,10 @@ public class Vaccination {
     private Double coutTotal; // Quantité * Prix Unitaire (calculé ou stocké)
 
     @Column(name = "mode_administration", length = 50)
-    private String modeAdministration; // Optionnel : ex: "Dans l'eau de boisson", "Injection"
+    private String modeAdministration; // Optionnel : ex: "Dans l'eau de boisson", "Injection" je vais mettre des  pipes pour séparer les différentes options
+
+    @Column(name = "chiffre_affaire")
+    private Double chiffreAffaire; // Optionnel : Peut être calculé ou stocké selon les besoins
 
     @Embedded
     private Initialisation initialisation;

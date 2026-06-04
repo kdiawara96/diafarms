@@ -1,4 +1,4 @@
-package com.diafarms.ml.request;
+package com.diafarms.ml.request.others;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

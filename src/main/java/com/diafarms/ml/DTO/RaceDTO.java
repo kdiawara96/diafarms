@@ -2,8 +2,19 @@ package com.diafarms.ml.DTO;
 
 import java.time.LocalDateTime;
 
+import com.diafarms.ml.models.Race;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
 public class RaceDTO {
     private Long id;
     private String uniqueId;
@@ -24,39 +35,29 @@ public class RaceDTO {
     private String adaptationClimat;
     private String certificationRace;
 
-    // Getters & Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public String getUniqueId() { return uniqueId; }
-    public void setUniqueId(String uniqueId) { this.uniqueId = uniqueId; }
-    public String getIdentifiant() { return identifiant; }
-    public void setIdentifiant(String identifiant) { this.identifiant = identifiant; }
-    public String getNom() { return nom; }
-    public void setNom(String nom) { this.nom = nom; }
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-    public String getOrigine() { return origine; }
-    public void setOrigine(String origine) { this.origine = origine; }
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-    public Integer getEsperanceVieAnnees() { return esperanceVieAnnees; }
-    public void setEsperanceVieAnnees(Integer esperanceVieAnnees) { this.esperanceVieAnnees = esperanceVieAnnees; }
-    public Double getPoidsAdulteKg() { return poidsAdulteKg; }
-    public void setPoidsAdulteKg(Double poidsAdulteKg) { this.poidsAdulteKg = poidsAdulteKg; }
-    public Integer getProductionOeufsAn() { return productionOeufsAn; }
-    public void setProductionOeufsAn(Integer productionOeufsAn) { this.productionOeufsAn = productionOeufsAn; }
-    public String getCouleurOeuf() { return couleurOeuf; }
-    public void setCouleurOeuf(String couleurOeuf) { this.couleurOeuf = couleurOeuf; }
-    public String getTempsCroissance() { return tempsCroissance; }
-    public void setTempsCroissance(String tempsCroissance) { this.tempsCroissance = tempsCroissance; }
-    public String getPoidsAbattage() { return poidsAbattage; }
-    public void setPoidsAbattage(String poidsAbattage) { this.poidsAbattage = poidsAbattage; }
-    public String getRusticite() { return rusticite; }
-    public void setRusticite(String rusticite) { this.rusticite = rusticite; }
-    public String getAdaptationClimat() { return adaptationClimat; }
-    public void setAdaptationClimat(String adaptationClimat) { this.adaptationClimat = adaptationClimat; }
-    public String getCertificationRace() { return certificationRace; }
-    public void setCertificationRace(String certificationRace) { this.certificationRace = certificationRace; }
+        public static RaceDTO fromEntity(Race data) {
+            if (data == null) {
+                return null;
+            }
+    
+            return RaceDTO.builder()
+                    .id(data.getId())
+                    .uniqueId(data.getUniqueId())
+                    .nom(data.getNom())
+                    .identifiant(data.getIdentifiant())
+                    .type(data.getType().getValue())
+                    .origine(data.getOrigine())
+                    .description(data.getDescription())
+                    .createdAt(data.getInitialisation().getCreatedAt())
+                    .esperanceVieAnnees(data.getEsperanceVieAnnees())
+                    .poidsAdulteKg(data.getPoidsAdulteKg())
+                    .productionOeufsAn(data.getProductionOeufsAn())
+                    .couleurOeuf(data.getCouleurOeuf().getValue())
+                    .tempsCroissance(data.getTempsCroissance().getLabel())
+                    .poidsAbattage(data.getPoidsAbattage().getLabel())
+                    .rusticite(data.getRusticite().getLabel())
+                    .adaptationClimat(data.getAdaptationClimat().getLabel())
+                    .certificationRace(data.getCertificationRace().getLabel())
+                    .build();
+        }
 }

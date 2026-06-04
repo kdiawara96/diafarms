@@ -1,4 +1,4 @@
-package com.diafarms.ml.request;
+package com.diafarms.ml.request.update;
 
 import lombok.Getter;
 import lombok.Setter;

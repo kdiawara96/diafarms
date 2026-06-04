@@ -1,4 +1,4 @@
-package com.diafarms.ml.request;
+package com.diafarms.ml.request.create;
 
 import java.util.List;
 
@@ -8,7 +8,7 @@ import lombok.Setter;
 @Getter
 @Setter
 
-public class UserRequest {
+public class UserCreate {
     private String fullName;
     private String region;
     private String city;

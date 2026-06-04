@@ -54,10 +54,13 @@ public class Projets {
     private Double puSujet;
 
     @Column(name = "autres_depense")
-    private Double autresDepense; 
+    private Double autresDepense;
 
-    @Column(name = "chiffre_affaire")
-    private Double chiffreAffaire;                 // chiffre d'affaire ex: "1.56M"
+    @Column(name = "ca_prevu")
+    private Double caPrevu; // CA prévu (chiffre d'affaires) = nbSujets × puSujet + autresDepense
+
+    @Column(name = "marge_nette")
+    private Double margeNette;  // Marge nette = CA − TOUS les coûts (achats, salaires, transport, pertes, etc.)
 
     @Enumerated(EnumType.STRING)
     @Column(name = "objectif", nullable = false, length = 20)
@@ -90,5 +93,11 @@ public class Projets {
 
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Vaccination> vaccinations = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<ProjectAlertConfig> alertConfigs = new ArrayList<>();
+
+    @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<FichierMedia> fichiers = new ArrayList<>();
 
 }
