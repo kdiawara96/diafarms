@@ -195,6 +195,26 @@ public class BatimentController {
         }
     }
 
+
+    @GetMapping("/select")
+    public ResponseEntity<ApiResponse<List<BatimentsDTO>>> select() {
+        try {
+            List<BatimentsDTO> result = services.select();
+            return ApiResponse.createResponse(
+                "Liste récupérée", 
+                HttpStatus.OK, 
+                result, 
+                null
+            );
+        } catch (Exception e) {
+            return ApiResponse.createResponse(
+                "Erreur interne du serveur", 
+                HttpStatus.INTERNAL_SERVER_ERROR, 
+                null, 
+                List.of("Une erreur inattendue s'est produite")
+            );
+        }
+    }
     // ==================== SEARCH ====================
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<BatimentsDTO>>> search(

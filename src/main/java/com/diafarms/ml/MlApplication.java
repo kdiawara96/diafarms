@@ -51,18 +51,25 @@ public class MlApplication implements CommandLineRunner {
         // 1️⃣ CREATION DU ROLE ADMIN S’IL N’EXISTE PAS
         // =====================================================
         String defaultRole = "ADMIN";
+        String roleProducteur = "PRODUCTEUR";
+        String roleFinancier = "FINANCIER";
+        String roleSUPER_ADMIN = "SUPER_ADMIN";
 
-        Roles adminRole = rolesRepo.findByRole(defaultRole);
-        if (adminRole == null) {
-            adminRole = new Roles();
-            adminRole.setRole(defaultRole);
-            adminRole.setUniqueId(UUID.randomUUID().toString());
-            adminRole.setInitialisation(Initialisation.init());
-            rolesRepo.save(adminRole);
+        String[] rolesToCheck = {defaultRole, roleProducteur, roleFinancier, roleSUPER_ADMIN};
 
-            System.out.println("✔ ROLE_ADMIN créé !");
-        } else {
-            System.out.println("✔ ROLE_ADMIN déjà existant.");
+        for (String roleName : rolesToCheck) {
+            Roles role = rolesRepo.findByRole(roleName);
+            if (role == null) {
+                role = new Roles();
+                role.setRole(roleName);
+                role.setUniqueId(UUID.randomUUID().toString());
+                role.setInitialisation(Initialisation.init());
+                rolesRepo.save(role);
+
+                System.out.println("✔ " + roleName + " créé !");
+            } else {
+                System.out.println("✔ " + roleName + " déjà existant.");
+            }
         }
 
         // =====================================================
@@ -84,7 +91,7 @@ public class MlApplication implements CommandLineRunner {
 
             // role
             Set<Roles> roles = new HashSet<>();
-            roles.add(adminRole);
+            roles.add(rolesRepo.findByRole(defaultRole)); // ADMIN
             admin.setRoles(roles);
 
             utilisateursRepo.save(admin);

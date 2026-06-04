@@ -47,7 +47,7 @@ public class ProjetsDTO {
      private List<FichierMediaDTO> fichiersMedia;
 
 
-         public static ProjetsDTO fromEntityList(Projets data) {
+     public static ProjetsDTO fromEntityList(Projets data) {
         if (data == null) {
             return null;
         }

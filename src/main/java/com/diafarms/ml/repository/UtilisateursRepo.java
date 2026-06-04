@@ -49,6 +49,17 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     List<Utilisateurs> searchUsers(@Param("search") String search);
 
 
+    // 1. Par farm + non supprimé
+    @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND u.initialisation.removed = false")
+    List<Utilisateurs> findAllByFarmIdAndNotRemoved(@Param("farmId") Long farmId);
+
+    // 2. Par farm + rôle PRODUCTEUR
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'PRODUCTEUR'")
+    List<Utilisateurs> findProducteursByFarmId(@Param("farmId") Long farmId);
+
+    // 3. Par farm + rôle FINANCIER
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'FINANCIER'")
+    List<Utilisateurs> findFinanciersByFarmId(@Param("farmId") Long farmId);
 
 
 }

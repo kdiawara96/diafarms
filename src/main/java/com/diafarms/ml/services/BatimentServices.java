@@ -12,4 +12,5 @@ public interface BatimentServices {
     String deleteOrRecover(String uniqueIdBatiment);
     List<BatimentsDTO> findAll();
     List<BatimentsDTO> search(String search);
+    List<BatimentsDTO> select();
 }

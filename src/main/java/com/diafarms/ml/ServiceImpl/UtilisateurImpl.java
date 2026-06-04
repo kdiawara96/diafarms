@@ -1,6 +1,8 @@
 package com.diafarms.ml.ServiceImpl;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -8,10 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.UtilisateursDTO;
@@ -40,6 +39,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final LogsServices logsServices;
     private final RolesRepo roleRepo;
     private final FarmsRepo farmsRepo;
+    private final OtherService OtherService;
 
     @Override
     @Transactional
@@ -208,14 +208,14 @@ public class UtilisateurImpl implements UtilisateursServices {
      *
      * @return the authenticated user
      */
-    private Utilisateurs getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
-            String username = jwt.getSubject();
-            return utilisateursRepo.findByUsername(username).orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
-        }
-        return null;
-    }
+    // private Utilisateurs getCurrentUser() {
+    //     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    //     if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+    //         String username = jwt.getSubject();
+    //         return utilisateursRepo.findByUsername(username).orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+    //     }
+    //     return null;
+    // }
 
     @Override
     public Utilisateurs readByUsernameOrEmail(String usernameOrEmail) {
@@ -229,7 +229,59 @@ public class UtilisateurImpl implements UtilisateursServices {
 
     @Override
     public List<UtilisateursDTO> select() {
-        return utilisateursRepo.findAll().stream()
+
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        Long farmId = null;
+        if (currentUser != null) {
+            farmId = currentUser.getFarm().getId();
+        }
+
+        return utilisateursRepo.findAllByFarmIdAndNotRemoved(farmId).stream()
+                .map(UtilisateursDTO::fromSelect)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UtilisateursDTO> selectProducteurs() {
+
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        Long farmId = null;
+        if (currentUser != null) {
+            farmId = currentUser.getFarm().getId();
+        }
+
+        return utilisateursRepo.findProducteursByFarmId(farmId).stream()
+                .map(UtilisateursDTO::fromSelect)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UtilisateursDTO> selectFinanciers() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        Long farmId = null;
+        if (currentUser != null) {
+            farmId = currentUser.getFarm().getId();
+        }
+
+        return utilisateursRepo.findFinanciersByFarmId(farmId).stream()
                 .map(UtilisateursDTO::fromSelect)
                 .collect(Collectors.toList());
     }

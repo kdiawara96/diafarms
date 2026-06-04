@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.BatimentsDTO;
-import com.diafarms.ml.DTO.mappers.BatimentMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Utilisateurs;
@@ -47,7 +46,7 @@ public class BatimentImpl implements BatimentServices {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), savedBatiment.getId(), "Batiment", "Ajout d'un bâtiment avec succès !");
         }
-        return BatimentMapper.toDTO(savedBatiment);
+        return BatimentsDTO.toDTO(savedBatiment);
     }
 
     @Transactional
@@ -104,7 +103,7 @@ public class BatimentImpl implements BatimentServices {
             logs.addLogs(currentUser.getId(), existingBatiment.getId(), "Batiment", "Mise à jour d'un bâtiment");
         }
 
-        return BatimentMapper.toDTO(batimentRepo.save(existingBatiment));
+        return BatimentsDTO.toDTO(batimentRepo.save(existingBatiment));
     }
 
 
@@ -163,7 +162,7 @@ public class BatimentImpl implements BatimentServices {
             batiments = batimentRepo.findActiveByFarmId(currentUser.getFarm().getId()); // À créer dans le repo
         }
         return batiments.stream()
-                        .map(BatimentMapper::toDTO)
+                        .map(BatimentsDTO::toDTO)
                         .collect(Collectors.toList());
     }
 
@@ -188,7 +187,27 @@ public class BatimentImpl implements BatimentServices {
             batiments = batimentRepo.searchBatimentsByFarm(currentUser.getFarm().getId(), search.trim());
         }
         return batiments.stream()
-                        .map(BatimentMapper::toDTO)
+                        .map(BatimentsDTO::toDTO)
                         .collect(Collectors.toList());
     }
+
+   @Override
+   public List<BatimentsDTO> select() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+        List<Batiment> batiments = List.of();
+
+        if (currentUser != null) {
+            batiments = batimentRepo.findActiveByFarmId(currentUser.getFarm().getId());
+        }
+        return batiments.stream()
+                        .map(BatimentsDTO::select)
+                        .collect(Collectors.toList());
+   }
 }

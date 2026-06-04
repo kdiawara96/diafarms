@@ -28,4 +28,6 @@ public interface UtilisateursServices {
     Utilisateurs readByUsernameOrEmail(String usernameOrEmail);
 
     List<UtilisateursDTO> select();
+    List<UtilisateursDTO> selectProducteurs();
+    List<UtilisateursDTO> selectFinanciers();
 }

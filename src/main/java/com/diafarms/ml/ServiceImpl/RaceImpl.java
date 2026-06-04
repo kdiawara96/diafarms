@@ -1,7 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
 import com.diafarms.ml.DTO.RaceDTO;
-import com.diafarms.ml.DTO.mappers.RaceMapper;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Race;
 import com.diafarms.ml.models.Utilisateurs;
@@ -48,7 +47,7 @@ public class RaceImpl implements RaceServices {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), savedRace.getId(), "Race", "Ajout d'une race avec succès !");
         }
-        return RaceMapper.toDTO(savedRace);
+        return RaceDTO.toDTO(savedRace);
     }
 
     private String genererIdentifiantUnique() {
@@ -110,7 +109,7 @@ public class RaceImpl implements RaceServices {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), existingRace.getId(), "Race", "Mise à jour d'une race");
         }
-        return RaceMapper.toDTO(raceRepo.save(existingRace));
+        return RaceDTO.toDTO(raceRepo.save(existingRace));
     }
 
     @Override
@@ -154,7 +153,7 @@ public class RaceImpl implements RaceServices {
         // Si un utilisateur est connecté, on filtre par sa ferme
         if (currentUser != null && currentUser.getFarm() != null) {
             return raceRepo.findAllActiveByFarm(currentUser.getFarm().getId()).stream()
-                    .map(RaceMapper::toDTO)
+                    .map(RaceDTO::toDTO)
                     .collect(Collectors.toList());
         }
 
@@ -179,7 +178,7 @@ public class RaceImpl implements RaceServices {
         // Si un utilisateur est connecté, on recherche uniquement dans sa ferme
         if (currentUser != null && currentUser.getFarm() != null) {
             return raceRepo.searchRacesByFarm(currentUser.getFarm().getId(), search.trim()).stream()
-                    .map(RaceMapper::toDTO)
+                    .map(RaceDTO::toDTO)
                     .collect(Collectors.toList());
         }
 
@@ -199,7 +198,7 @@ public class RaceImpl implements RaceServices {
         // Si un utilisateur est connecté, on filtre par sa ferme
         if (currentUser != null && currentUser.getFarm() != null) {
             return raceRepo.findAllActiveByFarm(currentUser.getFarm().getId()).stream()
-                    .map(RaceMapper::toDTO)
+                    .map(RaceDTO::toDTO)
                     .collect(Collectors.toList());
         }
 
