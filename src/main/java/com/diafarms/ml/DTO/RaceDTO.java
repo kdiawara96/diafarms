@@ -60,4 +60,18 @@ public class RaceDTO {
                     .certificationRace(data.getCertificationRace().getLabel())
                     .build();
         }
+
+
+        public static RaceDTO fromSelect(Race data) {
+            if (data == null) {
+                return null;
+            }
+    
+            return RaceDTO.builder()
+                    .id(data.getId())
+                    .uniqueId(data.getUniqueId())
+                    .nom(data.getNom())
+                    .identifiant(data.getIdentifiant())
+                    .build();
+        }
 }

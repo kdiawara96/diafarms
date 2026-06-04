@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class RaceImpl implements RaceServices {
+    
     private final RaceRepo raceRepo;
     private final LogsServices logs;
     private final OtherService OtherService;
@@ -183,6 +184,27 @@ public class RaceImpl implements RaceServices {
         }
 
         // Cas de secours si aucun utilisateur/ferme n'est trouvé
+        return Collections.emptyList();
+    }
+
+    @Override
+    public List<RaceDTO> select() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
+        // Si un utilisateur est connecté, on filtre par sa ferme
+        if (currentUser != null && currentUser.getFarm() != null) {
+            return raceRepo.findAllActiveByFarm(currentUser.getFarm().getId()).stream()
+                    .map(RaceMapper::toDTO)
+                    .collect(Collectors.toList());
+        }
+
+        // Cas de secours (ex: pas d'utilisateur connecté ou pas de ferme associée)
+        // Vous pouvez soit lever une exception, soit retourner une liste vide, soit tout afficher
         return Collections.emptyList();
     }
 

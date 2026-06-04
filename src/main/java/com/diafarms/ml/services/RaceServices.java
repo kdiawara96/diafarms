@@ -11,4 +11,7 @@ public interface RaceServices {
 	String deleteOrRecover(String uniqueIdRace);
 	List<RaceDTO> findAll();
 	List<RaceDTO> search(String search);
+
+	List<RaceDTO> select();
+
 }
