@@ -14,6 +14,7 @@ import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.services.OccupationService;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 
 @Service
 @RequiredArgsConstructor // Génère le constructeur pour l'injection des repositories
@@ -25,7 +26,9 @@ public class OccupationBatimentServiceImpl implements OccupationService {
 
     @Override
     @Transactional
-    public OccupationBatiment assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, LocalDate dateEntree) {
+    public OccupationBatiment assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, String dateEntree) {
+
+        LocalDate dateEntreeParsed = convertirEnDate(dateEntree, LocalDate.now());
 
         if (projetId == null) {
             throw new RuntimeException("L'identifiant du projet ne peut pas être nul.");
@@ -36,7 +39,7 @@ public class OccupationBatimentServiceImpl implements OccupationService {
          if (nbSujets != null && nbSujets < 0) {
             throw new RuntimeException("Le nombre de sujets dans le bâtiment ne peut pas être négatif.");
         }
-         if (dateEntree != null && dateEntree.isAfter(LocalDate.now())) {
+         if (dateEntreeParsed != null && dateEntreeParsed.isAfter(LocalDate.now())) {
             throw new RuntimeException("La date d'entrée ne peut pas être dans le futur.");
         }
         // 1. Récupération des entités
@@ -56,7 +59,7 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         occupation.setProjet(projet);
         occupation.setBatiment(batiment);
         occupation.setNbSujetsDansBatiment(nbSujets);
-        occupation.setDateEntree(dateEntree != null ? dateEntree : LocalDate.now());
+        occupation.setDateEntree(dateEntreeParsed);
 
         // 4. Mise à jour du statut du bâtiment
         batiment.setStatut(StatutBatiment.OCCUPE);
@@ -67,7 +70,7 @@ public class OccupationBatimentServiceImpl implements OccupationService {
 
     @Override
     @Transactional
-    public OccupationBatiment modifierOccupation(Long occupationId, Long nouveauBatimentId, Integer nouveauNbSujets, LocalDate dateEntree, LocalDate dateSortie) {
+    public OccupationBatiment modifierOccupation(Long occupationId, Long nouveauBatimentId, Integer nouveauNbSujets, String dateEntree, String dateSortie) {
         
          if(occupationId == null) {
             throw new RuntimeException("L'identifiant de l'occupation ne peut pas être nul.");
@@ -77,7 +80,8 @@ public class OccupationBatimentServiceImpl implements OccupationService {
             //     throw new RuntimeException("La date de sortie ne peut pas être dans le futur.");
             // }
             
-            if (dateEntree != null && dateEntree.isAfter(LocalDate.now())) {
+            LocalDate dateEntreeParsed = convertirEnDate(dateEntree, LocalDate.now());
+            if (dateEntreeParsed != null && dateEntreeParsed.isAfter(LocalDate.now())) {
                 throw new RuntimeException("La date d'entrée ne peut pas être dans le futur.");
             }
             
@@ -104,6 +108,13 @@ public class OccupationBatimentServiceImpl implements OccupationService {
             ancienBatiment.setStatut(StatutBatiment.DISPONIBLE);
             batimentRepository.save(ancienBatiment);
 
+            // Supprimer l'ancienne occupation
+            occupationRepository.delete(occupation);
+
+            if (nouveauBatimentId == null) {
+                throw new RuntimeException("Le nouvel identifiant de bâtiment ne peut pas être nul.");
+            }
+
             // Occuper le nouveau bâtiment
             Batiment nouveauBatiment = batimentRepository.findById(nouveauBatimentId)
                     .orElseThrow(() -> new RuntimeException("Nouveau bâtiment non trouvé"));
@@ -120,11 +131,11 @@ public class OccupationBatimentServiceImpl implements OccupationService {
 
         // 3. Mettre à jour les autres données
         occupation.setNbSujetsDansBatiment(nouveauNbSujets);
-        occupation.setDateEntree(dateEntree);
-        occupation.setDateSortie(dateSortie);
+        occupation.setDateEntree(dateEntreeParsed);
+        occupation.setDateSortie(dateSortie != null ? convertirEnDate(dateSortie, null) : null);
 
         // Si une date de sortie est spécifiée et qu'elle est passée ou aujourd'hui, on libère le bâtiment
-        if (dateSortie != null && !dateSortie.isAfter(LocalDate.now())) {
+        if (occupation.getDateSortie() != null && !occupation.getDateSortie().isAfter(LocalDate.now())) {
             occupation.getBatiment().setStatut(StatutBatiment.DISPONIBLE);
         }
 
@@ -133,9 +144,10 @@ public class OccupationBatimentServiceImpl implements OccupationService {
 
     @Override
     @Transactional
-    public void libererBatiment(Long occupationId, LocalDate dateSortie) {
+    public void libererBatiment(Long occupationId, String dateSortie) {
 
-        if (dateSortie != null && dateSortie.isAfter(LocalDate.now())) {
+        LocalDate dateSortieParsed = convertirEnDate(dateSortie, null);
+        if (dateSortieParsed != null && dateSortieParsed.isAfter(LocalDate.now())) {
             throw new RuntimeException("La date de sortie ne peut pas être dans le futur.");
         }
         if(occupationId == null) {
@@ -146,12 +158,26 @@ public class OccupationBatimentServiceImpl implements OccupationService {
                 .orElseThrow(() -> new RuntimeException("Occupation non trouvée"));
 
         // 2. Mettre à jour la date de sortie de la liaison
-        occupation.setDateSortie(dateSortie != null ? dateSortie : LocalDate.now());
+        occupation.setDateSortie(dateSortieParsed);
         occupationRepository.save(occupation);
 
         // 3. Libérer le bâtiment pour qu'il redevienne disponible
         Batiment batiment = occupation.getBatiment();
         batiment.setStatut(StatutBatiment.DISPONIBLE);
         batimentRepository.save(batiment);
+    }
+
+    /**
+     * Méthode utilitaire pour parser la String en LocalDate proprement
+     */
+    private LocalDate convertirEnDate(String dateStr, LocalDate valeurParDefaut) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return valeurParDefaut;
+        }
+        try {
+            return LocalDate.parse(dateStr.trim()); // Attend le format "YYYY-MM-DD"
+        } catch (DateTimeParseException e) {
+            throw new RuntimeException("Le format de la date est incorrect. Utilisez 'YYYY-MM-DD' (Ex: 2026-06-05)");
+        }
     }
 }
