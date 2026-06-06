@@ -11,7 +11,7 @@ import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.services.BatimentServices;
 import com.diafarms.ml.services.LogsServices;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;

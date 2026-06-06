@@ -25,7 +25,7 @@ import com.diafarms.ml.request.create.UserCreate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Implementation of user service for creating users.

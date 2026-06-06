@@ -13,13 +13,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-
-import com.diafarms.ml.DTO.RaceDTO;
-import com.diafarms.ml.models.Race;
 import com.diafarms.ml.others.ApiResponse;
-import com.diafarms.ml.services.RaceServices;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
 
 import com.diafarms.ml.DTO.VaccinationDTO;
 import com.diafarms.ml.request.create.VaccinCreate;
@@ -35,7 +30,7 @@ public class VaccinationControllers {
     private final VaccinationService services;
 
 
-        // ============================================================
+    // ============================================================
     // CREATE
     // ============================================================
     @PostMapping("/create/{uniqueIdProjet}")

@@ -7,7 +7,7 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.RaceRepo;
 import com.diafarms.ml.services.RaceServices;
 import com.diafarms.ml.services.LogsServices;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

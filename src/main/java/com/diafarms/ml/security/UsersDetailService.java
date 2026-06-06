@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.UtilisateursRepo;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collection;
 
