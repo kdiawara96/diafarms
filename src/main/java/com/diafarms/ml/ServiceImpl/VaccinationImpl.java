@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -99,6 +100,16 @@ public class VaccinationImpl implements VaccinationService {
 
         return VaccinationDTO.fromEntity(saved);
     }
+
+
+    @Override
+    public List<VaccinationDTO> findByProjetUniqueId(String uniqueIdProjet) {
+        return vaccinationRepo.findByProjetUniqueIdAndInitialisationRemovedFalse(uniqueIdProjet)
+                .stream()
+                .map(VaccinationDTO::fromEntity)
+                .toList();
+    }
+
 
     @Override
     @Transactional
