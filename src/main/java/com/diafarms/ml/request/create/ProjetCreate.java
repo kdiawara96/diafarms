@@ -2,22 +2,22 @@ package com.diafarms.ml.request.create;
 
 
 import lombok.Data;
-import java.time.LocalDate;
 import java.util.List;
 
 @Data
-public class ProjetCreate{
+public class ProjetCreate {
+    
     // Étape 1 : Informations générales
     private String titre;
-    private String nomResponsable; // Correspond à ton champ responsable String si conservé
-    private LocalDate dateDebut;
-    private LocalDate dateFinPrevue;
+    private String nomResponsable; 
+    private String dateDebut;        // Changé en String pour le Front
+    private String dateFinPrevue;    // Changé en String pour le Front
     private Integer nbSujets;
-    private Double puSujet;         // Prix Unitaire du sujet
-    private String objectif;        // "ponte", "chair", etc.
-    private String race;            // Nom ou ID de la race sélectionnée
-    private String responsableProduction; // Nom, Username ou ID du user Prod
-    private String responsableFinance;    // Nom, Username ou ID du user Finance
+    private Double puSujet;         
+    private String objectif;        
+    private Long raceId;             // Changé en Long pour correspondre à form.raceId
+    private Long responsableProductionId; // Changé en Long pour form.responsableProductionId
+    private Long responsableFinanceId;    // Changé en Long pour form.responsableFinanceId
     private String fournisseursPoussins;
     private Double autresDepense;
 

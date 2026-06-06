@@ -8,9 +8,11 @@ import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Batiment.StatutBatiment;
 import com.diafarms.ml.models.OccupationBatiment;
 import com.diafarms.ml.models.Projets;
+import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.OccupationBatimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.OccupationService;
 
 import java.time.LocalDate;
@@ -23,6 +25,8 @@ public class OccupationBatimentServiceImpl implements OccupationService {
     private final OccupationBatimentRepo occupationRepository;
     private final ProjetsRepo projetsRepository;
     private final BatimentRepo batimentRepository;
+    private final LogsServices logs;
+    private final OtherService OtherService;
 
     @Override
     @Transactional
@@ -64,8 +68,20 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         // 4. Mise à jour du statut du bâtiment
         batiment.setStatut(StatutBatiment.OCCUPE);
         batimentRepository.save(batiment);
+        
+        OccupationBatiment savedOccupation = occupationRepository.save(occupation);
 
-        return occupationRepository.save(occupation);
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        if (currentUser != null) {
+             logs.addLogs(currentUser.getId(), savedOccupation.getId(), "OccupationBatiment", "Assignation du bâtiment '" + batiment.getNom() + "' au projet '" + projet.getTitre() + "' avec succès !");
+        }
+        return savedOccupation;
     }
 
     @Override
@@ -74,29 +90,25 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         
          if(occupationId == null) {
             throw new RuntimeException("L'identifiant de l'occupation ne peut pas être nul.");
-        }
+         }
 
-            // if (dateSortie != null && dateSortie.isAfter(LocalDate.now())) {
-            //     throw new RuntimeException("La date de sortie ne peut pas être dans le futur.");
-            // }
+        LocalDate dateEntreeParsed = convertirEnDate(dateEntree, LocalDate.now());
+        if (dateEntreeParsed != null && dateEntreeParsed.isAfter(LocalDate.now())) {
+            throw new RuntimeException("La date d'entrée ne peut pas être dans le futur.");
+        }
+        
+        if (nouveauNbSujets != null && nouveauNbSujets < 0) {
+            throw new RuntimeException("Le nombre de sujets dans le bâtiment ne peut pas être négatif.");
+        }
+        
+        if (nouveauBatimentId != null) {
+            Batiment nouveauBatiment = batimentRepository.findById(nouveauBatimentId)
+                    .orElseThrow(() -> new RuntimeException("Nouveau bâtiment non trouvé avec l'id : " + nouveauBatimentId));
             
-            LocalDate dateEntreeParsed = convertirEnDate(dateEntree, LocalDate.now());
-            if (dateEntreeParsed != null && dateEntreeParsed.isAfter(LocalDate.now())) {
-                throw new RuntimeException("La date d'entrée ne peut pas être dans le futur.");
+            if (nouveauBatiment.getStatut() == StatutBatiment.OCCUPE) {
+                throw new RuntimeException("Le nouveau bâtiment est déjà occupé.");
             }
-            
-            if (nouveauNbSujets != null && nouveauNbSujets < 0) {
-                throw new RuntimeException("Le nombre de sujets dans le bâtiment ne peut pas être négatif.");
-            }
-            
-            if (nouveauBatimentId != null) {
-                Batiment nouveauBatiment = batimentRepository.findById(nouveauBatimentId)
-                        .orElseThrow(() -> new RuntimeException("Nouveau bâtiment non trouvé avec l'id : " + nouveauBatimentId));
-                
-                if (nouveauBatiment.getStatut() == StatutBatiment.OCCUPE) {
-                    throw new RuntimeException("Le nouveau bâtiment est déjà occupé.");
-                }
-            }
+        }
         // 1. Trouver l'occupation existante
         OccupationBatiment occupation = occupationRepository.findById(occupationId)
                 .orElseThrow(() -> new RuntimeException("Occupation non trouvée"));
@@ -139,7 +151,35 @@ public class OccupationBatimentServiceImpl implements OccupationService {
             occupation.getBatiment().setStatut(StatutBatiment.DISPONIBLE);
         }
 
-        return occupationRepository.save(occupation);
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        OccupationBatiment savedOccupation = occupationRepository.save(occupation); 
+
+        Batiment batiment = savedOccupation.getBatiment();
+        Projets projet = savedOccupation.getProjet();
+
+        // Vérification null-safe
+        if (batiment == null || projet == null) {
+            throw new IllegalStateException("L'occupation doit avoir un bâtiment et un projet associés");
+        }
+
+        // Plus besoin de recharger depuis la base, les entités sont déjà là
+        if (currentUser != null) {
+            logs.addLogs(
+                currentUser.getId(), 
+                savedOccupation.getId(), 
+                "OccupationBatiment", 
+                "Modification de l'occupation du bâtiment '" + batiment.getNom() 
+                    + "' au projet '" + projet.getTitre() + "' avec succès !"
+            );
+        }
+
+        return savedOccupation;
     }
 
     @Override
@@ -150,21 +190,45 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         if (dateSortieParsed != null && dateSortieParsed.isAfter(LocalDate.now())) {
             throw new RuntimeException("La date de sortie ne peut pas être dans le futur.");
         }
-        if(occupationId == null) {
+        if (occupationId == null) {
             throw new RuntimeException("L'identifiant de l'occupation ne peut pas être nul.");
         }
+
         // 1. Trouver la liaison
         OccupationBatiment occupation = occupationRepository.findById(occupationId)
                 .orElseThrow(() -> new RuntimeException("Occupation non trouvée"));
 
-        // 2. Mettre à jour la date de sortie de la liaison
-        occupation.setDateSortie(dateSortieParsed);
-        occupationRepository.save(occupation);
-
-        // 3. Libérer le bâtiment pour qu'il redevienne disponible
         Batiment batiment = occupation.getBatiment();
+        Projets projet = occupation.getProjet();
+        StatutBatiment ancienStatut = batiment.getStatut();
+
+        // 2. Mettre à jour la date de sortie
+        occupation.setDateSortie(dateSortieParsed);
+        OccupationBatiment savedOccupation = occupationRepository.save(occupation);
+
+        // 3. Libérer le bâtiment
         batiment.setStatut(StatutBatiment.DISPONIBLE);
         batimentRepository.save(batiment);
+
+        // 4. Log
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if (currentUser != null) {
+            logs.addLogs(
+                currentUser.getId(),
+                savedOccupation.getId(),
+                "OccupationBatiment",
+                "Libération du bâtiment '" + batiment.getNom() 
+                    + "' (ancien statut : " + ancienStatut 
+                    + " → nouveau : " + batiment.getStatut() + ")"
+                    + " | Projet : '" + projet.getTitre() 
+                    + "' | Date de sortie : " + dateSortie
+            );
+        }
     }
 
     /**

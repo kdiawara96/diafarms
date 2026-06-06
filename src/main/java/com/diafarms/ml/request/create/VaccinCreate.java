@@ -9,7 +9,5 @@ public class VaccinCreate {
     private Integer quantite;
     private Double prixUnitaire;
     private Double coutTotal;
-    // Ton front envoie un tableau de chaînes (ex: ["Oral", "Injection"])
-    // On peut le stocker sous forme de liste ou le joindre en String plus tard
-    private List<String> modeAdministration; 
+    private List<String> modeAdministration; // Reçoit le tableau ["Oral", "Injection"]
 }

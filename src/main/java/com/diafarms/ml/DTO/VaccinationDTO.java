@@ -26,7 +26,6 @@ public class VaccinationDTO {
     private Double prixUnitaire;
     private Double coutTotal;
     private String modeAdministration;
-    private Double chiffreAffaire;
 
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime createdAt;
@@ -45,7 +44,6 @@ public class VaccinationDTO {
                 .prixUnitaire(data.getPrixUnitaire())
                 .coutTotal(data.getCoutTotal())
                 .modeAdministration(data.getModeAdministration())
-                .chiffreAffaire(data.getChiffreAffaire())
                 .createdAt(data.getInitialisation().getCreatedAt())
                 .build();
       }

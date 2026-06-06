@@ -6,13 +6,17 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.diafarms.ml.models.Projets;
+
+import java.util.Optional;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 @Repository
 public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     
-    Projets findByUniqueId(String uniqueId);
+   Optional<Projets> findByUniqueId(String uniqueId);
+   
    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId " +
         "AND p.initialisation.removed = false " +
         "AND (:isArchive IS NULL OR p.initialisation.archive = :isArchive) " +
