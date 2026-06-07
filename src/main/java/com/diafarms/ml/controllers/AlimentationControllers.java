@@ -3,6 +3,7 @@ package com.diafarms.ml.controllers;
 import com.diafarms.ml.DTO.AlimentationDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.request.create.AlimentationCreate;
+import com.diafarms.ml.request.update.AlimentationUpdate;
 import com.diafarms.ml.services.AlimentationService;
 import lombok.RequiredArgsConstructor;
 
@@ -45,7 +46,7 @@ public class AlimentationControllers {
     // ============================================================
     @PutMapping("/update/{uniqueId}")
     public ResponseEntity<ApiResponse<AlimentationDTO>> update(
-            @RequestBody AlimentationCreate request,
+            @RequestBody AlimentationUpdate request,
             @PathVariable("uniqueId") String uniqueId) {
         try {
             AlimentationDTO result = services.update(uniqueId, request);

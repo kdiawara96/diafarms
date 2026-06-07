@@ -16,7 +16,7 @@ import org.springframework.data.domain.Pageable;
 public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     
    Optional<Projets> findByUniqueId(String uniqueId);
-   
+
    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId " +
         "AND p.initialisation.removed = false " +
         "AND (:isArchive IS NULL OR p.initialisation.archive = :isArchive) " +
@@ -29,4 +29,7 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
                                 @Param("isArchive") Boolean isArchive, 
                                 @Param("search") String search, 
                                 Pageable pageable);
+
+    @Query("SELECT COUNT(p) > 0 FROM Projets p WHERE p.code = :code")
+    boolean existsByCode(@Param("code") String code);
 }

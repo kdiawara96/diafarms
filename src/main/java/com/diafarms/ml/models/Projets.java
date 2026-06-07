@@ -56,11 +56,14 @@ public class Projets {
     @Column(name = "autres_depense")
     private Double autresDepense;
 
-    @Column(name = "ca_prevu")
-    private Double caPrevu; // CA prévu (chiffre d'affaires) = nbSujets × puSujet + autresDepense
+    @Column(name = "chiffre_affaires")
+    private Double chiffreAffaires; 
+
+    @Column(name = "ca_total_sujets")
+    private Double caTotalSujets; // CA total = nbSujets × puSujet + autresDepense
 
     @Column(name = "marge_nette")
-    private Double margeNette;  // Marge nette = CA − TOUS les coûts (achats, salaires, transport, pertes, etc.)
+    private Double margeNette; 
 
     @Enumerated(EnumType.STRING)
     @Column(name = "objectif", nullable = false, length = 20)

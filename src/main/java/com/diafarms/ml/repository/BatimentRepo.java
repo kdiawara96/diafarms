@@ -17,6 +17,17 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
 	Batiment findByUniqueId(String uniqueId);
     Optional<Batiment> findOptionalByNom(String nom);
 
+    @Query("""
+        SELECT COUNT(b) > 0
+        FROM Batiment b
+        WHERE LOWER(b.nom) = LOWER(:nom)
+        AND b.farm.id = :farmId
+        AND b.initialisation.removed = false
+    """)
+    boolean existsByNomIgnoreCaseAndFarmId(
+            @Param("nom") String nom,
+            @Param("farmId") Long farmId);
+
     // Récupère uniquement les bâtiments non supprimés
     @Query("SELECT b FROM Batiment b WHERE b.initialisation.removed = false")
     List<Batiment> findAllActive();

@@ -19,6 +19,17 @@ public interface RaceRepo extends JpaRepository<Race, Long> {
 	@Query("SELECT r FROM Race r WHERE r.initialisation.removed = false")
 	List<Race> findAllActive();
 
+    @Query("""
+        SELECT COUNT(r) > 0
+        FROM Race r
+        WHERE LOWER(r.nom) = LOWER(:nom)
+        AND r.farm.id = :farmId
+        AND r.initialisation.removed = false
+    """)
+    boolean existsByNomIgnoreCaseAndFarmId(
+            @Param("nom") String nom,
+            @Param("farmId") Long farmId);
+
     @Query("SELECT r FROM Race r WHERE r.farm.id = :farmId AND r.initialisation.removed = false")
     List<Race> findAllActiveByFarm(@Param("farmId") Long farmId);
 

@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,9 +25,10 @@ public class RaceImpl implements RaceServices {
     private final LogsServices logs;
     private final OtherService OtherService;
 
-    @Override
+   @Override
     public RaceDTO create(Race race) {
-        race.setUniqueId(java.util.UUID.randomUUID().toString());
+
+        race.setUniqueId(UUID.randomUUID().toString());
         race.setInitialisation(Initialisation.init());
 
         // Génération de l'identifiant unique au format "RAC-001"
@@ -40,13 +42,30 @@ public class RaceImpl implements RaceServices {
         }
 
         if (currentUser != null) {
+
+            if (raceRepo.existsByNomIgnoreCaseAndFarmId(
+                    race.getNom().trim(),
+                    currentUser.getFarm().getId())) {
+
+                throw new RuntimeException(
+                        "Une race portant le nom '" + race.getNom() + "' existe déjà dans cette ferme."
+                );
+            }
+
             race.setFarm(currentUser.getFarm());
         }
 
         Race savedRace = raceRepo.save(race);
+
         if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), savedRace.getId(), "Race", "Ajout d'une race avec succès !");
+            logs.addLogs(
+                    currentUser.getId(),
+                    savedRace.getId(),
+                    "Race",
+                    "Ajout d'une race avec succès !"
+            );
         }
+
         return RaceDTO.toDTO(savedRace);
     }
 

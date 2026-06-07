@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 
@@ -28,24 +29,42 @@ public class BatimentImpl implements BatimentServices {
     
     @Override
     public BatimentsDTO create(Batiment batiment) {
-       batiment.setUniqueId(java.util.UUID.randomUUID().toString());
-       batiment.setInitialisation(Initialisation.init());
+
+        batiment.setUniqueId(UUID.randomUUID().toString());
+        batiment.setInitialisation(Initialisation.init());
 
         Utilisateurs currentUser = null;
         try {
             currentUser = OtherService.getCurrentUser();
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
+
         if (currentUser != null) {
+
+            if (batimentRepo.existsByNomIgnoreCaseAndFarmId(
+                    batiment.getNom().trim(),
+                    currentUser.getFarm().getId())) {
+
+                throw new RuntimeException(
+                        "Un bâtiment portant ce nom existe déjà."
+                );
+            }
+
             batiment.setFarm(currentUser.getFarm());
         }
+
         Batiment savedBatiment = batimentRepo.save(batiment);
 
         if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), savedBatiment.getId(), "Batiment", "Ajout d'un bâtiment avec succès !");
+            logs.addLogs(
+                    currentUser.getId(),
+                    savedBatiment.getId(),
+                    "Batiment",
+                    "Ajout d'un bâtiment avec succès !"
+            );
         }
+
         return BatimentsDTO.toDTO(savedBatiment);
     }
 

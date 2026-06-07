@@ -15,6 +15,7 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.request.create.AlimentationCreate;
+import com.diafarms.ml.request.update.AlimentationUpdate;
 import com.diafarms.ml.services.AlimentationService;
 import com.diafarms.ml.services.LogsServices;
 
@@ -31,9 +32,9 @@ public class AlimentationImpl implements AlimentationService {
     private final OtherService otherService;
     private final LogsServices logs;
 
-    // --- Génération UID ---
+    // --- Génération UID ---   
     private String generateUID() {
-        return "ALI-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return "ALI-" + java.util.UUID.randomUUID().toString();
     }
 
     // --- Récupération utilisateur safe ---
@@ -102,7 +103,7 @@ public class AlimentationImpl implements AlimentationService {
     // ============================================================
     @Override
     @Transactional
-    public AlimentationDTO update(String uniqueId, AlimentationCreate data) {
+    public AlimentationDTO update(String uniqueId, AlimentationUpdate data) {
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));

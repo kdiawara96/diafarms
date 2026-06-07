@@ -32,7 +32,8 @@ public class ProjetsDTO {
      private Integer nbSujets;
      private Double puSujet;
      private Double autresDepense;
-     private Double caPrevu; 
+     private Double caTotalSujets; // CA total = nbSujets × puSujet + autresDepense
+     private Double chiffreAffaires; // CA prévu (chiffre d'affaires) = nb
      private Double margeNette;  
      private Objectif objectif;
 
@@ -62,9 +63,9 @@ public class ProjetsDTO {
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
                 .nbSujets(data.getNbSujets())
-                .caPrevu(data.getCaPrevu())
+                .chiffreAffaires(data.getChiffreAffaires())
+                .caTotalSujets(data.getCaTotalSujets())
                 .margeNette(data.getMargeNette())
-
                 .puSujet(data.getPuSujet())
                 .autresDepense(data.getAutresDepense())
                 .objectif(data.getObjectif())
@@ -94,7 +95,8 @@ public class ProjetsDTO {
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
                 .nbSujets(data.getNbSujets())
-                .caPrevu(data.getCaPrevu())
+                .chiffreAffaires(data.getChiffreAffaires())
+                .caTotalSujets(data.getCaTotalSujets())
                 .margeNette(data.getMargeNette())
 
                 .puSujet(data.getPuSujet())
