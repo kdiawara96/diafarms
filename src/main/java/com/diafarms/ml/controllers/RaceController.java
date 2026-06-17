@@ -14,6 +14,7 @@ import java.util.List;
 @RequestMapping("/diafarms/api/v1/races")
 @RequiredArgsConstructor
 public class RaceController {
+    
     private final RaceServices services;
 
     @PostMapping("/create")

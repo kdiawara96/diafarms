@@ -9,6 +9,7 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.AlertLevel;
 import com.diafarms.ml.enums.AlertStatus;
 import com.diafarms.ml.enums.AlertType;
+import com.diafarms.ml.enums.ThresholdKey;
 
 @Entity
 @Table(name = "project_alert_configs", indexes = {
@@ -37,7 +38,8 @@ public class ProjectAlertConfig {
     private AlertType alertType;     // MORTALITE, ALIMENTATION, VACCINATION, METEO
 
     @Column(name = "threshold_key", nullable = false)
-    private String thresholdKey;     // "DAILY_WARNING", "TEMP_CRITICAL", "VACCIN_MANQUANT"
+    @Enumerated(EnumType.STRING)
+    private ThresholdKey thresholdKey;     // "DAILY_WARNING", "DAILY_CRITICAL", "WEEKLY_CRITICAL", "CUMULATIVE_CRITICAL" == tu as 3 seuils CRITIQUE pour MORTALITE — impossible de savoir lequel est journalier, hebdomadaire ou cumulé.
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

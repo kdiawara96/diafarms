@@ -216,14 +216,13 @@ public class BatimentImpl implements BatimentServices {
         try {
             currentUser = OtherService.getCurrentUser();
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
 
         List<Batiment> batiments = List.of();
 
         if (currentUser != null) {
-            batiments = batimentRepo.findActiveByFarmId(currentUser.getFarm().getId());
+            batiments = batimentRepo.findAvailableByFarmId(currentUser.getFarm().getId());
         }
         return batiments.stream()
                         .map(BatimentsDTO::select)

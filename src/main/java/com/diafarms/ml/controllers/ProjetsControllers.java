@@ -10,6 +10,7 @@ import com.diafarms.ml.DTO.ProjetsDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.ProjetCreate;
+import com.diafarms.ml.request.update.ProjetUpdate;
 import com.diafarms.ml.services.ProjetServices;
 
 import lombok.RequiredArgsConstructor;
@@ -54,4 +55,47 @@ public class ProjetsControllers {
         }
     }
     
+    @PutMapping("/update/{uniqueId}")
+    public ResponseEntity<ApiResponse<ProjetsDTO>> update(
+            @PathVariable String uniqueId,
+            @RequestBody ProjetUpdate request) {
+        try {
+            ProjetsDTO result = services.updateProjet(uniqueId, request);
+            return ApiResponse.createResponse("Projet mis à jour avec succès", HttpStatus.OK, result, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @GetMapping("/findbyUniqueId/{uniqueId}")
+    public ResponseEntity<ApiResponse<ProjetsDTO>> findByUniqueId(@PathVariable String uniqueId) {
+        try {
+            ProjetsDTO result = services.getProjetByUniqueId(uniqueId);
+            return ApiResponse.createResponse("Projet mis à jour avec succès", HttpStatus.OK, result, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @DeleteMapping("/delete/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> deleteOrRecoverProjet(@PathVariable String uniqueId) {
+        try {
+            String result = services.deleteOrRecoverProjet(uniqueId);
+            return ApiResponse.createResponse("Projet mis à jour avec succès", HttpStatus.OK, result, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
 }

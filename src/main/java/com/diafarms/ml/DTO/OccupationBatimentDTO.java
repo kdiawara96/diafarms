@@ -24,6 +24,9 @@ public class OccupationBatimentDTO {
     private LocalDate dateSortie;
     private Integer nbSujetsDansBatiment;
 
+    private String nomBatiment;
+    private String typeBatiment;
+
     public static OccupationBatimentDTO fromEntityList(OccupationBatiment data) {
         if (data == null) {
             return null;
@@ -34,6 +37,8 @@ public class OccupationBatimentDTO {
                 .dateEntree(data.getDateEntree())
                 .dateSortie(data.getDateSortie())
                 .nbSujetsDansBatiment(data.getNbSujetsDansBatiment())
+                .nomBatiment(data.getBatiment().getNom())
+                .typeBatiment(data.getBatiment().getType().getValue())
                 .build();
     }
 }

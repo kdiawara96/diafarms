@@ -51,7 +51,6 @@ public enum DefaultThreshold {
         this.label = label;
     }
 
-
     public AlertType getType() { return type; }
     public String getKey() { return key; }
     public AlertLevel getLevel() { return level; }

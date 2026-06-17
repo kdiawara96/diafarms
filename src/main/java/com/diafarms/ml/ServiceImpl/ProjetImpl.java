@@ -35,7 +35,9 @@ import com.diafarms.ml.repository.VaccinationRepo;
 import com.diafarms.ml.request.create.OccupationCreate;
 import com.diafarms.ml.request.create.ProjetCreate;
 import com.diafarms.ml.request.create.VaccinCreate;
+import com.diafarms.ml.request.update.ProjetUpdate;
 import com.diafarms.ml.services.LogsServices;
+import com.diafarms.ml.services.ProjectAlertConfigService;
 import com.diafarms.ml.services.ProjetServices;
 
 import lombok.RequiredArgsConstructor;
@@ -54,6 +56,8 @@ public class ProjetImpl implements ProjetServices {
     private final OtherService otherService;
     private final LogsServices logs;
 
+    // AJOUT DE L'INJECTION ICI :
+    private final ProjectAlertConfigService projectAlertConfigService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -153,9 +157,12 @@ public class ProjetImpl implements ProjetServices {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ProjetsDTO getProjetByUniqueId(String uniqueId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getProjetByUniqueId'");
+        Projets projet = projetsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
+        
+        return ProjetsDTO.fromEntity(projet);
     }
 
     // ============================================================
@@ -168,21 +175,27 @@ public class ProjetImpl implements ProjetServices {
         // 1. Récupérer l'utilisateur connecté et sa ferme
         Utilisateurs currentUser = getCurrentUserSafe();
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
-
+        
+        Long raceId = data.getRaceId();
+        Race race = null;
         // 2. Vérifier et récupérer la race
-        Race race = raceRepo.findById(data.getRaceId())
-                .orElseThrow(() -> new RuntimeException("Race non trouvée avec l'id : " + data.getRaceId()));
+        if (raceId != null) {
+             race = raceRepo.findById(raceId)
+            .orElseThrow(() -> new RuntimeException("Race non trouvée avec l'id : " + data.getRaceId()));
+        }
 
         // 3. Vérifier et récupérer les responsables
         Utilisateurs responsableProduction = null;
-        if (data.getResponsableProductionId() != null) {
-            responsableProduction = utilisateursRepo.findById(data.getResponsableProductionId())
+        Long responsableProductionId = data.getResponsableProductionId();
+        if (responsableProductionId != null) {
+            responsableProduction = utilisateursRepo.findById(responsableProductionId)
                     .orElseThrow(() -> new RuntimeException("Responsable production non trouvé avec l'id : " + data.getResponsableProductionId()));
         }
 
         Utilisateurs responsableFinance = null;
-        if (data.getResponsableFinanceId() != null) {
-            responsableFinance = utilisateursRepo.findById(data.getResponsableFinanceId())
+        Long responsableFinanceId = data.getResponsableFinanceId();
+        if (responsableFinanceId != null) {
+            responsableFinance = utilisateursRepo.findById(responsableFinanceId)
                     .orElseThrow(() -> new RuntimeException("Responsable finance non trouvé avec l'id : " + data.getResponsableFinanceId()));
         }
 
@@ -208,7 +221,7 @@ public class ProjetImpl implements ProjetServices {
         // Calculer CA prévu et marge nette initiale
         double caTotalSujets = (data.getNbSujets() != null ? data.getNbSujets() : 0) * (data.getPuSujet() != null ? data.getPuSujet() : 0) + (data.getAutresDepense() != null ? data.getAutresDepense() : 0);
         projet.setCaTotalSujets(caTotalSujets);
-        projet.setChiffreAffaires(caTotalSujets); // 
+        projet.setChiffreAffaires(0.0); 
         projet.setMargeNette(0.0); // Sera calculé plus tard avec tous les coûts réels
 
         projet.setInitialisation(Initialisation.init());
@@ -232,6 +245,9 @@ public class ProjetImpl implements ProjetServices {
 
             alimentationRepo.save(alimentation);
         }
+
+        // APPEL DE TA MÉTHODE POUR CRÉER LES ALERTES PAR DÉFAUT
+        projectAlertConfigService.insertDefaultAlertsForProject(savedProjet);
 
         // 6. Créer les vaccinations
         if (data.getVaccins() != null && !data.getVaccins().isEmpty()) {
@@ -260,11 +276,17 @@ public class ProjetImpl implements ProjetServices {
         // 7. Créer les occupations de bâtiments
         if (data.getOccupations() != null && !data.getOccupations().isEmpty()) {
             for (OccupationCreate occData : data.getOccupations()) {
-                // Vérifier le bâtiment
-                Batiment batiment = batimentRepo.findById(occData.getBatimentId())
-                        .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + occData.getBatimentId()));
 
-                if (batiment.getStatut() != null && batiment.getStatut().toString().equals("OCCUPE")) {
+                Long batimentId = occData.getBatimentId();
+                Batiment batiment = null;
+
+                if (batimentId != null) {
+                    // Vérifier le bâtiment
+                    batiment = batimentRepo.findById(batimentId)
+                            .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + batimentId));
+                }
+
+                if (batiment != null && batiment.getStatut() != null && batiment.getStatut().toString().equals("OCCUPE")) {
                     throw new RuntimeException("Le bâtiment " + batiment.getNom() + " est déjà occupé.");
                 }
 
@@ -278,9 +300,11 @@ public class ProjetImpl implements ProjetServices {
 
                 occupationBatimentRepo.save(occupation);
 
-                // Mettre à jour le statut du bâtiment
-                batiment.setStatut(StatutBatiment.OCCUPE);
-                batimentRepo.save(batiment);
+                if (batiment != null) {
+                    // Mettre à jour le statut du bâtiment
+                    batiment.setStatut(StatutBatiment.OCCUPE);
+                    batimentRepo.save(batiment);
+                }
             }
         }
 
@@ -302,8 +326,93 @@ public class ProjetImpl implements ProjetServices {
 
     @Override
     public String deleteOrRecoverProjet(String uniqueId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'deleteOrRecoverProjet'");
+        Projets projet = projetsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Projet non trouvé avec l'uniqueId : " + uniqueId));
+
+        projet.getInitialisation()
+                .setRemoved(!projet.getInitialisation().getRemoved());
+
+        projetsRepo.save(projet);
+
+        return projet.getInitialisation().getRemoved()
+                ? "Projet supprimé."
+                : "Projet récupéré.";
+    }
+
+    @Override
+    @Transactional
+    public ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data) {
+        
+        // 1. Rérupérer le projet existant
+        Projets projet = projetsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
+
+        // 2. Vérifier et récupérer la race (si fournie)
+        Long raceId = data.getRaceId();
+
+        if (raceId != null) {
+            Race race = raceRepo.findById(raceId)
+                    .orElseThrow(() -> new RuntimeException("Race non trouvée avec l'id : " + data.getRaceId()));
+            projet.setRace(race);
+        }
+
+        // 3. Mettre à jour les champs simples (seulement si non null pour permettre les mises à jour partielles)
+        if (data.getTitre() != null) {
+            projet.setTitre(data.getTitre());
+        }
+        if (data.getNomResponsable() != null) {
+            projet.setResponsable(data.getNomResponsable());
+        }
+        if (data.getDateDebut() != null) {
+            projet.setDebut(parseDate(data.getDateDebut()));
+        }
+        if (data.getDateFinPrevue() != null) {
+            projet.setFinPrevue(parseDate(data.getDateFinPrevue()));
+        }
+        if (data.getNbSujets() != null) {
+            projet.setNbSujets(data.getNbSujets());
+        }
+        if (data.getPuSujet() != null) {
+            projet.setPuSujet(data.getPuSujet());
+        }
+        if (data.getAutresDepense() != null) {
+            projet.setAutresDepense(data.getAutresDepense());
+        }
+        if (data.getObjectif() != null) {
+            projet.setObjectif(Objectif.valueOf(data.getObjectif()));
+        }
+        if (data.getFournisseursPoussins() != null) {
+            projet.setFournisseurs_poussins(data.getFournisseursPoussins());
+        }
+
+        // 4. Recalculer le CA total si nbSujets, puSujet ou autresDepense ont changé
+        double nbSujets = projet.getNbSujets() != null ? projet.getNbSujets() : 0;
+        double puSujet = projet.getPuSujet() != null ? projet.getPuSujet() : 0;
+        double autresDepense = projet.getAutresDepense() != null ? projet.getAutresDepense() : 0;
+        
+        double caTotalSujets = (nbSujets * puSujet) + autresDepense;
+        projet.setCaTotalSujets(caTotalSujets);
+        // projet.setChiffreAffaires(caTotalSujets);
+
+        // 5. Sauvegarder
+        Projets updatedProjet = projetsRepo.save(projet);
+
+        // 6. Log
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser != null) {
+            logs.addLogs(
+                currentUser.getId(),
+                updatedProjet.getId(),
+                "Projet",
+                "Mise à jour du projet '" + updatedProjet.getTitre() 
+                    + "' (" + updatedProjet.getNbSujets() + " sujets, Objectif : " 
+                    + updatedProjet.getObjectif() + ") | Coût Achat total : " 
+                    + updatedProjet.getCaTotalSujets() + " FCFA"
+            );
+        }
+
+        return ProjetsDTO.fromEntity(updatedProjet);
     }
 
     

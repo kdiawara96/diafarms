@@ -2,7 +2,6 @@ package com.diafarms.ml.DTO;
 
 import java.time.LocalDateTime;
 
-import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Vaccination;
 import com.fasterxml.jackson.annotation.JsonFormat;
 

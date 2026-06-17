@@ -36,6 +36,20 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
     @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId AND b.initialisation.removed = false")
     List<Batiment> findActiveByFarmId(@Param("farmId") Long farmId);
 
+    @Query("""
+        SELECT b
+        FROM Batiment b
+        WHERE b.farm.id = :farmId
+        AND b.initialisation.removed = false
+        AND NOT EXISTS (
+            SELECT o
+            FROM OccupationBatiment o
+            WHERE o.batiment = b
+            AND (o.dateSortie IS NULL OR o.dateSortie >= CURRENT_DATE)
+        )
+        """)
+    List<Batiment> findAvailableByFarmId(@Param("farmId") Long farmId);
+
     // Recherche par nom, localisation, type, etc.
     @Query("SELECT b FROM Batiment b WHERE b.initialisation.removed = false " +
            "AND (LOWER(b.nom) LIKE LOWER(CONCAT('%', :search, '%')) " +

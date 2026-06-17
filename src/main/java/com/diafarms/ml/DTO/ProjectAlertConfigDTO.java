@@ -8,7 +8,6 @@ import com.diafarms.ml.enums.AlertLevel;
 import com.diafarms.ml.enums.AlertStatus;
 import com.diafarms.ml.enums.AlertType;
 import com.diafarms.ml.models.ProjectAlertConfig;
-import com.diafarms.ml.models.Projets;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
 import lombok.AllArgsConstructor;
@@ -44,7 +43,7 @@ public class ProjectAlertConfigDTO {
         return ProjectAlertConfigDTO.builder()
                 .id(data.getId())
                 .alertType(data.getAlertType())
-                .thresholdKey(data.getThresholdKey())
+                .thresholdKey(data.getThresholdKey().name())
                 .level(data.getLevel())
                 .numericValue(data.getNumericValue())
                 .stringValue(data.getStringValue())
