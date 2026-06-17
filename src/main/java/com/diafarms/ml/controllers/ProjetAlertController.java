@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.diafarms.ml.DTO.AlertCountDTO;
+import com.diafarms.ml.DTO.ProjectAlertTableDTO;
 import com.diafarms.ml.models.OccupationBatiment;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.services.OccupationService;
@@ -41,6 +42,21 @@ public class ProjetAlertController {
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
+    }
+
+
+    // 1. Récupération pour le tableau
+    @GetMapping("/table/{uniqueId}")
+    public ResponseEntity<ApiResponse<List<ProjectAlertTableDTO>>> getAlertTable(@PathVariable String uniqueId) {
+        List<ProjectAlertTableDTO> result = services.getAlertTableByProject(uniqueId);
+        return ApiResponse.createResponse("Liste des alertes chargée", HttpStatus.OK, result, null);
+    }
+
+    // 2. Toggle de l'état (Actif/Inactif)
+    @PutMapping("/toggle/{alertId}")
+    public ResponseEntity<ApiResponse<ProjectAlertTableDTO>> toggleAlert(@PathVariable Long alertId) {
+        ProjectAlertTableDTO updated = services.toggleAlertStatus(alertId);
+        return ApiResponse.createResponse("Statut de l'alerte mis à jour", HttpStatus.OK, updated, null);
     }
     
 }

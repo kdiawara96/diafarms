@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.diafarms.ml.models.ProjectAlertConfig;
+import com.diafarms.ml.models.Projets;
 
 public interface ProjectAlertConfigRepo extends JpaRepository<ProjectAlertConfig, Long> {
     
@@ -16,4 +17,6 @@ public interface ProjectAlertConfigRepo extends JpaRepository<ProjectAlertConfig
         "WHERE p.uniqueId = :uniqueId " +
         "AND a.status = com.diafarms.ml.enums.AlertStatus.ACTIF")
     List<ProjectAlertConfig> findActiveAlertsByProjectUniqueId(@Param("uniqueId") String uniqueId);
+
+    List<ProjectAlertConfig>  findByProjet(Projets projet);
 }

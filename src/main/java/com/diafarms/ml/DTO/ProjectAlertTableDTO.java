@@ -1,7 +1,6 @@
 package com.diafarms.ml.DTO;
 
 import lombok.Data;
-import java.util.Objects;
 
 import com.diafarms.ml.models.ProjectAlertConfig;
 
@@ -27,38 +26,55 @@ public class ProjectAlertTableDTO {
     }
 
     private static String generateBackEndTitle(ProjectAlertConfig entity) {
-        String key = entity.getThresholdKey().name();
+        // Sécurité au cas où la clé de seuil est nulle
+        if (entity.getThresholdKey() == null) {
+            return "Alerte " + (entity.getAlertType() != null ? entity.getAlertType().getLabel() : "");
+        }
+
         String unit = entity.getUnit() != null ? entity.getUnit() : "";
         String value = entity.getNumericValue() != null ? entity.getNumericValue().toString() : "";
+        com.diafarms.ml.enums.ThresholdKey key = entity.getThresholdKey();
 
         switch (entity.getAlertType()) {
             case MORTALITE:
-                if (key.contains("WARNING")) {
-                    return "Seuil Warning: " + value + unit;
-                } else if (key.contains("CRITICAL") || key.contains("CUMULATIVE")) {
-                    return "Seuil Critique: " + value + unit;
+                // Utilisation des valeurs précises de l'enum pour distinguer les 3 seuils critiques
+                switch (key) {
+                    case DAILY_WARNING:
+                        return "Seuil Warning Journalier: " + value + unit;
+                    case DAILY_CRITICAL:
+                        return "Seuil Critique Journalier: " + value + unit;
+                    case WEEKLY_CRITICAL:
+                        return "Seuil Critique Hebdomadaire: " + value + unit;
+                    case CUMULATIVE_CRITICAL:
+                        return "Seuil Critique Cumulé: " + value + unit;
+                    default:
+                        return "Alerte Mortalité: " + value + unit;
                 }
-                break;
+
             case ALIMENTATION:
-                if (key.contains("STOCK")) {
-                    return "Stock: " + value + " " + unit + " restants";
-                }
-                break;
+                // On peut utiliser le label de l'enum ou garder ton formatage explicite
+                return "Stock: " + value + " " + unit + " restants";
+
             case METEO:
-                if (key.contains("WARNING")) {
+                // Permet de gérer proprement les températures et l'humidité selon la clé
+                if (key == com.diafarms.ml.enums.ThresholdKey.DAILY_WARNING) {
                     return "Temp. Warning: " + value + unit;
-                } else if (key.contains("CRITICAL")) {
+                } else if (key == com.diafarms.ml.enums.ThresholdKey.DAILY_CRITICAL) {
                     return "Temp. Critique: " + value + unit;
-                } else if (key.contains("MAX") || key.contains("MIN")) {
-                    return entity.getThresholdKey() + ": " + value + unit; // Humidité Max/Min
+                } else {
+                    // Pour les autres clés météo (comme des seuils MAX/MIN d'humidité par exemple)
+                    return key.getLabel() + ": " + value + unit;
                 }
-                break;
+
             case VACCINATION:
-                if (entity.getStringValue() != null) {
-                    return entity.getStringValue(); // Nom du vaccin précis
+                if (entity.getStringValue() != null && !entity.getStringValue().isEmpty()) {
+                    return "Vaccin: " + entity.getStringValue(); // Ex: Vaccin: Gumboro
                 }
-                return "Vaccination";
+                return key.getLabel(); // Retournera le label de l'enum par défaut
+                
+            default:
+                return "Alerte";
         }
-        return "Alerte";
     }
+
 }

@@ -9,12 +9,14 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.AlertCountDTO;
+import com.diafarms.ml.DTO.ProjectAlertTableDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.AlertStatus;
 import com.diafarms.ml.enums.AlertType;
 import com.diafarms.ml.models.ProjectAlertConfig;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.repository.ProjectAlertConfigRepo;
+import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.services.ProjectAlertConfigService;
 import com.diafarms.ml.template.ProjectAlertTemplate;
 
@@ -25,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
 
-    
+    private final ProjetsRepo projetsRepository;
     private final ProjectAlertConfigRepo alertConfigRepository;
 
     /**
@@ -90,5 +92,51 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
 
         return stats;
     }
-    
+
+
+    // Dans ton ProjectAlertConfigImpl (Classe)
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjectAlertTableDTO> getAlertTableByProject(String uniqueId) {
+
+        // Récupérer le projet
+        Projets projet = projetsRepository.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Projet introuvable avec l'uniqueId: " + uniqueId));
+
+        // Utilise ta requête existante avec JOIN FETCH
+        List<ProjectAlertConfig> configs = alertConfigRepository.findByProjet(projet);
+        
+        // Si tu veux TOUTES les alertes (actives ET inactives) pour la configuration, 
+        // assure-toi que ta méthode JPA ne filtre pas sur le statut si tu veux pouvoir les réactiver !
+        
+        return configs.stream()
+                .map(ProjectAlertTableDTO::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public ProjectAlertTableDTO toggleAlertStatus(Long alertId) {
+
+        if (alertId != null) {
+             ProjectAlertConfig alert = alertConfigRepository.findById(alertId)
+                .orElseThrow(() -> new RuntimeException("Alerte introuvable avec l'ID: " + alertId));
+
+        // Bascule le statut
+        if (alert.getStatus() == AlertStatus.ACTIF) {
+            alert.setStatus(AlertStatus.INACTIF);
+        } else {
+            alert.setStatus(AlertStatus.ACTIF);
+        }
+        
+        // Met à jour la date de modification
+        if (alert.getInitialisation() != null) {
+            alert.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+
+        return ProjectAlertTableDTO.fromEntity(alertConfigRepository.save(alert));
+        } else {
+            throw new RuntimeException("Alerte introuvable avec l'ID: " + alertId);
+        }
+    }
 }
