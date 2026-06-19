@@ -1,5 +1,7 @@
 package com.diafarms.ml.ServiceImpl;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +12,9 @@ import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.AlertCountDTO;
 import com.diafarms.ml.DTO.ProjectAlertTableDTO;
+import com.diafarms.ml.DTO.UpdateAlertRequestDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.AlertLevel;
 import com.diafarms.ml.enums.AlertStatus;
 import com.diafarms.ml.enums.AlertType;
 import com.diafarms.ml.models.ProjectAlertConfig;
@@ -105,13 +109,12 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
 
         // Utilise ta requête existante avec JOIN FETCH
         List<ProjectAlertConfig> configs = alertConfigRepository.findByProjet(projet);
-        
-        // Si tu veux TOUTES les alertes (actives ET inactives) pour la configuration, 
-        // assure-toi que ta méthode JPA ne filtre pas sur le statut si tu veux pouvoir les réactiver !
-        
+
         return configs.stream()
-                .map(ProjectAlertTableDTO::fromEntity)
-                .collect(Collectors.toList());
+            .map(ProjectAlertTableDTO::fromEntity)
+            // 👇 TRI : On trie par l'état "enabled" inversé (true en premier, false en dernier)
+            .sorted((dto1, dto2) -> Boolean.compare(dto2.isEnabled(), dto1.isEnabled()))
+            .collect(Collectors.toList());
     }
 
     @Override
@@ -139,4 +142,61 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
             throw new RuntimeException("Alerte introuvable avec l'ID: " + alertId);
         }
     }
+
+
+    @Transactional
+    public String updateAllAlertConfigs(List<UpdateAlertRequestDTO> requests, String uniqueId) {
+        if (requests == null || requests.isEmpty() || uniqueId == null) return "Données invalides";
+      
+        for (UpdateAlertRequestDTO req : requests) {
+            
+            Long id = req.getId();
+            if (id != null) {
+                // 1. CAS GÉNÉRAL : L'alerte existe déjà (Mortalité, Météo, Alimentation ou Vaccin existant)
+                alertConfigRepository.findById(id).ifPresent(config -> {
+                    // Mise à jour de l'état (Actif/Inactif)
+                    config.setStatus(req.isEnabled() ? AlertStatus.ACTIF : AlertStatus.INACTIF);
+                    
+                    // Si c'est de la vaccination, on gère la valeur textuelle (Nom + Date si besoin)
+                    if (config.getAlertType() == AlertType.VACCINATION) {
+                        config.setStringValue(req.getStringValue());
+                        config.setDateValue(LocalDate.parse(req.getDate()));
+                    } else {
+                        BigDecimal numericValue = BigDecimal.valueOf(req.getNumericValue());
+                        // Sinon, on met à jour le seuil numérique
+                        config.setNumericValue(numericValue);
+                    }
+                    
+                    // Grâce à @Transactional, l'entité modifiée sera sauvée automatiquement à la fin de la méthode
+                    alertConfigRepository.save(config); 
+                });
+
+            } else if (req.getAlertType() == AlertType.VACCINATION) {
+
+                Projets projet = projetsRepository.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Projet introuvable avec l'uniqueId: " + uniqueId));
+
+                // 2. CAS PARTICULIER : Nouvelle ligne de vaccination ajoutée depuis le Front (id est null)
+                ProjectAlertConfig newVaccin = new ProjectAlertConfig();
+                newVaccin.setAlertType(AlertType.VACCINATION);
+                newVaccin.setThresholdKey(req.getThresholdKey()); // VACCINATION_SCHEDULED
+                newVaccin.setStringValue(req.getStringValue());
+                newVaccin.setStatus(req.isEnabled() ? AlertStatus.ACTIF : AlertStatus.INACTIF);
+
+                newVaccin.setLevel(AlertLevel.CRITIQUE); // ou AlertLevel.WARNING selon ta logique métier
+
+                if (req.getDate() != null && !req.getDate().isEmpty()) {
+                    newVaccin.setDateValue(LocalDate.parse(req.getDate()));                    
+                }
+                
+                newVaccin.setProjet(projet); 
+
+                alertConfigRepository.save(newVaccin);
+            }
+        }
+        return "Données mises à jour avec succès";
+    }
+
+
+
 }

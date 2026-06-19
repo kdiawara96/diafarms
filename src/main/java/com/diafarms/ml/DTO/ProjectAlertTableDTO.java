@@ -2,6 +2,9 @@ package com.diafarms.ml.DTO;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
 import com.diafarms.ml.models.ProjectAlertConfig;
 
 @Data
@@ -12,6 +15,12 @@ public class ProjectAlertTableDTO {
     private String titre;  // Généré dynamiquement
     private boolean enabled;
 
+    //  AJOUTE CES TROIS CHAMPS ICI :
+    private String thresholdKey; // ex: "DAILY_WARNING"
+    private BigDecimal numericValue; // Le seuil chiffré (ex: 0.5)
+    private String stringValue;  // Le texte (ex: "Gumboro")
+    private LocalDate date; // L'unité (ex: "%")
+
     public static ProjectAlertTableDTO fromEntity(ProjectAlertConfig entity) {
         ProjectAlertTableDTO dto = new ProjectAlertTableDTO();
         dto.setId(entity.getId());
@@ -21,6 +30,15 @@ public class ProjectAlertTableDTO {
         
         // Génération du titre dynamique côté Back-end
         dto.setTitre(generateBackEndTitle(entity));
+
+        //  REREMPLIT LES NOUVEAUX CHAMPS DEPUIS L'ENTITÉ :
+        if (entity.getThresholdKey() != null) {
+            dto.setThresholdKey(entity.getThresholdKey().name()); // Récupère le nom de l'enum (ex: "DAILY_WARNING")
+        }
+        
+        dto.setNumericValue(entity.getNumericValue());
+        dto.setStringValue(entity.getStringValue());
+        dto.setDate(entity.getDateValue());
         
         return dto;
     }

@@ -4,21 +4,18 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.diafarms.ml.DTO.AlertCountDTO;
 import com.diafarms.ml.DTO.ProjectAlertTableDTO;
-import com.diafarms.ml.models.OccupationBatiment;
+import com.diafarms.ml.DTO.UpdateAlertRequestDTO;
 import com.diafarms.ml.others.ApiResponse;
-import com.diafarms.ml.services.OccupationService;
 import com.diafarms.ml.services.ProjectAlertConfigService;
 
 import lombok.RequiredArgsConstructor;
@@ -58,5 +55,13 @@ public class ProjetAlertController {
         ProjectAlertTableDTO updated = services.toggleAlertStatus(alertId);
         return ApiResponse.createResponse("Statut de l'alerte mis à jour", HttpStatus.OK, updated, null);
     }
-    
+
+    @PutMapping("/bulk-update")
+    public ResponseEntity<ApiResponse<String>> toggleAlert(
+        @RequestBody List<UpdateAlertRequestDTO> requests, 
+        @RequestParam String projetUniqueId) {
+
+         String  updated = services.updateAllAlertConfigs(requests, projetUniqueId);
+        return ApiResponse.createResponse("Configurations mises à jour avec succès", HttpStatus.OK, updated, null);
+    }
 }
