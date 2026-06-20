@@ -50,7 +50,8 @@ public class ProjectAlertConfigDTO {
                 .dateValue(data.getDateValue())
                 .unit(data.getUnit())
                 .status(data.getStatus())
-                .createdAt(data.getInitialisation().getCreatedAt())
+                // .createdAt(data.getInitialisation().getCreatedAt())
+                .createdAt(data.getInitialisation() != null ? data.getInitialisation().getCreatedAt() : null)
                 .build();
 
     }

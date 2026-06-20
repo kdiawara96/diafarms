@@ -13,4 +13,5 @@ public interface ProjectAlertConfigService {
     List<ProjectAlertTableDTO> getAlertTableByProject(String uniqueId);
     ProjectAlertTableDTO toggleAlertStatus(Long alertId);
     String updateAllAlertConfigs(List<UpdateAlertRequestDTO> requests, String uniqueId);
+    String remove(Long alertId);
 }

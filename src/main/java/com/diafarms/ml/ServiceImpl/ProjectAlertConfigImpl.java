@@ -188,13 +188,32 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
                 if (req.getDate() != null && !req.getDate().isEmpty()) {
                     newVaccin.setDateValue(LocalDate.parse(req.getDate()));                    
                 }
-                
+                 Initialisation init = new Initialisation();
+                LocalDateTime now = LocalDateTime.now();
+
+                init.setCreatedAt(now);
+                init.setUpdatedAt(now);
+                init.setRemoved(false);
+                init.setArchive(false);
+
+                newVaccin.setInitialisation(init);
                 newVaccin.setProjet(projet); 
 
                 alertConfigRepository.save(newVaccin);
             }
         }
         return "Données mises à jour avec succès";
+    }
+
+    @Override
+    public String remove(Long alertId) {
+
+        if (alertId != null) {
+            alertConfigRepository.deleteById(alertId);
+            return "Données mises à jour avec succès";
+        } else {
+            throw new RuntimeException("Alerte introuvable avec l'ID: " + alertId);
+        }
     }
 
 

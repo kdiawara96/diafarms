@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -64,4 +65,11 @@ public class ProjetAlertController {
          String  updated = services.updateAllAlertConfigs(requests, projetUniqueId);
         return ApiResponse.createResponse("Configurations mises à jour avec succès", HttpStatus.OK, updated, null);
     }
+
+    @DeleteMapping("/remove/{alertId}")
+    public ResponseEntity<ApiResponse<String>> remove(@PathVariable Long alertId) {
+        String updated = services.remove(alertId);
+        return ApiResponse.createResponse("Suppression de l'alerte", HttpStatus.OK, updated, null);
+    }
+
 }
