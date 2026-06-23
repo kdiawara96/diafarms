@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: ${APP_NAME:diafarms}
+
+  config:
+    import: optional:file:.env[.properties]
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+server:
+  port: ${APP_PORT:8093}
+
+minio:
+  url: ${MINIO_URL:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET_NAME:diafarms-documents}
+
+app:
+  base-url: ${BASE_URL:http://localhost:8082/diafarms/files/}
+  base-path: ${BASE_PATH:/home/mother/app/src/main/resources/files}
+  secret-key: ${SECRET_KEY:772175266556A586E3272357538782F413F442A472D4B}
+  profil-folder: ${PROFIL_FOLDER:profils}

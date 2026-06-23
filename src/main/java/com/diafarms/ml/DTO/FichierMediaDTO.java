@@ -25,22 +25,57 @@ public class FichierMediaDTO {
     private String contentType;
     private Long tailleOctets;
 
+    private String url;
+    private String tailleFormatee;
+
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime createdAt;
 
-        public static FichierMediaDTO fromEntity(FichierMedia data) {
-            if (data == null) {
-                return null;
-            }
-    
-            return FichierMediaDTO.builder()
-                    .id(data.getId())
-                    .nomOriginal(data.getNomOriginal())
-                    .nomMinio(data.getNomMinio())
-                    .bucketName(data.getBucketName())
-                    .contentType(data.getContentType())
-                    .tailleOctets(data.getTailleOctets())
-                    .createdAt(data.getCreatedAt())
-                    .build();
+        /**
+     * Mapper basique (sans URL)
+     */
+    public static FichierMediaDTO fromEntity(FichierMedia data) {
+        if (data == null) {
+            return null;
         }
+
+        return FichierMediaDTO.builder()
+                .id(data.getId())
+                .nomOriginal(data.getNomOriginal())
+                .nomMinio(data.getNomMinio())
+                .bucketName(data.getBucketName())
+                .contentType(data.getContentType())
+                .tailleOctets(data.getTailleOctets())
+                .createdAt(data.getCreatedAt())
+                .tailleFormatee(formatTaille(data.getTailleOctets()))
+                .build();
+    }
+
+    /**
+     * Mapper avec URL pré-signée
+     */
+    public static FichierMediaDTO fromEntity(FichierMedia data, String presignedUrl) {
+        if (data == null) {
+            return null;
+        }
+
+        return FichierMediaDTO.builder()
+                .id(data.getId())
+                .nomOriginal(data.getNomOriginal())
+                .nomMinio(data.getNomMinio())
+                .bucketName(data.getBucketName())
+                .contentType(data.getContentType())
+                .tailleOctets(data.getTailleOctets())
+                .url(presignedUrl)
+                .tailleFormatee(formatTaille(data.getTailleOctets()))
+                .createdAt(data.getCreatedAt())
+                .build();
+    }
+
+
+     private static String formatTaille(long octets) {
+        if (octets < 1024) return octets + " B";
+        if (octets < 1024 * 1024) return String.format("%.1f KB", octets / 1024.0);
+        return String.format("%.1f MB", octets / (1024.0 * 1024));
+    }
 }
