@@ -42,7 +42,7 @@ public class AlimentationImpl implements AlimentationService {
         try {
             return otherService.getCurrentUser();
         } catch (Exception e) {
-            System.err.println("Impossible de récupérer l'utilisateur connecté : " + e.getMessage());
+            System.err.println("Impossible de récupérer l'utilisateur connecté : " + e.getMessage());   
             return null;
         }
     }
@@ -163,30 +163,50 @@ public class AlimentationImpl implements AlimentationService {
     @Override
     @Transactional
     public AlimentationDTO delete(String uniqueId) {
-        // 1. Trouver l'alimentation
+        // // 1. Trouver l'alimentation
+        // Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
+        //         .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
+
+        // // 2. Vérifier si déjà supprimée
+        // if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
+        //     throw new RuntimeException("Cette alimentation est déjà supprimée.");
+        // }
+
+        // // 3. Soft delete
+        // alimentation.getInitialisation().setRemoved(true);
+        // alimentation.setInitialisation(Initialisation.updateDate(alimentation.getInitialisation()));
+
+        // Alimentation deleted = alimentationRepo.save(alimentation);
+
+        // // 4. Log
+        // Utilisateurs currentUser = getCurrentUserSafe();
+
+        // logAction(currentUser, deleted,
+        //     "Suppression de l'alimentation '" + deleted.getNomAliment()
+        //         + "' (" + deleted.getQuantiteKg() + " kg) du projet '"
+        //         + deleted.getProjet().getTitre() + "'"
+        // );
+
+        // return AlimentationDTO.fromEntityList(deleted);
+
+         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
 
-        // 2. Vérifier si déjà supprimée
-        if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
-            throw new RuntimeException("Cette alimentation est déjà supprimée.");
-        }
-
-        // 3. Soft delete
-        alimentation.getInitialisation().setRemoved(true);
-        alimentation.setInitialisation(Initialisation.updateDate(alimentation.getInitialisation()));
-
-        Alimentation deleted = alimentationRepo.save(alimentation);
-
-        // 4. Log
+        // 2. Log AVANT suppression (car après on n'y a plus accès)
         Utilisateurs currentUser = getCurrentUserSafe();
-        logAction(currentUser, deleted,
-            "Suppression de l'alimentation '" + deleted.getNomAliment()
-                + "' (" + deleted.getQuantiteKg() + " kg) du projet '"
-                + deleted.getProjet().getTitre() + "'"
+        
+        logAction(currentUser, alimentation,
+            "Suppression définitive de l'alimentation '" + alimentation.getNomAliment()
+                + "' (" + alimentation.getQuantiteKg() + " kg) du projet '"
+                + alimentation.getProjet().getTitre() + "'"
         );
 
-        return AlimentationDTO.fromEntityList(deleted);
+        // 3. Suppression réelle
+        alimentationRepo.delete(alimentation);
+
+        // 4. Retourner le DTO (avant suppression ou reconstruit)
+        return AlimentationDTO.fromEntityList(alimentation);
     }
 
     // ============================================================
