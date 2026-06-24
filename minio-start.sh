@@ -2,7 +2,7 @@
 
 # === CONFIG ===
 MINIO_USER="diafarms_admin"
-MINIO_PASS="Df@2026!Secure#MinIO$Key"
+MINIO_PASS="Df_2026_Secure_MinIO_Key_2026"
 MINIO_DIR="$HOME/minio-data"
 MINIO_BIN="$HOME/minio"
 

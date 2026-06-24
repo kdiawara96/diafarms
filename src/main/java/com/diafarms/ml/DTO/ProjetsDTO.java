@@ -126,9 +126,9 @@ public class ProjetsDTO {
                         .map(ProjectAlertConfigDTO::fromEntity)
                         .toList() : java.util.Collections.emptyList())
                 
-                .fichiersMedia(data.getFichiers() != null ? data.getFichiers().stream()
-                        .map(FichierMediaDTO::fromEntity)
-                        .toList() : java.util.Collections.emptyList())
+                // .fichiersMedia(data.getFichiers() != null ? data.getFichiers().stream()
+                //         .map(FichierMediaDTO::fromEntity)
+                //         .toList() : java.util.Collections.emptyList())
                 .tauxPonte(0.0)
                 .mortaliteCumulee(0.0)
                 .build();
