@@ -5,6 +5,7 @@ import java.util.List;
 import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.request.create.UserCreate;
+import com.diafarms.ml.request.update.UserUpdate;
 
 /**
  * Service interface for user management operations.
@@ -33,7 +34,8 @@ public interface UtilisateursServices {
 
     List<UtilisateursDTO> getAllUtilisateurs();
     UtilisateursDTO getUtilisateurByUniqueId(String uniqueId);
-    UtilisateursDTO createUtilisateur(UtilisateursDTO dto);
-    UtilisateursDTO updateUtilisateur(String uniqueId, UtilisateursDTO dto);
+    UtilisateursDTO createUtilisateurProdOrFinan(UserCreate dto);
+    UtilisateursDTO updateUtilisateur(String uniqueId, UserUpdate dto);
     UtilisateursDTO regenerateQRCodeToken(String uniqueId);
+    UtilisateursDTO revoquerUtilisateur(String uniqueId);
 }

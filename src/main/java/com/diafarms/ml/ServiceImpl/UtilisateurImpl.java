@@ -3,7 +3,6 @@ package com.diafarms.ml.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -23,6 +22,7 @@ import com.diafarms.ml.repository.FarmsRepo;
 import com.diafarms.ml.repository.RolesRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.UserCreate;
+import com.diafarms.ml.request.update.UserUpdate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
 
@@ -275,6 +275,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // 1. Récupérer tous les utilisateurs
+    @Override
     @Transactional(readOnly = true)
     public List<UtilisateursDTO> getAllUtilisateurs() {
         return utilisateursRepo.findAll().stream()
@@ -283,6 +284,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // 2. Récupérer un utilisateur par son identifiant unique
+    @Override
     @Transactional(readOnly = true)
     public UtilisateursDTO getUtilisateurByUniqueId(String uniqueId) {
         Utilisateurs utilisateur = utilisateursRepo.findByUniqueId(uniqueId)
@@ -291,8 +293,25 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // 3. Créer un nouvel utilisateur
-    @Transactional
-    public UtilisateursDTO createUtilisateur(UtilisateursDTO dto) {
+   @Override
+   @Transactional
+    public UtilisateursDTO createUtilisateurProdOrFinan(UserCreate dto) {
+        // Récupération de la ferme de l'administrateur connecté
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Erreur lors de la récupération du contexte utilisateur.");
+        }
+
+        // Validation des doublons de téléphone dans la même ferme
+        if (currentUser != null && currentUser.getFarm() != null) {
+            if (utilisateursRepo.existsByTelephoneAndFarmId(dto.getTelephone().trim(), currentUser.getFarm().getId())) {
+                throw new RuntimeException("Un utilisateur avec ce numéro de téléphone existe déjà dans votre ferme.");
+            }
+        }
+
         Utilisateurs u = new Utilisateurs();
         
         // Génération automatique des identifiants système sécurisés
@@ -306,6 +325,11 @@ public class UtilisateurImpl implements UtilisateursServices {
         u.setRegion(dto.getRegion());
         u.setStatut(true); // Actif par défaut
         
+        // Association automatique à la ferme de l'admin connecté
+        if (currentUser != null) {
+            u.setFarm(currentUser.getFarm());
+        }
+        
         // Mot de passe temporaire par défaut (A encoder avec BCrypt en production)
         String plainPassword = "Diafarms@" + UUID.randomUUID().toString().substring(0, 4);
         u.setPassword(plainPassword); 
@@ -317,13 +341,20 @@ public class UtilisateurImpl implements UtilisateursServices {
         u.setInitialisation(init);
 
         // Mappage des rôles (Convertit le RoleDTO du front en entité Roles pour Hibernate)
-        if (dto.getRoles() != null) {
-            u.setRoles(dto.getRoles().stream().map(roleDto -> {
-                Roles role = new Roles();
-                role.setId(roleDto.getId());
-                role.setRole(roleDto.getRole());
-                return role;
-            }).collect(Collectors.toSet()));
+        // 4. 🔄 Récupération et liaison des Rôles par leur libellé/nom
+        if (dto.getRoles() != null && !dto.getRoles().isEmpty()) {
+            Set<Roles> userRoles = dto.getRoles().stream()
+                .map(roleName -> {
+                    // Recherche du rôle actif et non archivé par son nom
+                    Roles role = roleRepo.findByRoleAndInitialisationRemovedFalseAndInitialisationArchiveFalse(roleName.trim());
+                    if (role == null) {
+                        throw new RuntimeException("Le rôle spécifié n'existe pas ou n'est plus actif : " + roleName);
+                    }
+                    return role;
+                })
+                .collect(Collectors.toSet());
+            
+            u.setRoles(userRoles);
         }
 
         Utilisateurs savedUser = utilisateursRepo.save(u);
@@ -333,30 +364,51 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // 4. Modifier un utilisateur existant
+    @Override
     @Transactional
-    public UtilisateursDTO updateUtilisateur(String uniqueId, UtilisateursDTO dto) {
+    public UtilisateursDTO updateUtilisateur(String uniqueId, UserUpdate dto) {
+        // 1. Recherche de l'utilisateur existant
         Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
 
+        // 2. Validation optionnelle : Empêcher les doublons de téléphone avec un AUTRE utilisateur de la même ferme
+        if (dto.getTelephone() != null && !dto.getTelephone().trim().equalsIgnoreCase(u.getTelephone())) {
+            boolean phoneExists = utilisateursRepo.existsByTelephoneAndFarmId(
+                    dto.getTelephone().trim(), 
+                    u.getFarm().getId()
+            );
+            if (phoneExists) {
+                throw new RuntimeException("Un autre utilisateur possède déjà ce numéro de téléphone dans votre ferme.");
+            }
+        }
+
+        // 3. Mise à jour des informations de base
         u.setFullName(dto.getFullName());
         u.setTelephone(dto.getTelephone());
         u.setEmail(dto.getEmail());
         u.setCity(dto.getCity());
         u.setRegion(dto.getRegion());
         
+        // Traçabilité
         if (u.getInitialisation() != null) {
             u.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
 
-        // Mise à jour des rôles
+        // 4. 🔄 Mise à jour des Rôles par leur libellé (comme à la création)
         if (dto.getRoles() != null) {
-            u.getRoles().clear();
-            u.setRoles(dto.getRoles().stream().map(roleDto -> {
-                Roles role = new Roles();
-                role.setId(roleDto.getId());
-                role.setRole(roleDto.getRole());
-                return role;
-            }).collect(Collectors.toSet()));
+            u.getRoles().clear(); // On nettoie les anciennes associations
+            
+            Set<Roles> updatedRoles = dto.getRoles().stream()
+                .map(roleName -> {
+                    Roles role = roleRepo.findByRoleAndInitialisationRemovedFalseAndInitialisationArchiveFalse(roleName.trim());
+                    if (role == null) {
+                        throw new RuntimeException("Le rôle spécifié n'existe pas ou est inactif : " + roleName);
+                    }
+                    return role;
+                })
+                .collect(Collectors.toSet());
+            
+            u.setRoles(updatedRoles);
         }
 
         Utilisateurs updatedUser = utilisateursRepo.save(u);
@@ -377,6 +429,29 @@ public class UtilisateurImpl implements UtilisateursServices {
         return UtilisateursDTO.fromEntity(updatedUser);
     }
 
+   /**
+     * Révoque un utilisateur en désactivant son compte et en invalidant son QR code.
+     */
+    @Override
+    @Transactional
+    public UtilisateursDTO revoquerUtilisateur(String uniqueId) {
+        // 1. Recherche de l'utilisateur
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
 
+        // 2. Révocation des accès
+        u.setStatut(false); // Le compte passe en suspendu/inactif
+        
+        // On change le uniqueId pour couper immédiatement la session du QR Code actuel
+        // u.setUniqueId("REVOC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+
+        // 3. Traçabilité de la modification
+        if (u.getInitialisation() != null) {
+            u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+
+        Utilisateurs revokedUser = utilisateursRepo.save(u);
+        return UtilisateursDTO.fromEntity(revokedUser);
+    }
     
 }

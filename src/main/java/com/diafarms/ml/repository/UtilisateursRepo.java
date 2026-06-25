@@ -25,7 +25,7 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     boolean existsByUsername(String username);
     Optional<Utilisateurs> findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);
     Utilisateurs findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String username);
-
+    boolean existsByTelephoneAndFarmId(String telephone, Long farmId);
     Optional<Utilisateurs> findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
         String email, String username, String telephone);
 
