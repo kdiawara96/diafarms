@@ -1,11 +1,13 @@
 package com.diafarms.ml.models;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import jakarta.persistence.*;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import lombok.AllArgsConstructor;
@@ -62,6 +64,11 @@ public class Utilisateurs {
     
     @Column(name = "statut")
     private Boolean statut = true;
+
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    @Column(name = "last_login", length = 50)
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private LocalDateTime lastLogin;
     
     @Embedded
     private Initialisation initialisation;

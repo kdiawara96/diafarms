@@ -30,4 +30,10 @@ public interface UtilisateursServices {
     List<UtilisateursDTO> select();
     List<UtilisateursDTO> selectProducteurs();
     List<UtilisateursDTO> selectFinanciers();
+
+    List<UtilisateursDTO> getAllUtilisateurs();
+    UtilisateursDTO getUtilisateurByUniqueId(String uniqueId);
+    UtilisateursDTO createUtilisateur(UtilisateursDTO dto);
+    UtilisateursDTO updateUtilisateur(String uniqueId, UtilisateursDTO dto);
+    UtilisateursDTO regenerateQRCodeToken(String uniqueId);
 }

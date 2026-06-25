@@ -15,7 +15,7 @@ import com.diafarms.ml.models.Utilisateurs;
 @Repository
 public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     
-    Optional<Utilisateurs> findByUniqueId(String uniqueId);
+    Optional<Utilisateurs> findByUniqueId(String uniqueId);    
     Utilisateurs findByEmail(String email);
     Utilisateurs findByTelephone(String email);
     Optional<Utilisateurs> findByUsername(String username);

@@ -1,7 +1,6 @@
 package com.diafarms.ml.DTO;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,12 +35,41 @@ public class UtilisateursDTO {
     private String password;
     
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime lastLogin; 
+    
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime createdAt;
     
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime updatedAt;
     
     private Set<RoleDTO> roles;
+
+
+     public static UtilisateursDTO fromEntityList(Utilisateurs utilisateur) {
+
+        if (utilisateur == null) {
+            return null;
+        }
+
+        return UtilisateursDTO.builder()
+                .id(utilisateur.getId())
+                .uniqueId(utilisateur.getUniqueId())
+                .fullName(utilisateur.getFullName())
+                .region(utilisateur.getRegion())
+                .city(utilisateur.getCity())
+                .photo(utilisateur.getPhoto())
+                .farmName(utilisateur.getFarmName())
+                .username(utilisateur.getUsername())
+                .email(utilisateur.getEmail())
+                .telephone(utilisateur.getTelephone())
+                .statut(utilisateur.getStatut())
+                .createdAt(utilisateur.getInitialisation().getCreatedAt())
+                .updatedAt(utilisateur.getInitialisation().getUpdatedAt())
+                .lastLogin(utilisateur.getLastLogin())
+                .roles(mapToRoleDtos(utilisateur.getRoles()))
+                .build();
+    }
 
     /**
      * Construit un DTO depuis l'entité Utilisateurs.
@@ -70,6 +98,7 @@ public class UtilisateursDTO {
                 .password(plainPassword)
                 .createdAt(utilisateur.getInitialisation().getCreatedAt())
                 .updatedAt(utilisateur.getInitialisation().getUpdatedAt())
+                .lastLogin(utilisateur.getLastLogin())
                 .roles(mapToRoleDtos(utilisateur.getRoles()))
                 .build();
     }

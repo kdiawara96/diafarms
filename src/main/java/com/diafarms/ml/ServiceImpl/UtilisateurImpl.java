@@ -2,6 +2,7 @@ package com.diafarms.ml.ServiceImpl;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -49,6 +50,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         if (utilisateursRepo.existsByEmail(data.getEmail())) {
             throw new IllegalArgumentException("L'email '" + data.getEmail() + "' existe déjà.");
         }
+
         if (utilisateursRepo.existsByTelephone(data.getTelephone())) {
             throw new IllegalArgumentException("Le numéro de téléphone '" + data.getTelephone() + "' existe déjà.");
         }
@@ -203,20 +205,6 @@ public class UtilisateurImpl implements UtilisateursServices {
         return password.toString();
     }
 
-    /**
-     * Gets the currently authenticated user.
-     *
-     * @return the authenticated user
-     */
-    // private Utilisateurs getCurrentUser() {
-    //     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    //     if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
-    //         String username = jwt.getSubject();
-    //         return utilisateursRepo.findByUsername(username).orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
-    //     }
-    //     return null;
-    // }
-
     @Override
     public Utilisateurs readByUsernameOrEmail(String usernameOrEmail) {
         return utilisateursRepo.findByUsernameOrEmailOrTelephone(usernameOrEmail,
@@ -285,4 +273,110 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .map(UtilisateursDTO::fromSelect)
                 .collect(Collectors.toList());
     }
+
+    // 1. Récupérer tous les utilisateurs
+    @Transactional(readOnly = true)
+    public List<UtilisateursDTO> getAllUtilisateurs() {
+        return utilisateursRepo.findAll().stream()
+                .map(UtilisateursDTO::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    // 2. Récupérer un utilisateur par son identifiant unique
+    @Transactional(readOnly = true)
+    public UtilisateursDTO getUtilisateurByUniqueId(String uniqueId) {
+        Utilisateurs utilisateur = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'ID: " + uniqueId));
+        return UtilisateursDTO.fromEntity(utilisateur);
+    }
+
+    // 3. Créer un nouvel utilisateur
+    @Transactional
+    public UtilisateursDTO createUtilisateur(UtilisateursDTO dto) {
+        Utilisateurs u = new Utilisateurs();
+        
+        // Génération automatique des identifiants système sécurisés
+        u.setUniqueId("USR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        // Génération d'un username par défaut basé sur le fullName (ex: karim.diawara)
+        u.setUsername(dto.getFullName().toLowerCase().replace(" ", "."));
+        u.setFullName(dto.getFullName());
+        u.setTelephone(dto.getTelephone());
+        u.setEmail(dto.getEmail());
+        u.setCity(dto.getCity());
+        u.setRegion(dto.getRegion());
+        u.setStatut(true); // Actif par défaut
+        
+        // Mot de passe temporaire par défaut (A encoder avec BCrypt en production)
+        String plainPassword = "Diafarms@" + UUID.randomUUID().toString().substring(0, 4);
+        u.setPassword(plainPassword); 
+
+        // Traçabilité (Initialisation)
+        Initialisation init = new Initialisation();
+        init.setCreatedAt(LocalDateTime.now());
+        init.setUpdatedAt(LocalDateTime.now());
+        u.setInitialisation(init);
+
+        // Mappage des rôles (Convertit le RoleDTO du front en entité Roles pour Hibernate)
+        if (dto.getRoles() != null) {
+            u.setRoles(dto.getRoles().stream().map(roleDto -> {
+                Roles role = new Roles();
+                role.setId(roleDto.getId());
+                role.setRole(roleDto.getRole());
+                return role;
+            }).collect(Collectors.toSet()));
+        }
+
+        Utilisateurs savedUser = utilisateursRepo.save(u);
+        
+        // On retourne le DTO avec le mot de passe en clair uniquement à la création pour affichage
+        return UtilisateursDTO.fromEntity(savedUser, plainPassword);
+    }
+
+    // 4. Modifier un utilisateur existant
+    @Transactional
+    public UtilisateursDTO updateUtilisateur(String uniqueId, UtilisateursDTO dto) {
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+        u.setFullName(dto.getFullName());
+        u.setTelephone(dto.getTelephone());
+        u.setEmail(dto.getEmail());
+        u.setCity(dto.getCity());
+        u.setRegion(dto.getRegion());
+        
+        if (u.getInitialisation() != null) {
+            u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+
+        // Mise à jour des rôles
+        if (dto.getRoles() != null) {
+            u.getRoles().clear();
+            u.setRoles(dto.getRoles().stream().map(roleDto -> {
+                Roles role = new Roles();
+                role.setId(roleDto.getId());
+                role.setRole(roleDto.getRole());
+                return role;
+            }).collect(Collectors.toSet()));
+        }
+
+        Utilisateurs updatedUser = utilisateursRepo.save(u);
+        return UtilisateursDTO.fromEntity(updatedUser);
+    }
+
+    // 5. Régénérer l'identifiant unique (Révocation de l'ancien QR code mobile)
+    @Transactional
+    public UtilisateursDTO regenerateQRCodeToken(String uniqueId) {
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        
+        // En changeant le uniqueId, l'ancien QR code scanné par le mobile devient obsolète
+        u.setUniqueId("USR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+
+        Utilisateurs updatedUser = utilisateursRepo.save(u);
+        return UtilisateursDTO.fromEntity(updatedUser);
+    }
+
+
+    
 }
