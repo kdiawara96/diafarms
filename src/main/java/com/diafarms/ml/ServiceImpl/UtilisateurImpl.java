@@ -318,6 +318,10 @@ public class UtilisateurImpl implements UtilisateursServices {
                 throw new RuntimeException("Un utilisateur avec ce numéro de téléphone existe déjà dans votre ferme.");
             }
         }
+             // Validate input data
+        if (utilisateursRepo.existsByEmail(dto.getEmail())) {
+            throw new IllegalArgumentException("L'email '" + dto.getEmail() + "' existe déjà.");
+        }
 
         Utilisateurs u = new Utilisateurs();
         
@@ -503,4 +507,5 @@ public class UtilisateurImpl implements UtilisateursServices {
                 usersPage.getSize()         // Taille de la page
         );
     }
+
 }
