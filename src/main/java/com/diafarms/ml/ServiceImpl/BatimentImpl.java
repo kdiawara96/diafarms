@@ -228,4 +228,5 @@ public class BatimentImpl implements BatimentServices {
                         .map(BatimentsDTO::select)
                         .collect(Collectors.toList());
    }
+
 }

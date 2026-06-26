@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +19,7 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.FarmsRepo;
 import com.diafarms.ml.repository.RolesRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
@@ -26,6 +28,11 @@ import com.diafarms.ml.request.update.UserUpdate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
 
+import org.springframework.data.domain.Page;
+
+import org.springframework.data.domain.Pageable;
+
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -454,4 +461,46 @@ public class UtilisateurImpl implements UtilisateursServices {
         return UtilisateursDTO.fromEntity(revokedUser);
     }
     
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<UtilisateursDTO> getAllUtilisateurs(String searchTerm, int page, int size) {
+        // 1. Récupération du contexte de la ferme de l'admin connecté
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Erreur de récupération du contexte utilisateur.");
+        }
+
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new RuntimeException("Aucune exploitation associée à votre compte.");
+        }
+
+        // 2. Préparation de la pagination Spring Data (Zéro-indexed)
+        Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
+
+        // 3. Exécution de la recherche paginée en BDD
+        Page<Utilisateurs> usersPage = utilisateursRepo.searchUsersByFarm(
+                currentUser.getFarm().getId(), 
+                searchTerm != null ? searchTerm.trim() : null, 
+                pageable
+        );
+
+        // 4. Conversion des entités en DTOs
+        List<UtilisateursDTO> dtos = usersPage.getContent().stream()
+                .map(UtilisateursDTO::fromEntity)
+                .collect(Collectors.toList());
+
+        // 5. Encapsulation dans ton modèle PaginatedResponse
+        return new PaginatedResponse<>(
+                dtos,
+                usersPage.getNumber(),      // Page courante
+                usersPage.getTotalPages(),  // Nombre total de pages
+                usersPage.getTotalElements(), // Nombre total d'éléments
+                usersPage.getSize()         // Taille de la page
+        );
+    }
 }

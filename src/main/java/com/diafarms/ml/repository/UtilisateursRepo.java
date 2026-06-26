@@ -48,6 +48,16 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
         "ORDER BY u.initialisation.createdAt DESC")
     List<Utilisateurs> searchUsers(@Param("search") String search);
 
+    @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND " +
+           "(:searchTerm IS NULL OR :searchTerm = '' OR " +
+           "LOWER(u.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+           "LOWER(u.telephone) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
+           "LOWER(u.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+    Page<Utilisateurs> searchUsersByFarm(
+            @Param("farmId") Long farmId, 
+            @Param("searchTerm") String searchTerm, 
+            Pageable pageable
+    );
 
     // 1. Par farm + non supprimé
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND u.initialisation.removed = false")

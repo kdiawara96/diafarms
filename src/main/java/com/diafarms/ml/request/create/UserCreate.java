@@ -16,5 +16,4 @@ public class UserCreate {
     private String email;
     private String telephone;
     private List<String> roles; 
-
 }

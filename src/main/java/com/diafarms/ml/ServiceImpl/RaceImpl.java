@@ -72,7 +72,6 @@ public class RaceImpl implements RaceServices {
     private String genererIdentifiantUnique() {
         long count = raceRepo.count() + 1;
         String identifiant;
-        
         do {
             identifiant = String.format("RAC-%03d", count);
             count++;

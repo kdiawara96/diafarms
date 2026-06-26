@@ -8,11 +8,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.others.ApiResponse;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.UserCreate;
 import com.diafarms.ml.request.update.UserUpdate;
 import com.diafarms.ml.services.UtilisateursServices;
@@ -94,25 +96,25 @@ public class usersControllers {
     /**
      * Récupère la liste complète de tous les utilisateurs (pour le tableau principal).
      */
-    @GetMapping("/all")
-    public ResponseEntity<ApiResponse<List<UtilisateursDTO>>> getAllUsers() {
-        try {
-            List<UtilisateursDTO> result = services.getAllUtilisateurs();
-            return ApiResponse.createResponse(
-                    "Liste des utilisateurs récupérée avec succès", 
-                    HttpStatus.OK, 
-                    result, 
-                    null
-            );
-        } catch (Exception e) {
-            return ApiResponse.createResponse(
-                    "Erreur lors de la récupération des utilisateurs", 
-                    HttpStatus.INTERNAL_SERVER_ERROR, 
-                    null, 
-                    null
-            );
-        }
-    }
+    // @GetMapping("/all")
+    // public ResponseEntity<ApiResponse<List<UtilisateursDTO>>> getAllUsers() {
+    //     try {
+    //         List<UtilisateursDTO> result = services.getAllUtilisateurs();
+    //         return ApiResponse.createResponse(
+    //                 "Liste des utilisateurs récupérée avec succès", 
+    //                 HttpStatus.OK, 
+    //                 result, 
+    //                 null
+    //         );
+    //     } catch (Exception e) {
+    //         return ApiResponse.createResponse(
+    //                 "Erreur lors de la récupération des utilisateurs", 
+    //                 HttpStatus.INTERNAL_SERVER_ERROR, 
+    //                 null, 
+    //                 null
+    //         );
+    //     }
+    // }
 
     /**
      * Récupère les détails complets d'un utilisateur par son identifiant unique.
@@ -250,7 +252,7 @@ public class usersControllers {
      * @param request les données de création simplifiées (fullName, telephone, etc.)
      * @return response avec l'utilisateur créé et le mot de passe temporaire en clair
      */
-    @PostMapping("/create")
+    @PostMapping("/create-pro-or-finance")
     public ResponseEntity<ApiResponse<UtilisateursDTO>> createUserProOrFinance(@RequestBody UserCreate request) {
         try {
             // Validation de base des champs obligatoires côté contrôleur
@@ -282,6 +284,41 @@ public class usersControllers {
                     "Erreur interne du serveur lors de la création",
                     HttpStatus.INTERNAL_SERVER_ERROR,
                     null,
+                    null
+            );
+        }
+    }
+
+    /**
+     * Récupère la liste paginée et filtrée des utilisateurs de la ferme.
+     * Exemple : /diafarms/api/v1/users/all?search=karim&page=0&size=10
+     */
+    @GetMapping("/all-with-pagination")
+    public ResponseEntity<ApiResponse<PaginatedResponse<UtilisateursDTO>>> getAllUsers(
+            @RequestParam(value = "search", required = false) String searchTerm,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+        try {
+            PaginatedResponse<UtilisateursDTO> paginatedResult = services.getAllUtilisateurs(searchTerm, page, size);
+            
+            return ApiResponse.createResponse(
+                    "Données récupérées avec succès", 
+                    HttpStatus.OK, 
+                    paginatedResult, 
+                    null
+            );
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse(
+                    e.getMessage(), 
+                    HttpStatus.BAD_REQUEST, 
+                    null, 
+                    null
+            );
+        } catch (Exception e) {
+            return ApiResponse.createResponse(
+                    "Erreur interne lors du traitement de la liste", 
+                    HttpStatus.INTERNAL_SERVER_ERROR, 
+                    null, 
                     null
             );
         }
