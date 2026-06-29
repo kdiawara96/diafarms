@@ -149,8 +149,8 @@ public class usersControllers {
     /**
      * Modifie les informations d'un utilisateur (fullName, telephone, email, city, region, roles).
      */
-    @PutMapping("/update/{uniqueId}")
-    public ResponseEntity<ApiResponse<UtilisateursDTO>> updateUser(
+    @PutMapping("/update-prod-finan/{uniqueId}")
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> updateUserProdOrFinan(
             @PathVariable String uniqueId, 
             @RequestBody UserUpdate request) {
         try {
@@ -218,7 +218,7 @@ public class usersControllers {
     /**
      * Révoque et désactive un utilisateur par son identifiant unique.
      */
-    @PutMapping("/revoke/{uniqueId}")
+    @PutMapping("/revoke-prod-finan/{uniqueId}")
     public ResponseEntity<ApiResponse<UtilisateursDTO>> revokeUser(@PathVariable String uniqueId) {
         try {
             UtilisateursDTO dto = services.revoquerUtilisateur(uniqueId);

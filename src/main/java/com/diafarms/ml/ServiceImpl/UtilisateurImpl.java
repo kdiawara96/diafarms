@@ -300,8 +300,8 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // 3. Créer un nouvel utilisateur
-   @Override
-   @Transactional
+    @Override
+    @Transactional
     public UtilisateursDTO createUtilisateurProdOrFinan(UserCreate dto) {
         // Récupération de la ferme de l'administrateur connecté
         Utilisateurs currentUser = null;
@@ -440,7 +440,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         return UtilisateursDTO.fromEntity(updatedUser);
     }
 
-   /**
+    /**
      * Révoque un utilisateur en désactivant son compte et en invalidant son QR code.
      */
     @Override
@@ -451,7 +451,7 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
 
         // 2. Révocation des accès
-        u.setStatut(false); // Le compte passe en suspendu/inactif
+        u.setStatut(!u.getStatut()); // Le compte passe en suspendu/inactif
         
         // On change le uniqueId pour couper immédiatement la session du QR Code actuel
         // u.setUniqueId("REVOC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
@@ -465,8 +465,6 @@ public class UtilisateurImpl implements UtilisateursServices {
         return UtilisateursDTO.fromEntity(revokedUser);
     }
     
-
-
     @Override
     @Transactional(readOnly = true)
     public PaginatedResponse<UtilisateursDTO> getAllUtilisateurs(String searchTerm, int page, int size) {

@@ -55,6 +55,17 @@ public class Utilisateurs {
     @Column(name = "telephone", length = 50, unique = true)
     private String telephone;
 
+    @Column(name = "info_qrcode_encrypte", columnDefinition = "TEXT")
+    private String infoQrcodeEncrypte; // Le token ou l'URL cryptée
+
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    @Column(name = "qr_generated_at", length = 50)
+    private LocalDateTime qrGeneratedAt; // Date de début (création)
+    
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    @Column(name = "qr_expires_at", length = 50)
+    private LocalDateTime qrExpiresAt;   // Date de fin (expiration)
+
     @Column(name = "password")
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;

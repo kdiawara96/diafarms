@@ -33,6 +33,14 @@ public class UtilisateursDTO {
     private String telephone;
     private boolean statut;
     private String password;
+
+    private String infoQrcodeEncrypte;
+
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime qrGeneratedAt; 
+
+    @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime qrExpiresAt; 
     
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     private LocalDateTime lastLogin; 
@@ -60,6 +68,9 @@ public class UtilisateursDTO {
                 .city(utilisateur.getCity())
                 .photo(utilisateur.getPhoto())
                 .farmName(utilisateur.getFarmName())
+                .infoQrcodeEncrypte(utilisateur.getInfoQrcodeEncrypte())
+                .qrGeneratedAt(utilisateur.getQrGeneratedAt())
+                .qrExpiresAt(utilisateur.getQrExpiresAt())
                 .username(utilisateur.getUsername())
                 .email(utilisateur.getEmail())
                 .telephone(utilisateur.getTelephone())
@@ -93,6 +104,9 @@ public class UtilisateursDTO {
                 .farmName(utilisateur.getFarmName())
                 .username(utilisateur.getUsername())
                 .email(utilisateur.getEmail())
+                .infoQrcodeEncrypte(utilisateur.getInfoQrcodeEncrypte())
+                .qrGeneratedAt(utilisateur.getQrGeneratedAt())
+                .qrExpiresAt(utilisateur.getQrExpiresAt())
                 .telephone(utilisateur.getTelephone())
                 .statut(utilisateur.getStatut())
                 .password(plainPassword)

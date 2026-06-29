@@ -102,7 +102,6 @@ public class MlApplication implements CommandLineRunner {
 
     }
 
-
 	@Bean
 	public PasswordEncoder passwordEncoder(){
 		return new BCryptPasswordEncoder(); 

@@ -17,6 +17,9 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     
     Optional<Utilisateurs> findByUniqueId(String uniqueId);    
     Utilisateurs findByEmail(String email);
+    
+    boolean existsByUniqueId(String uniqueId);
+
     Utilisateurs findByTelephone(String email);
     Optional<Utilisateurs> findByUsername(String username);
     Optional<Utilisateurs> findByUsernameOrEmailOrTelephone(String username, String email, String telephone);
