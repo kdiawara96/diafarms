@@ -220,11 +220,14 @@ public class InvestissementServiceImpl implements InvestissementService {
     @Override
     @Transactional
     public void supprimerInvestissement(String uniqueId) {
+        // 1. Récupérer l'investissement réel existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
-        inv.getInitialisation().setRemoved(true);
-        inv.getInitialisation().setUpdatedAt(LocalDateTime.now());
-        investissementRepo.save(inv);
+        
+        // 2. Suppression réelle et physique en BDD
+        // Grâce à cascade = CascadeType.ALL et orphanRemoval = true, 
+        // Hibernate va d'abord nettoyer la table 'investissement_repartitions' pour cet ID avant de supprimer l'investissement.
+        investissementRepo.delete(inv);
     }
 
     @Override

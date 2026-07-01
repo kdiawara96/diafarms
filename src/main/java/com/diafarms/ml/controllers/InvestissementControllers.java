@@ -74,7 +74,7 @@ public class InvestissementControllers {
         }
     }
 
-    // ✏️ Modifier un investissement existant
+    // Modifier un investissement existant
     @PutMapping("/update/{uniqueId}")
     public ResponseEntity<ApiResponse<InvestissementDTO>> update(
             @PathVariable String uniqueId,
