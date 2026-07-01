@@ -15,6 +15,7 @@ import com.diafarms.ml.repository.InvestissementRepository;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.InvestissementRequest;
+import com.diafarms.ml.request.update.InvestissementUpdateRequestDTO;
 import com.diafarms.ml.services.InvestissementService;
 import lombok.RequiredArgsConstructor;
 
@@ -25,6 +26,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -78,8 +80,8 @@ public class InvestissementServiceImpl implements InvestissementService {
     }
     
     @Override
-        @Transactional
-        public InvestissementDTO creerInvestissement(InvestissementRequest dto, String utilisateurUniqueId) {
+    @Transactional
+    public InvestissementDTO creerInvestissement(InvestissementRequest dto, String utilisateurUniqueId) {
         // 1. Récupération de l'utilisateur et de sa ferme
         Utilisateurs u = utilisateursRepo.findByUniqueId(utilisateurUniqueId)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
@@ -142,26 +144,78 @@ public class InvestissementServiceImpl implements InvestissementService {
     Investissement saved = investissementRepo.save(investissement);
     return toDTO(saved);
 }
+    
+    
     @Override
     @Transactional
-    public InvestissementDTO modifierInvestissement(String uniqueId, Investissement details) {
+    public InvestissementDTO modifierInvestissement(String uniqueId, InvestissementUpdateRequestDTO dto) {
+        // 1. Récupération de l'investissement existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
-        
-        inv.setNom(details.getNom());
-        inv.setCategorie(details.getCategorie());
-        inv.setType(details.getType());
-        inv.setMontant(details.getMontant());
-        inv.setDureeAmortissement(details.getDureeAmortissement());
-        inv.setAffectation(details.getAffectation());
-        inv.setFournisseur(details.getFournisseur());
-        inv.setCommentaire(details.getCommentaire());
-        inv.setIcon(details.getIcon());
-        
-        inv.getInitialisation().setUpdatedAt(LocalDateTime.now());
-        
-        return toDTO(investissementRepo.save(inv));
+
+        // 2. Mise à jour des champs basiques
+        inv.setNom(dto.getNom());
+        inv.setCategorie(dto.getCategorie());
+        inv.setMontant(dto.getMontant());
+        inv.setDateAchat(dto.getDateAchat());
+        inv.setFournisseur(dto.getFournisseur());
+        inv.setDureeAmortissement(dto.getDureeAmortissement());
+        inv.setCommentaire(dto.getCommentaire());
+        inv.setType(dto.getType() != null ? dto.getType() : "Lineaire");
+
+        // Conversion String -> Enum TypeAffectation
+        try {
+                inv.setAffectation(TypeAffectation.valueOf(dto.getAffectation().toUpperCase()));
+        } catch (IllegalArgumentException | NullPointerException e) {
+                throw new IllegalArgumentException("Type d'affectation invalide : " + dto.getAffectation());
+        }
+
+        // 3. 🟢 Gestion de la répartition du projet si l'affectation est DÉDIÉE
+        if (TypeAffectation.DEDIE.equals(inv.getAffectation())) {
+        if (dto.getProjetId() == null || dto.getProjetId().trim().isEmpty()) {
+                throw new IllegalArgumentException("Le projetId est obligatoire pour un investissement dédié.");
+        }
+
+        Projets projet = projetsRepo.findByUniqueId(dto.getProjetId())
+                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable avec l'ID: " + dto.getProjetId()));
+
+        // S'il y a déjà des répartitions, on vérifie si le projet a changé
+        boolean projetExisteDeja = inv.getRepartitions().stream()
+                .anyMatch(r -> r.getProjet().getUniqueId().equals(dto.getProjetId()) && r.getDateFin() == null);
+
+        if (!projetExisteDeja) {
+                // Clôturer l'ancienne répartition active s'il y en a une
+                inv.getRepartitions().stream()
+                        .filter(r -> r.getDateFin() == null)
+                        .forEach(r -> r.setDateFin(LocalDate.now()));
+
+                // Créer la nouvelle répartition active
+                InvestissementRepartition nouvelleRepartition = new InvestissementRepartition();
+                nouvelleRepartition.setInvestissement(inv);
+                nouvelleRepartition.setProjet(projet);
+                nouvelleRepartition.setDateDebut(LocalDate.now()); // ou dto.getDateAchat() selon ta politique
+                nouvelleRepartition.setDateFin(null);
+                nouvelleRepartition.setMoisUtilises(dto.getDureeAmortissement());
+                nouvelleRepartition.setMontantAlloue(dto.getMontant());
+
+                inv.getRepartitions().add(nouvelleRepartition);
+        }
+        } else {
+                // Si l'investissement repasse en COMMUN, on clôture toutes les répartitions actives
+                inv.getRepartitions().stream()
+                        .filter(r -> r.getDateFin() == null)
+                        .forEach(r -> r.setDateFin(LocalDate.now()));
+        }
+
+        // 4. Métadonnées de mise à jour
+        if (inv.getInitialisation() != null) {
+                inv.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+
+        Investissement saved = investissementRepo.save(inv);
+        return toDTO(saved);
     }
+
 
     @Override
     @Transactional
@@ -221,8 +275,8 @@ public class InvestissementServiceImpl implements InvestissementService {
 
 
     @Override
-        @Transactional(readOnly = true)
-        public InvestissementStatsDTO getInvestissementsStats(String utilisateurUniqueId) {
+    @Transactional(readOnly = true)
+    public InvestissementStatsDTO getInvestissementsStats(String utilisateurUniqueId) {
         // 1. Récupérer l'utilisateur
         Utilisateurs u = utilisateursRepo.findByUniqueId(utilisateurUniqueId)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
@@ -240,7 +294,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         for (Investissement inv : tousLesInvestissements) {
                 // Ajout au montant brut global
                 if (inv.getMontant() != null) {
-                totalBrut += inv.getMontant();
+                        totalBrut += inv.getMontant();
                 }
 
                 // Calcul des mois écoulés pour obtenir la valeur nette dynamique actuelle

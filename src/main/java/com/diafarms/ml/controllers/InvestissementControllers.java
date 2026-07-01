@@ -4,11 +4,11 @@ import com.diafarms.ml.DTO.InvestissementDTO;
 import com.diafarms.ml.DTO.InvestissementRepartitionDTO;
 import com.diafarms.ml.DTO.InvestissementStatsDTO;
 import com.diafarms.ml.commons.SecurityUtils;
-import com.diafarms.ml.models.Investissement;
 import com.diafarms.ml.models.InvestissementRepartition;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.InvestissementRequest;
+import com.diafarms.ml.request.update.InvestissementUpdateRequestDTO;
 import com.diafarms.ml.services.InvestissementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -78,7 +78,7 @@ public class InvestissementControllers {
     @PutMapping("/update/{uniqueId}")
     public ResponseEntity<ApiResponse<InvestissementDTO>> update(
             @PathVariable String uniqueId,
-            @RequestBody Investissement request) {
+            @RequestBody InvestissementUpdateRequestDTO request) {
         try {
             InvestissementDTO result = investissementService.modifierInvestissement(uniqueId, request);
             return ApiResponse.createResponse("Investissement mis à jour avec succès", HttpStatus.OK, result, null);
