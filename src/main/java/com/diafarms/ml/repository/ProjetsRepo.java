@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 
 import com.diafarms.ml.models.Projets;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -32,4 +33,7 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
 
     @Query("SELECT COUNT(p) > 0 FROM Projets p WHERE p.code = :code")
     boolean existsByCode(@Param("code") String code);
+
+     // 🔥 Récupère tous les projets non supprimés
+    List<Projets> findByInitialisation_RemovedFalse();
 }

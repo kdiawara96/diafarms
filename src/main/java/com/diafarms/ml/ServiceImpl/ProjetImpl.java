@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.ProjetsDTO;
+import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.Objectif;
 import com.diafarms.ml.models.Alimentation;
@@ -413,6 +414,14 @@ public class ProjetImpl implements ProjetServices {
         }
 
         return ProjetsDTO.fromEntity(updatedProjet);
+    }
+    
+    @Override
+    public List<ProjetsSelect> selectEntity() {
+        return projetsRepo.findByInitialisation_RemovedFalse()
+                .stream()
+                .map(ProjetsSelect::selectEntity)
+                .toList();
     }
 
     

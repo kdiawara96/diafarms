@@ -2,9 +2,13 @@ package com.diafarms.ml.controllers;
 
 import com.diafarms.ml.DTO.InvestissementDTO;
 import com.diafarms.ml.DTO.InvestissementRepartitionDTO;
+import com.diafarms.ml.DTO.InvestissementStatsDTO;
+import com.diafarms.ml.commons.SecurityUtils;
 import com.diafarms.ml.models.Investissement;
 import com.diafarms.ml.models.InvestissementRepartition;
 import com.diafarms.ml.others.ApiResponse;
+import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.request.create.InvestissementRequest;
 import com.diafarms.ml.services.InvestissementService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,13 +26,19 @@ public class InvestissementControllers {
     private final InvestissementService investissementService;
 
     // 📁 Récupérer la liste complète des investissements d'une ferme
-    @GetMapping("/ferme/{farmId}")
-    public ResponseEntity<ApiResponse<List<InvestissementDTO>>> getInvestissementsParFerme(@PathVariable Long farmId) {
-        List<InvestissementDTO> list = investissementService.getInvestissementsParFerme(farmId);
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponse<PaginatedResponse<InvestissementDTO>>> getInvestissements(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        
+        String uniqueId = SecurityUtils.getCurrentUserUniqueId();
+        
+        PaginatedResponse<InvestissementDTO> response = investissementService.getInvestissementsPagines(uniqueId, page, size);
+
         return ApiResponse.createResponse(
-                "Liste des investissements récupérée avec succès",
+                "Liste paginée des investissements récupérée avec succès",
                 HttpStatus.OK,
-                list,
+                response,
                 null
         );
     }
@@ -50,11 +60,12 @@ public class InvestissementControllers {
     // Note : Tu pourras adapter les paramètres farmId et utilisateurId selon ton contexte de session/sécurité
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<InvestissementDTO>> create(
-            @RequestBody Investissement request,
-            @RequestParam Long farmId,
-            @RequestParam Long utilisateurId) {
+            @RequestBody InvestissementRequest request) {
         try {
-            InvestissementDTO result = investissementService.creerInvestissement(request, farmId, utilisateurId);
+               // Récupère le uniqueId directement du token JWT
+                String uniqueId = SecurityUtils.getCurrentUserUniqueId();
+
+            InvestissementDTO result = investissementService.creerInvestissement(request, uniqueId);
             return ApiResponse.createResponse("Investissement créé avec succès", HttpStatus.OK, result, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
@@ -124,5 +135,19 @@ public class InvestissementControllers {
     public ResponseEntity<ApiResponse<Double>> getCoutAmortissementProjet(@PathVariable String projetUniqueId) {
         Double total = investissementService.getCoutAmortissementProjet(projetUniqueId);
         return ApiResponse.createResponse("Charge d'amortissement totale calculée pour le projet", HttpStatus.OK, total, null);
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<InvestissementStatsDTO>> getStats() {
+        String utilisateurUniqueId = SecurityUtils.getCurrentUserUniqueId();
+        
+        InvestissementStatsDTO stats = investissementService.getInvestissementsStats(utilisateurUniqueId);
+        
+        return ApiResponse.createResponse(
+                "Statistiques globales récupérées avec succès",
+                HttpStatus.OK,
+                stats,
+                null
+        );
     }
 }

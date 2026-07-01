@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.diafarms.ml.DTO.ProjetsDTO;
+import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.ProjetCreate;
@@ -98,4 +99,18 @@ public class ProjetsControllers {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
     }
+
+        @GetMapping("/select")
+        public ResponseEntity<ApiResponse<List<ProjetsSelect>>> selectProjet() {
+            try {
+                List<ProjetsSelect> result = services.selectEntity();
+                return ApiResponse.createResponse("Projet mis à jour avec succès", HttpStatus.OK, result, null);
+            } catch (IllegalArgumentException e) {
+                return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+            } catch (RuntimeException e) {
+                return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+            } catch (Exception e) {
+                return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+            }
+        }
 }

@@ -1,6 +1,9 @@
 package com.diafarms.ml.services;
 
+import java.util.List;
+
 import com.diafarms.ml.DTO.ProjetsDTO;
+import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.ProjetCreate;
 import com.diafarms.ml.request.update.ProjetUpdate;
@@ -12,5 +15,7 @@ public interface ProjetServices {
     ProjetsDTO createProjet(ProjetCreate data);
     ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data);
     String deleteOrRecoverProjet(String uniqueId);
+
+    List<ProjetsSelect> selectEntity();
 
 }
