@@ -336,7 +336,19 @@ public class ProjetImpl implements ProjetServices {
 
         projetsRepo.save(projet);
 
-        return projet.getInitialisation().getRemoved()
+        boolean removed = projet.getInitialisation().getRemoved();
+
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser != null) {
+            logs.addLogs(
+                currentUser.getId(),
+                projet.getId(),
+                "Projet",
+                (removed ? "Suppression" : "Restauration") + " du projet '" + projet.getTitre() + "'"
+            );
+        }
+
+        return removed
                 ? "Projet supprimé."
                 : "Projet récupéré.";
     }

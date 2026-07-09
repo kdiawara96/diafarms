@@ -45,7 +45,7 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
             SELECT o
             FROM OccupationBatiment o
             WHERE o.batiment = b
-            AND (o.dateSortie IS NULL OR o.dateSortie >= CURRENT_DATE)
+            AND (o.dateSortie IS NULL OR o.dateSortie > CURRENT_DATE)
         )
         """)
     List<Batiment> findAvailableByFarmId(@Param("farmId") Long farmId);

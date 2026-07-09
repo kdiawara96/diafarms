@@ -140,7 +140,7 @@ public class SecurityConfiguration {
                 "https://api.diafarms.com"
             ));
 
-            configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
+            configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
             configuration.setAllowCredentials(true);  // Autoriser les cookies et les credentials
             configuration.addAllowedHeader("*");
             

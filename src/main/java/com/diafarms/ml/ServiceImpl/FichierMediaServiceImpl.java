@@ -11,19 +11,23 @@ import com.diafarms.ml.DTO.FichierMediaDTO;
 import com.diafarms.ml.commons.VariableEnv;
 import com.diafarms.ml.models.FichierMedia;
 import com.diafarms.ml.models.Projets;
+import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.FichierMediaRepository;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.services.FichierMediaService;
+import com.diafarms.ml.services.LogsServices;
 
 import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
 public class FichierMediaServiceImpl implements FichierMediaService{
-            
+
         private final MinioServiceImpl minioService;
         private final FichierMediaRepository fichierMediaRepository;
         private final ProjetsRepo projetsRepository;
+        private final LogsServices logs;
+        private final OtherService OtherService;
 
         @Transactional
         public FichierMediaDTO uploadFichierProjet(MultipartFile file, String projetUniqueId) throws Exception {
@@ -46,7 +50,22 @@ public class FichierMediaServiceImpl implements FichierMediaService{
             fichier.setFarm(projet.getFarm());
 
             FichierMedia saved = fichierMediaRepository.save(fichier);
-            
+
+            Utilisateurs currentUser = null;
+            try {
+                currentUser = OtherService.getCurrentUser();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            if (currentUser != null) {
+                logs.addLogs(
+                        currentUser.getId(),
+                        saved.getId(),
+                        "FichierMedia",
+                        "Upload du fichier '" + saved.getNomOriginal() + "' sur le projet '" + projet.getTitre() + "'"
+                );
+            }
+
             return FichierMediaDTO.fromEntity(saved, minioService.getPresignedUrl(saved.getNomMinio()));
         }
 
@@ -74,6 +93,21 @@ public class FichierMediaServiceImpl implements FichierMediaService{
 
             // Supprimer de la BDD
             fichierMediaRepository.delete(fichier);
+
+            Utilisateurs currentUser = null;
+            try {
+                currentUser = OtherService.getCurrentUser();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            if (currentUser != null) {
+                logs.addLogs(
+                        currentUser.getId(),
+                        fichierId,
+                        "FichierMedia",
+                        "Suppression du fichier '" + fichier.getNomOriginal() + "'"
+                );
+            }
 
             return "Fichier supprimé";
         }

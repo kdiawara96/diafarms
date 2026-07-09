@@ -1,18 +1,18 @@
 package com.diafarms.ml.services;
 
 
-import com.diafarms.ml.models.OccupationBatiment;
+import com.diafarms.ml.DTO.OccupationBatimentDTO;
 
 public interface OccupationService {
     /**
      * Lie un projet à un bâtiment (Crée une occupation)
      */
-    OccupationBatiment assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, String dateEntree);
+    OccupationBatimentDTO assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, String dateEntree);
 
     /**
      * Modifie une liaison existante (ex: changer de bâtiment ou ajuster les dates/sujets)
      */
-    OccupationBatiment modifierOccupation(Long occupationId, Long nouveauBatimentId, Integer nouveauNbSujets, String dateEntree, String dateSortie);
+    OccupationBatimentDTO modifierOccupation(Long occupationId, Long nouveauBatimentId, Integer nouveauNbSujets, String dateEntree, String dateSortie);
 
     /**
      * Supprime ou termine une liaison (Libère le bâtiment en mettant une date de sortie ou en supprimant le record)

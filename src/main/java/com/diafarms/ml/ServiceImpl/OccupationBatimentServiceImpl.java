@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.diafarms.ml.DTO.OccupationBatimentDTO;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Batiment.StatutBatiment;
 import com.diafarms.ml.models.OccupationBatiment;
@@ -30,7 +31,7 @@ public class OccupationBatimentServiceImpl implements OccupationService {
 
     @Override
     @Transactional
-    public OccupationBatiment assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, String dateEntree) {
+    public OccupationBatimentDTO assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, String dateEntree) {
 
         LocalDate dateEntreeParsed = convertirEnDate(dateEntree, LocalDate.now());
 
@@ -81,12 +82,12 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         if (currentUser != null) {
              logs.addLogs(currentUser.getId(), savedOccupation.getId(), "OccupationBatiment", "Assignation du bâtiment '" + batiment.getNom() + "' au projet '" + projet.getTitre() + "' avec succès !");
         }
-        return savedOccupation;
+        return OccupationBatimentDTO.fromEntityList(savedOccupation);
     }
 
     @Override
     @Transactional
-    public OccupationBatiment modifierOccupation(Long occupationId, Long nouveauBatimentId, Integer nouveauNbSujets, String dateEntree, String dateSortie) {
+    public OccupationBatimentDTO modifierOccupation(Long occupationId, Long nouveauBatimentId, Integer nouveauNbSujets, String dateEntree, String dateSortie) {
         
          if(occupationId == null) {
             throw new RuntimeException("L'identifiant de l'occupation ne peut pas être nul.");
@@ -179,7 +180,7 @@ public class OccupationBatimentServiceImpl implements OccupationService {
             );
         }
 
-        return savedOccupation;
+        return OccupationBatimentDTO.fromEntityList(savedOccupation);
     }
 
     @Override

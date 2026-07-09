@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.diafarms.ml.models.OccupationBatiment;
+import com.diafarms.ml.DTO.OccupationBatimentDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.services.OccupationService;
 
@@ -30,14 +30,14 @@ public class OccupationBatimentControllers {
      * POST -> /diafarms/api/v1/occupations-batiments/assigner
      */
     @PostMapping("/assigner")
-    public ResponseEntity<ApiResponse<OccupationBatiment>> assignerBatimentAProjet(
+    public ResponseEntity<ApiResponse<OccupationBatimentDTO>> assignerBatimentAProjet(
             @RequestParam Long projetId,
             @RequestParam Long batimentId,
             @RequestParam Integer nbSujets,
             @RequestParam(required = false) String dateEntree
     ) {
         try {
-            OccupationBatiment response = services.assignerBatimentAProjet(projetId, batimentId, nbSujets, dateEntree);
+            OccupationBatimentDTO response = services.assignerBatimentAProjet(projetId, batimentId, nbSujets, dateEntree);
             return ApiResponse.createResponse("Bâtiment assigné avec succès", HttpStatus.CREATED, response, null);
         } catch (RuntimeException e) {
             return ApiResponse.createResponse("Erreur lors de l'assignation", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
@@ -49,7 +49,7 @@ public class OccupationBatimentControllers {
      * PUT -> /diafarms/api/v1/occupations-batiments/modifier
      */
     @PutMapping("/modifier")
-    public ResponseEntity<ApiResponse<OccupationBatiment>> modifierOccupation(
+    public ResponseEntity<ApiResponse<OccupationBatimentDTO>> modifierOccupation(
             @RequestParam Long occupationId,
             @RequestParam Long nouveauBatimentId,
             @RequestParam Integer nouveauNbSujets,
@@ -57,7 +57,7 @@ public class OccupationBatimentControllers {
             @RequestParam(required = false) String dateSortie
     ) {
         try {
-            OccupationBatiment response = services.modifierOccupation(
+            OccupationBatimentDTO response = services.modifierOccupation(
                     occupationId, nouveauBatimentId, nouveauNbSujets, dateEntree, dateSortie
             );
             return ApiResponse.createResponse("Occupation modifiée avec succès", HttpStatus.OK, response, null);
