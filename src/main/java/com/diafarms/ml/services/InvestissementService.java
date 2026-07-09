@@ -27,4 +27,5 @@ public interface InvestissementService {
     List<InvestissementRepartitionDTO> getRepartitionsParInvestissement(String uniqueId);
     InvestissementRepartitionDTO ajouterRepartition(String invUniqueId, String projetUniqueId, InvestissementRepartition repartition);
     Double getCoutAmortissementProjet(String projetUniqueId);
+    String supprimerRepartition(Long id);
 }

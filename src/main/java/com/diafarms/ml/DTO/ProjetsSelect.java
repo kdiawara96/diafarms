@@ -1,5 +1,7 @@
 package com.diafarms.ml.DTO;
 
+import java.time.LocalDate;
+
 import com.diafarms.ml.models.Projets;
 
 import lombok.AllArgsConstructor;
@@ -19,6 +21,8 @@ public class ProjetsSelect {
      private String uniqueId;
      private String code;
      private String titre;
+     private LocalDate debut;
+     private LocalDate finPrevue;
 
      public static ProjetsSelect selectEntity(Projets data) {
         if (data == null) {
@@ -30,6 +34,8 @@ public class ProjetsSelect {
                 .uniqueId(data.getUniqueId())
                 .code(data.getCode())
                 .titre(data.getTitre())
+                .debut(data.getDebut())
+                .finPrevue(data.getFinPrevue())
                 .build();
     }
     

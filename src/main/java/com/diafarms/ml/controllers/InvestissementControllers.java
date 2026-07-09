@@ -150,4 +150,18 @@ public class InvestissementControllers {
                 null
         );
     }
+
+    // 🗑️ Supprimer une affectation/répartition spécifique
+    @DeleteMapping("/repartitions/{id}")
+    public ResponseEntity<ApiResponse<Map<String, String>>> delete(@PathVariable Long id) {
+        try {
+            investissementService.supprimerRepartition(id);
+            Map<String, String> result = Map.of("message", "L'affectation a été supprimée définitivement.");
+            return ApiResponse.createResponse("Affectation supprimée avec succès", HttpStatus.OK, result, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
 }

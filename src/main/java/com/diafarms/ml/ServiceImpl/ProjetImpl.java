@@ -19,6 +19,7 @@ import com.diafarms.ml.enums.Objectif;
 import com.diafarms.ml.models.Alimentation;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Farm;
+import com.diafarms.ml.models.InvestissementRepartition;
 import com.diafarms.ml.models.OccupationBatiment;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Race;
@@ -28,6 +29,7 @@ import com.diafarms.ml.models.Batiment.StatutBatiment;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.BatimentRepo;
+import com.diafarms.ml.repository.InvestissementRepartitionRepository;
 import com.diafarms.ml.repository.OccupationBatimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.RaceRepo;
@@ -54,6 +56,7 @@ public class ProjetImpl implements ProjetServices {
     private final VaccinationRepo vaccinationRepo;
     private final OccupationBatimentRepo occupationBatimentRepo;
     private final BatimentRepo batimentRepo;
+    private final InvestissementRepartitionRepository investissementRepartitionRepo;
     private final OtherService otherService;
     private final LogsServices logs;
 
@@ -326,6 +329,7 @@ public class ProjetImpl implements ProjetServices {
     }
 
     @Override
+    @Transactional
     public String deleteOrRecoverProjet(String uniqueId) {
         Projets projet = projetsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException(
@@ -337,6 +341,18 @@ public class ProjetImpl implements ProjetServices {
         projetsRepo.save(projet);
 
         boolean removed = projet.getInitialisation().getRemoved();
+
+        // Un projet supprimé ne doit plus accumuler d'amortissement : on fige
+        // (clôture) ses répartitions d'investissement encore actives à la date
+        // du jour, au lieu de les laisser continuer à compter silencieusement.
+        if (removed) {
+            List<InvestissementRepartition> repartitionsActives =
+                    investissementRepartitionRepo.findActiveByProjetUniqueId(uniqueId);
+            for (InvestissementRepartition r : repartitionsActives) {
+                r.figerLaVentilation(LocalDate.now());
+            }
+            investissementRepartitionRepo.saveAll(repartitionsActives);
+        }
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
