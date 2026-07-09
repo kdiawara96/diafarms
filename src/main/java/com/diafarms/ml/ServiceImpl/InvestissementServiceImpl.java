@@ -261,8 +261,26 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 2. REGLE METIER : La date de début d'usage ne doit pas être antérieure à la date d'achat de l'actif
         if (repartition.getDateDebut() != null && inv.getDateAchat() != null) {
                 if (repartition.getDateDebut().isBefore(inv.getDateAchat())) {
-                throw new IllegalArgumentException("La date de début d'utilisation (" + repartition.getDateDebut() 
+                throw new IllegalArgumentException("La date de début d'utilisation (" + repartition.getDateDebut()
                         + ") ne peut pas être antérieure à la date d'achat de l'investissement (" + inv.getDateAchat() + ").");
+                }
+        }
+
+        // 2bis. REGLE METIER : La date de début ne doit pas dépasser la date de fin prévue du projet
+        if (repartition.getDateDebut() != null && projet.getFinPrevue() != null) {
+                if (repartition.getDateDebut().isAfter(projet.getFinPrevue())) {
+                throw new IllegalArgumentException("La date de début d'utilisation (" + repartition.getDateDebut()
+                        + ") ne peut pas être postérieure à la date de fin prévue du projet (" + projet.getFinPrevue() + ").");
+                }
+        }
+
+        // 2ter. REGLE METIER : La date de fin ne doit pas dépasser la fin de la durée d'amortissement de l'actif
+        // (déjà vérifié côté frontend, mais un appel API direct ne doit pas pouvoir la contourner)
+        if (repartition.getDateFin() != null && inv.getDateAchat() != null && inv.getDureeAmortissement() != null) {
+                LocalDate dateLimiteAmortissement = inv.getDateAchat().plusMonths(inv.getDureeAmortissement());
+                if (repartition.getDateFin().isAfter(dateLimiteAmortissement)) {
+                throw new IllegalArgumentException("La date de fin (" + repartition.getDateFin()
+                        + ") ne peut pas dépasser la fin de la durée d'amortissement de l'actif (" + dateLimiteAmortissement + ").");
                 }
         }
 
