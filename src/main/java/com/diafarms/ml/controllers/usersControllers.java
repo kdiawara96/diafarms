@@ -13,9 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import com.diafarms.ml.DTO.UtilisateursDTO;
+import com.diafarms.ml.commons.SecurityUtils;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.UserCreate;
+import com.diafarms.ml.request.update.UpdatePassResquest;
 import com.diafarms.ml.request.update.UserUpdate;
 import com.diafarms.ml.services.UtilisateursServices;
 import lombok.RequiredArgsConstructor;
@@ -177,9 +179,43 @@ public class usersControllers {
             );
         } catch (Exception e) {
             return ApiResponse.createResponse(
-                    "Erreur lors de la modification de l'utilisateur", 
-                    HttpStatus.INTERNAL_SERVER_ERROR, 
-                    null, 
+                    "Erreur lors de la modification de l'utilisateur",
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    null,
+                    null
+            );
+        }
+    }
+
+    /**
+     * Change le mot de passe de l'utilisateur actuellement connecté (jamais un tiers :
+     * l'identifiant est résolu depuis le JWT, pas depuis le corps de la requête).
+     */
+    @PutMapping("/change-password")
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> changePassword(@RequestBody UpdatePassResquest request) {
+        try {
+            String currentUserUniqueId = SecurityUtils.getCurrentUserUniqueId();
+            UtilisateursDTO dto = services.changePassword(currentUserUniqueId, request);
+            return ApiResponse.createResponse(
+                    "Mot de passe changé avec succès !",
+                    HttpStatus.OK,
+                    dto,
+                    null
+            );
+        } catch (IllegalStateException e) {
+            return ApiResponse.createResponse("Non authentifié", HttpStatus.UNAUTHORIZED, null, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse(
+                    e.getMessage(),
+                    HttpStatus.BAD_REQUEST,
+                    null,
+                    List.of(e.getMessage())
+            );
+        } catch (Exception e) {
+            return ApiResponse.createResponse(
+                    "Erreur lors du changement de mot de passe",
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    null,
                     null
             );
         }

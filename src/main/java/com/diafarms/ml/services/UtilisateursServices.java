@@ -6,6 +6,7 @@ import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.UserCreate;
+import com.diafarms.ml.request.update.UpdatePassResquest;
 import com.diafarms.ml.request.update.UserUpdate;
 
 /**
@@ -40,4 +41,5 @@ public interface UtilisateursServices {
     UtilisateursDTO updateUtilisateur(String uniqueId, UserUpdate dto);
     UtilisateursDTO regenerateQRCodeToken(String uniqueId);
     UtilisateursDTO revoquerUtilisateur(String uniqueId);
+    UtilisateursDTO changePassword(String uniqueId, UpdatePassResquest data);
 }

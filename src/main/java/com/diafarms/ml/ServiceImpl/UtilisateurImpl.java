@@ -25,6 +25,7 @@ import com.diafarms.ml.repository.FarmsRepo;
 import com.diafarms.ml.repository.RolesRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.UserCreate;
+import com.diafarms.ml.request.update.UpdatePassResquest;
 import com.diafarms.ml.request.update.UserUpdate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
@@ -475,7 +476,31 @@ public class UtilisateurImpl implements UtilisateursServices {
         Utilisateurs revokedUser = utilisateursRepo.save(u);
         return UtilisateursDTO.fromEntity(revokedUser);
     }
-    
+
+    @Override
+    @Transactional
+    public UtilisateursDTO changePassword(String uniqueId, UpdatePassResquest data) {
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+        if (data.getOldPassword() == null || !encoder.matches(data.getOldPassword(), u.getPassword())) {
+            throw new RuntimeException("Le mot de passe actuel est incorrect.");
+        }
+        if (data.getPassword() == null || data.getPassword().length() < 8) {
+            throw new RuntimeException("Le nouveau mot de passe doit contenir au moins 8 caractères.");
+        }
+
+        u.setPassword(encoder.encode(data.getPassword()));
+        if (u.getInitialisation() != null) {
+            u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+        Utilisateurs saved = utilisateursRepo.save(u);
+
+        logsServices.addLogs(u.getId(), u.getId(), "Utilisateurs", "Changement de mot de passe par l'utilisateur lui-même");
+
+        return UtilisateursDTO.fromEntity(saved);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public PaginatedResponse<UtilisateursDTO> getAllUtilisateurs(String searchTerm, int page, int size) {
