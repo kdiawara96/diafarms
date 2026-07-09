@@ -2,6 +2,8 @@ package com.diafarms.ml.models;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.StatutTransaction;
@@ -17,6 +19,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -53,6 +57,17 @@ public class Transaction {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id")
     private Projets projet;
+
+    // Uniquement renseigné quand projet == null : projets que cette dépense/rentrée
+    // commune concerne, pour le suivi par projet (simple rattachement, pas de
+    // répartition de montant — contrairement à InvestissementRepartition).
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "transaction_projets_concernes",
+            joinColumns = @JoinColumn(name = "transaction_id"),
+            inverseJoinColumns = @JoinColumn(name = "projet_id")
+    )
+    private List<Projets> projetsConcernes = new ArrayList<>();
 
     @Column(columnDefinition = "TEXT")
     private String description;

@@ -18,6 +18,8 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     
    Optional<Projets> findByUniqueId(String uniqueId);
 
+   List<Projets> findByUniqueIdIn(List<String> uniqueIds);
+
    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId " +
         "AND p.initialisation.removed = false " +
         "AND (:isArchive IS NULL OR p.initialisation.archive = :isArchive) " +

@@ -2,6 +2,7 @@ package com.diafarms.ml.DTO;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
@@ -26,6 +27,7 @@ public class TransactionDTO {
     private TypeTransaction type;
     private String projetCode; // "Commun" si pas de projet lié
     private String projetUniqueId;
+    private List<ProjetsSelect> projetsConcernes; // uniquement pertinent quand "Commun"
     private String description;
     private Double montant;
     private String categorie;
@@ -45,6 +47,9 @@ public class TransactionDTO {
                 .type(t.getType())
                 .projetCode(t.getProjet() != null ? t.getProjet().getCode() : "Commun")
                 .projetUniqueId(t.getProjet() != null ? t.getProjet().getUniqueId() : null)
+                .projetsConcernes(t.getProjetsConcernes() != null
+                        ? t.getProjetsConcernes().stream().map(ProjetsSelect::selectEntity).toList()
+                        : List.of())
                 .description(t.getDescription())
                 .montant(t.getMontant())
                 .categorie(t.getCategorie())

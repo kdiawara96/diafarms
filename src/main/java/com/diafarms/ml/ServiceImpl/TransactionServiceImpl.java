@@ -71,10 +71,15 @@ public class TransactionServiceImpl implements TransactionService {
         t.setStatut(StatutTransaction.EN_ATTENTE);
         t.setInitialisation(Initialisation.init());
 
-        if (data.getProjetUniqueId() != null && !data.getProjetUniqueId().isBlank()) {
+        boolean commun = !Boolean.FALSE.equals(data.getCommun())
+                && (Boolean.TRUE.equals(data.getCommun()) || data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank());
+
+        if (!commun) {
             Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
                     .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
             t.setProjet(projet);
+        } else if (data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()) {
+            t.setProjetsConcernes(projetsRepo.findByUniqueIdIn(data.getProjetsConcernesUniqueIds()));
         }
 
         if (currentUser != null) {
@@ -102,14 +107,19 @@ public class TransactionServiceImpl implements TransactionService {
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(data.getMontant());
         if (data.getCategorie() != null) t.setCategorie(data.getCategorie());
-        if (data.getProjetUniqueId() != null) {
-            if (data.getProjetUniqueId().isBlank()) {
-                t.setProjet(null);
-            } else {
-                Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
-                        .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
-                t.setProjet(projet);
+        if (Boolean.TRUE.equals(data.getCommun())) {
+            t.setProjet(null);
+            t.setProjetsConcernes(data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()
+                    ? projetsRepo.findByUniqueIdIn(data.getProjetsConcernesUniqueIds())
+                    : new java.util.ArrayList<>());
+        } else if (Boolean.FALSE.equals(data.getCommun())) {
+            if (data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank()) {
+                throw new IllegalArgumentException("Un projet doit être sélectionné si la transaction n'est pas commune.");
             }
+            Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                    .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
+            t.setProjet(projet);
+            t.setProjetsConcernes(new java.util.ArrayList<>());
         }
         if (t.getInitialisation() != null) {
             t.getInitialisation().setUpdatedAt(LocalDateTime.now());
