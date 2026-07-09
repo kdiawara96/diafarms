@@ -114,13 +114,17 @@ public class SecurityConfiguration {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                     .requestMatchers(
-                        "/diafarms/api/v1/auth/**",
+                        "/diafarms/api/v1/auth",
+                        "/diafarms/api/v1/auth/logout",
                         "/diafarms/api/v1/users/create",
                         "/diafarms/api/v1/test"
                     ).permitAll()
                     .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+                .oauth2ResourceServer(oauth2 -> oauth2
+                    .bearerTokenResolver(new CookieBearerTokenResolver())
+                    .jwt(Customizer.withDefaults())
+                );
 
             return httpSecurity.build();
         }

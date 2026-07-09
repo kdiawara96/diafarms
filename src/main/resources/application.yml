@@ -25,3 +25,6 @@ app:
   base-path: ${BASE_PATH:/home/mother/app/src/main/resources/files}
   secret-key: ${SECRET_KEY:772175266556A586E3272357538782F413F442A472D4B}
   profil-folder: ${PROFIL_FOLDER:profils}
+  cookie:
+    secure: ${COOKIE_SECURE:true}
+    domain: ${COOKIE_DOMAIN:}
