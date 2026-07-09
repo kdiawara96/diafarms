@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.UtilisateursDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.commons.SecurityUtils;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
@@ -343,7 +344,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         
         // Mot de passe temporaire par défaut (A encoder avec BCrypt en production)
         String plainPassword = "Diafarms@" + UUID.randomUUID().toString().substring(0, 4);
-        u.setPassword(plainPassword); 
+        u.setPassword(encoder.encode(plainPassword)); 
 
         // Traçabilité (Initialisation)
         Initialisation init = new Initialisation();
@@ -446,6 +447,16 @@ public class UtilisateurImpl implements UtilisateursServices {
     @Override
     @Transactional
     public UtilisateursDTO revoquerUtilisateur(String uniqueId) {
+        // 0. Un utilisateur ne peut pas révoquer/réactiver son propre accès
+        try {
+            if (uniqueId.equals(SecurityUtils.getCurrentUserUniqueId())) {
+                throw new RuntimeException("Vous ne pouvez pas modifier votre propre statut d'accès.");
+            }
+        } catch (IllegalStateException e) {
+            // Pas d'utilisateur authentifié résolu : on laisse passer, la sécurité globale
+            // (JWT obligatoire) aura de toute façon déjà bloqué l'appel en amont.
+        }
+
         // 1. Recherche de l'utilisateur
         Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
