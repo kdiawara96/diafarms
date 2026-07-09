@@ -41,6 +41,8 @@ public class TransactionControllers {
 
             PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum);
             return ApiResponse.createResponse("Liste des transactions récupérée", HttpStatus.OK, response, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Paramètre type/statut invalide", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors de la récupération des transactions", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
