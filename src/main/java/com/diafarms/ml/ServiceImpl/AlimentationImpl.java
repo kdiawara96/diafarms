@@ -21,6 +21,7 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.BatimentRepo;
+import com.diafarms.ml.repository.ConsommationAlimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.request.create.AlimentationCreate;
 import com.diafarms.ml.request.update.AlimentationUpdate;
@@ -38,6 +39,7 @@ public class AlimentationImpl implements AlimentationService {
     private final AlimentationRepo alimentationRepo;
     private final ProjetsRepo projetsRepo;
     private final BatimentRepo batimentRepo;
+    private final ConsommationAlimentRepo consommationAlimentRepo;
     private final OtherService otherService;
     private final LogsServices logs;
 
@@ -139,6 +141,18 @@ public class AlimentationImpl implements AlimentationService {
             alimentation.setSac(data.getSac());
         }
         if (data.getQuantiteKg() != null) {
+            if (data.getQuantiteKg() < ancienneQuantite) {
+                Long projetId = alimentation.getProjet().getId();
+                double totalAchete = alimentationRepo.sumAcheteByProjetId(projetId);
+                double totalConsomme = consommationAlimentRepo.sumConsommeByProjetId(projetId);
+                double nouveauTotalAchete = totalAchete - ancienneQuantite + data.getQuantiteKg();
+                if (nouveauTotalAchete < totalConsomme) {
+                    throw new RuntimeException(
+                        "Impossible de réduire cet achat : le stock consommé (" + totalConsomme
+                            + " kg) dépasserait le stock acheté (" + nouveauTotalAchete + " kg) pour ce projet."
+                    );
+                }
+            }
             alimentation.setQuantiteKg(data.getQuantiteKg());
         }
         if (data.getCoutTotal() != null) {

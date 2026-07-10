@@ -33,4 +33,8 @@ public interface AlimentationRepo extends JpaRepository<Alimentation, Long> {
                                @Param("batimentUniqueId") String batimentUniqueId,
                                @Param("search") String search,
                                Pageable pageable);
+
+    @Query("SELECT COALESCE(SUM(a.quantiteKg), 0.0) FROM Alimentation a " +
+        "WHERE a.projet.id = :projetId AND a.initialisation.removed = false")
+    Double sumAcheteByProjetId(@Param("projetId") Long projetId);
 }
