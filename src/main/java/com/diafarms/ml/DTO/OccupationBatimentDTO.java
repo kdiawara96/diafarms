@@ -26,6 +26,7 @@ public class OccupationBatimentDTO {
 
     private String nomBatiment;
     private String typeBatiment;
+    private String batimentUniqueId;
 
     public static OccupationBatimentDTO fromEntityList(OccupationBatiment data) {
         if (data == null) {
@@ -39,6 +40,7 @@ public class OccupationBatimentDTO {
                 .nbSujetsDansBatiment(data.getNbSujetsDansBatiment())
                 .nomBatiment(data.getBatiment().getNom())
                 .typeBatiment(data.getBatiment().getType().getValue())
+                .batimentUniqueId(data.getBatiment().getUniqueId())
                 .build();
     }
 }
