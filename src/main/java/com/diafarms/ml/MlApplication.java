@@ -7,6 +7,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -37,6 +38,21 @@ public class MlApplication implements CommandLineRunner {
 	
 	private final RolesRepo rolesRepo;
     private final UtilisateursRepo utilisateursRepo;
+
+    // Identifiants de l'admin par défaut créé au premier démarrage : lus depuis .env
+    // (jamais commité) plutôt que codés en dur, pour ne pas exposer de vrais
+    // identifiants dans le code source versionné. Les valeurs par défaut ci-dessous
+    // ne s'appliquent que si les variables ADMIN_* sont absentes de l'environnement.
+    @Value("${ADMIN_USERNAME:admin}")
+    private String adminUsername;
+    @Value("${ADMIN_PASSWORD:azerty123}")
+    private String adminPassword;
+    @Value("${ADMIN_EMAIL:admin@diafarms.local}")
+    private String adminEmail;
+    @Value("${ADMIN_TELEPHONE:}")
+    private String adminTelephone;
+    @Value("${ADMIN_FULLNAME:Super Administrateur}")
+    private String adminFullName;
 
 	public static void main(String[] args) {
 		loadEnv();
@@ -74,17 +90,15 @@ public class MlApplication implements CommandLineRunner {
         // =====================================================
         // 2️⃣ CREATION DE L’UTILISATEUR ADMIN PAR DEFAUT
         // =====================================================
-        String adminUsername = "admin";
-
         if (!utilisateursRepo.existsByUsername(adminUsername)) {
 
             Utilisateurs admin = new Utilisateurs();
             admin.setUniqueId(UUID.randomUUID().toString());
-            admin.setFullName("Super Administrateur");
-            admin.setUsername("admin");
-            admin.setEmail("karimdiawara96@gmail.com");
-            admin.setTelephone("83918699");
-            admin.setPassword(passwordEncoder.encode("azerty123")); // 🔥 mot de passe encodé
+            admin.setFullName(adminFullName);
+            admin.setUsername(adminUsername);
+            admin.setEmail(adminEmail);
+            admin.setTelephone(adminTelephone);
+            admin.setPassword(passwordEncoder.encode(adminPassword)); // 🔥 mot de passe encodé
             admin.setStatut(true);
             admin.setInitialisation(Initialisation.init());
 
