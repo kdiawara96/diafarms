@@ -205,15 +205,16 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut) {
+    public PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut, String projetUniqueId) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
 
         Utilisateurs currentUser = getCurrentUserSafe();
         Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;
 
         String searchParam = (search == null || search.isBlank()) ? null : "%" + search.trim().toLowerCase() + "%";
+        String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
 
-        Page<Transaction> transactionsPage = transactionRepo.search(farmId, type, statut, searchParam, pageable);
+        Page<Transaction> transactionsPage = transactionRepo.search(farmId, type, statut, projetParam, searchParam, pageable);
 
         List<TransactionDTO> dtoList = transactionsPage.getContent().stream()
                 .map(TransactionDTO::fromEntity)

@@ -21,7 +21,7 @@ public interface TransactionService {
 
     TransactionDTO rejeter(String uniqueId, RejectTransactionRequest data);
 
-    PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut);
+    PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut, String projetUniqueId);
 
     TransactionStatsDTO getStats();
 }

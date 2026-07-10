@@ -32,14 +32,15 @@ public class TransactionControllers {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String type,
-            @RequestParam(required = false) String statut) {
+            @RequestParam(required = false) String statut,
+            @RequestParam(required = false) String projetUniqueId) {
         try {
             TypeTransaction typeEnum = (type != null && !type.isBlank() && !type.equalsIgnoreCase("tous"))
                     ? TypeTransaction.valueOf(type.toUpperCase()) : null;
             StatutTransaction statutEnum = (statut != null && !statut.isBlank() && !statut.equalsIgnoreCase("tous"))
                     ? StatutTransaction.valueOf(statut.toUpperCase()) : null;
 
-            PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum);
+            PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum, projetUniqueId);
             return ApiResponse.createResponse("Liste des transactions récupérée", HttpStatus.OK, response, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Paramètre type/statut invalide", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
