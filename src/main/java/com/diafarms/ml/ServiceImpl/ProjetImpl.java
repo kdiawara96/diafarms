@@ -290,7 +290,7 @@ public class ProjetImpl implements ProjetServices {
                             .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + batimentId));
                 }
 
-                if (batiment != null && batiment.getStatut() != null && batiment.getStatut().toString().equals("OCCUPE")) {
+                if (batiment != null && occupationBatimentRepo.existsOccupationActive(batiment.getId())) {
                     throw new RuntimeException("Le bâtiment " + batiment.getNom() + " est déjà occupé.");
                 }
 

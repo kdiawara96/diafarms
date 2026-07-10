@@ -54,8 +54,11 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         Batiment batiment = batimentRepository.findById(batimentId)
                 .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + batimentId));
 
-        // 2. Vérification de la disponibilité du bâtiment
-        if (batiment.getStatut() == StatutBatiment.OCCUPE) {
+        // 2. Vérification de la disponibilité du bâtiment : calculée en direct à
+        // partir des occupations actives, pas via Batiment.statut (jamais remis à
+        // jour automatiquement quand une dateSortie passe, donc peut rester
+        // "OCCUPE" indéfiniment après la fin réelle de l'occupation).
+        if (occupationRepository.existsOccupationActive(batiment.getId())) {
             throw new RuntimeException("Le bâtiment " + batiment.getNom() + " est déjà occupé.");
         }
 
@@ -105,8 +108,8 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         if (nouveauBatimentId != null) {
             Batiment nouveauBatiment = batimentRepository.findById(nouveauBatimentId)
                     .orElseThrow(() -> new RuntimeException("Nouveau bâtiment non trouvé avec l'id : " + nouveauBatimentId));
-            
-            if (nouveauBatiment.getStatut() == StatutBatiment.OCCUPE) {
+
+            if (occupationRepository.existsOccupationActive(nouveauBatiment.getId())) {
                 throw new RuntimeException("Le nouveau bâtiment est déjà occupé.");
             }
         }
@@ -131,8 +134,8 @@ public class OccupationBatimentServiceImpl implements OccupationService {
             // Occuper le nouveau bâtiment
             Batiment nouveauBatiment = batimentRepository.findById(nouveauBatimentId)
                     .orElseThrow(() -> new RuntimeException("Nouveau bâtiment non trouvé"));
-            
-            if (nouveauBatiment.getStatut() == StatutBatiment.OCCUPE) {
+
+            if (occupationRepository.existsOccupationActive(nouveauBatiment.getId())) {
                 throw new RuntimeException("Le nouveau bâtiment est déjà occupé.");
             }
             
