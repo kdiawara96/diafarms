@@ -28,4 +28,8 @@ public interface MortaliteRepo extends JpaRepository<Mortalite, Long> {
                             @Param("batimentUniqueId") String batimentUniqueId,
                             @Param("search") String search,
                             Pageable pageable);
+
+    @Query("SELECT COALESCE(SUM(m.nombreMorts), 0) FROM Mortalite m " +
+        "WHERE m.projet.id = :projetId AND m.initialisation.removed = false")
+    Integer sumMortsByProjetId(@Param("projetId") Long projetId);
 }

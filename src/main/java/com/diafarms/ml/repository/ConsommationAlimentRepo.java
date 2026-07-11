@@ -1,5 +1,6 @@
 package com.diafarms.ml.repository;
 
+import java.time.LocalDate;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -30,4 +31,10 @@ public interface ConsommationAlimentRepo extends JpaRepository<ConsommationAlime
     @Query("SELECT COALESCE(SUM(c.quantiteKg), 0.0) FROM ConsommationAliment c " +
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
     Double sumConsommeByProjetId(@Param("projetId") Long projetId);
+
+    // Moyenne journalière récente : sert à estimer le nombre de jours de stock
+    // restants (stockRestant / (somme récente / nb jours)).
+    @Query("SELECT COALESCE(SUM(c.quantiteKg), 0.0) FROM ConsommationAliment c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
+    Double sumConsommeByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
 }
