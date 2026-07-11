@@ -43,6 +43,54 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Override
+    public boolean sendPasswordResetCode(String to, String fullName, String code) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setTo(to);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject("Votre code de réinitialisation DiaFarms");
+            helper.setText(buildResetPlainTextBody(fullName, code), buildResetHtmlBody(fullName, code));
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("Échec de l'envoi du code de réinitialisation à {} : {}", to, e.getMessage());
+            return false;
+        }
+    }
+
+    private String buildResetPlainTextBody(String fullName, String code) {
+        return """
+            Bonjour %s,
+
+            Voici votre code de réinitialisation de mot de passe : %s
+
+            Ce code est valable 5 minutes.
+
+            Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre mot de passe restera inchangé.
+
+            L'équipe DiaFarms
+            """.formatted(fullName, code);
+    }
+
+    private String buildResetHtmlBody(String fullName, String code) {
+        return """
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
+              <h2 style="color: #15803d;">Réinitialisation de mot de passe</h2>
+              <p>Bonjour %s,</p>
+              <p>Voici votre code de vérification :</p>
+              <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">
+                <span style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #15803d;">%s</span>
+              </div>
+              <p>Ce code est valable <strong>5 minutes</strong>.</p>
+              <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre mot de passe restera inchangé.</p>
+              <p>L'équipe DiaFarms</p>
+            </div>
+            """.formatted(fullName, code);
+    }
+
     private String buildPlainTextBody(String fullName, String username, String password) {
         return """
             Bonjour %s,

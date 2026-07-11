@@ -109,6 +109,9 @@ public class SecurityConfiguration {
                     "/api-docs/**",
                     "/diafarms/api/v1/auth",
                     "/diafarms/api/v1/auth/logout",
+                    "/diafarms/api/v1/auth/forgot-password",
+                    "/diafarms/api/v1/auth/verify-reset-code",
+                    "/diafarms/api/v1/auth/reset-password",
                     "/diafarms/api/v1/users/create",
                     "/diafarms/api/v1/test"
                 )
