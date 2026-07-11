@@ -87,6 +87,14 @@ public class SecurityConfiguration {
         }
 
         // === CHAÎNE PUBLIQUE (pas de JWT) ===
+        // Un cookie access_token invalide/périmé (ex: session précédente révoquée)
+        // envoyé par le navigateur sur ces routes ne doit JAMAIS bloquer la requête :
+        // tant qu'elles ne passent pas par oauth2ResourceServer(), aucune tentative
+        // de décodage/validation du Bearer token n'a lieu, donc un cookie invalide
+        // ne peut plus faire échouer une inscription, une connexion ou une
+        // déconnexion (permitAll() seul ne suffit pas : le filtre resource-server
+        // de la chaîne privée s'exécute avant l'autorisation et rejette la requête
+        // en 401 dès qu'un token présent est invalide, même sur un chemin permitAll).
         @Bean
         @Order(1)
         public SecurityFilterChain publicFilterChain(HttpSecurity http) throws Exception {
@@ -98,7 +106,11 @@ public class SecurityConfiguration {
                     "/diafarms/files/**",
                     "/webjars/**",
                     "/swagger-resources/**",
-                    "/api-docs/**"
+                    "/api-docs/**",
+                    "/diafarms/api/v1/auth",
+                    "/diafarms/api/v1/auth/logout",
+                    "/diafarms/api/v1/users/create",
+                    "/diafarms/api/v1/test"
                 )
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -115,12 +127,6 @@ public class SecurityConfiguration {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers(
-                        "/diafarms/api/v1/auth",
-                        "/diafarms/api/v1/auth/logout",
-                        "/diafarms/api/v1/users/create",
-                        "/diafarms/api/v1/test"
-                    ).permitAll()
                     .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
