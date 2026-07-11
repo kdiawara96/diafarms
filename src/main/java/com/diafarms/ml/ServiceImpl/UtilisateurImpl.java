@@ -2,10 +2,12 @@ package com.diafarms.ml.ServiceImpl;
 
 import lombok.RequiredArgsConstructor;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -27,6 +29,7 @@ import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.UserCreate;
 import com.diafarms.ml.request.update.UpdatePassResquest;
 import com.diafarms.ml.request.update.UserUpdate;
+import com.diafarms.ml.services.EmailService;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
 
@@ -50,6 +53,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final RolesRepo roleRepo;
     private final FarmsRepo farmsRepo;
     private final OtherService OtherService;
+    private final EmailService emailService;
 
     @Override
     @Transactional
@@ -94,9 +98,10 @@ public class UtilisateurImpl implements UtilisateursServices {
         String generatedUsername = generateUsername(data.getFullName());
         user.setUsername(generatedUsername);
 
-        // Generate random 8-digit password
-        String generatedPassword = generatePassword(data.getFullName());
+        // Mot de passe aléatoire fort (pas dérivé du nom : ne doit jamais être devinable)
+        String generatedPassword = generateSecurePassword();
         user.setPassword(encoder.encode(generatedPassword));
+        user.setMustChangePassword(true);
 
         // Assign roles
         Set<Roles> rolesToAdd = new HashSet<>();
@@ -118,7 +123,9 @@ public class UtilisateurImpl implements UtilisateursServices {
             logsServices.addLogs(user.getId(), user.getId(), "User", "Création de l'utilisateur et de sa ferme");
         }
 
-        return UtilisateursDTO.fromEntity(user, generatedPassword);
+        boolean emailSent = emailService.sendWelcomeEmail(user.getEmail(), user.getFullName(), generatedUsername, generatedPassword);
+
+        return UtilisateursDTO.fromEntity(user, generatedPassword, emailSent);
     }
 
     /**
@@ -136,7 +143,7 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .replaceAll("[^a-z]", "")
                 .substring(0, Math.min(10, fullName.length()));
 
-        Random random = new Random();
+        SecureRandom random = new SecureRandom();
         String username;
 
         do {
@@ -148,69 +155,49 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     /**
-     * Generates an 8-digit numeric password.
-     *
-     * @return an 8-digit password string
+     * Génère un username de style "prenom.nom" (utilisé pour les comptes
+     * producteur/financier créés par un admin), en ajoutant un suffixe
+     * numérique si ce nom d'utilisateur est déjà pris.
      */
-    private String generatePassword(String fullName) {
-        if (fullName == null || fullName.trim().isEmpty()) {
-            return generateFallbackPassword();
+    private String generateUsernameFromFullName(String fullName) {
+        String base = fullName.trim().toLowerCase().replaceAll("\\s+", ".");
+        if (!utilisateursRepo.existsByUsername(base)) {
+            return base;
         }
-        
-        String[] parts = fullName.trim().toLowerCase().split("\\s+");
-        StringBuilder result = new StringBuilder();
-        
-        // Remplir avec les initiales ou syllabes
-        for (String part : parts) {
-            if (result.length() >= 6) break; // Réserver 2 places pour les chiffres
-            
-            if (part.length() >= 2) {
-                // 2 premières lettres : première majuscule, deuxième minuscule
-                result.append(Character.toUpperCase(part.charAt(0)));
-                if (result.length() < 6) {
-                    result.append(Character.toLowerCase(part.charAt(1)));
-                }
-            } else if (part.length() == 1) {
-                result.append(Character.toUpperCase(part.charAt(0)));
-            }
-        }
-        
-        // Compléter avec des lettres du premier mot si moins de 6 caractères
-        String firstWord = parts[0];
-        while (result.length() < 6 && result.length() < firstWord.length()) {
-            result.append(Character.toLowerCase(firstWord.charAt(result.length())));
-        }
-        
-        // Si toujours pas assez, compléter avec des lettres fixes
-        String filler = "farm";
-        int fillerIndex = 0;
-        while (result.length() < 6) {
-            result.append(filler.charAt(fillerIndex % filler.length()));
-            fillerIndex++;
-        }
-        
-        // 2 chiffres dérivés du nom (somme ASCII des initiales % 100)
-        int seed = 0;
-        for (String part : parts) {
-            seed += part.charAt(0);
-        }
-        int number = (seed * parts.length) % 100;
-        String numberPart = String.format("%02d", number);
-        
-        // Assembler : exactement 6 lettres + 2 chiffres = 8 caractères
-        String password = result.substring(0, 6) + numberPart;
-        return password;
+        SecureRandom random = new SecureRandom();
+        String username;
+        do {
+            username = base + (random.nextInt(90) + 10);
+        } while (utilisateursRepo.existsByUsername(username));
+        return username;
     }
 
-    private String generateFallbackPassword() {
-        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-        StringBuilder password = new StringBuilder();
-        for (int i = 0; i < 6; i++) {
-            password.append(chars.charAt((int) (Math.random() * chars.length())));
+    // Alphabets sans caractères ambigus (pas de 0/O, 1/l/I) pour rester lisible
+    // si le mot de passe doit être retapé manuellement en secours.
+    private static final String PWD_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    private static final String PWD_LOWER = "abcdefghijkmnpqrstuvwxyz";
+    private static final String PWD_DIGITS = "23456789";
+    private static final String PWD_ALL = PWD_UPPER + PWD_LOWER + PWD_DIGITS;
+    private static final int PWD_LENGTH = 12;
+
+    /**
+     * Génère un mot de passe temporaire réellement aléatoire (SecureRandom),
+     * jamais dérivé d'une donnée devinable comme le nom de l'utilisateur.
+     * Garantit au moins une majuscule, une minuscule et un chiffre.
+     */
+    private String generateSecurePassword() {
+        SecureRandom random = new SecureRandom();
+        List<Character> chars = new ArrayList<>(PWD_LENGTH);
+        chars.add(PWD_UPPER.charAt(random.nextInt(PWD_UPPER.length())));
+        chars.add(PWD_LOWER.charAt(random.nextInt(PWD_LOWER.length())));
+        chars.add(PWD_DIGITS.charAt(random.nextInt(PWD_DIGITS.length())));
+        for (int i = chars.size(); i < PWD_LENGTH; i++) {
+            chars.add(PWD_ALL.charAt(random.nextInt(PWD_ALL.length())));
         }
-        // 2 chiffres
-        password.append((int) (Math.random() * 10));
-        password.append((int) (Math.random() * 10));
+        Collections.shuffle(chars, random);
+
+        StringBuilder password = new StringBuilder(PWD_LENGTH);
+        chars.forEach(password::append);
         return password.toString();
     }
 
@@ -326,26 +313,29 @@ public class UtilisateurImpl implements UtilisateursServices {
         }
 
         Utilisateurs u = new Utilisateurs();
-        
+
         // Génération automatique des identifiants système sécurisés
         u.setUniqueId("USR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        // Génération d'un username par défaut basé sur le fullName (ex: karim.diawara)
-        u.setUsername(dto.getFullName().toLowerCase().replace(" ", "."));
+        // Génération d'un username basé sur le fullName (ex: karim.diawara), avec
+        // désambiguïsation si ce nom d'utilisateur existe déjà.
+        String generatedUsername = generateUsernameFromFullName(dto.getFullName());
+        u.setUsername(generatedUsername);
         u.setFullName(dto.getFullName());
         u.setTelephone(dto.getTelephone());
         u.setEmail(dto.getEmail());
         u.setCity(dto.getCity());
         u.setRegion(dto.getRegion());
         u.setStatut(true); // Actif par défaut
-        
+
         // Association automatique à la ferme de l'admin connecté
         if (currentUser != null) {
             u.setFarm(currentUser.getFarm());
         }
-        
-        // Mot de passe temporaire par défaut (A encoder avec BCrypt en production)
-        String plainPassword = "Diafarms@" + UUID.randomUUID().toString().substring(0, 4);
-        u.setPassword(encoder.encode(plainPassword)); 
+
+        // Mot de passe temporaire aléatoire (pas un préfixe fixe + 4 caractères devinable)
+        String plainPassword = generateSecurePassword();
+        u.setPassword(encoder.encode(plainPassword));
+        u.setMustChangePassword(true);
 
         // Traçabilité (Initialisation)
         Initialisation init = new Initialisation();
@@ -366,14 +356,16 @@ public class UtilisateurImpl implements UtilisateursServices {
                     return role;
                 })
                 .collect(Collectors.toSet());
-            
+
             u.setRoles(userRoles);
         }
 
         Utilisateurs savedUser = utilisateursRepo.save(u);
-        
+
+        boolean emailSent = emailService.sendWelcomeEmail(savedUser.getEmail(), savedUser.getFullName(), generatedUsername, plainPassword);
+
         // On retourne le DTO avec le mot de passe en clair uniquement à la création pour affichage
-        return UtilisateursDTO.fromEntity(savedUser, plainPassword);
+        return UtilisateursDTO.fromEntity(savedUser, plainPassword, emailSent);
     }
 
     // 4. Modifier un utilisateur existant
@@ -491,6 +483,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         }
 
         u.setPassword(encoder.encode(data.getPassword()));
+        u.setMustChangePassword(false);
         if (u.getInitialisation() != null) {
             u.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }

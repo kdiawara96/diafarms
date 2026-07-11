@@ -76,6 +76,12 @@ public class Utilisateurs {
     @Column(name = "statut")
     private Boolean statut = true;
 
+    // Force le changement de mot de passe à la prochaine connexion (comptes créés
+    // avec un mot de passe généré automatiquement). Boolean (pas boolean) : les
+    // lignes existantes restent NULL après l'ALTER TABLE, traité comme "false".
+    @Column(name = "must_change_password")
+    private Boolean mustChangePassword = false;
+
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     @Column(name = "last_login", length = 50)
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)

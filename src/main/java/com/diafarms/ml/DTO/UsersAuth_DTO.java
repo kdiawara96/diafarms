@@ -29,5 +29,6 @@ public class UsersAuth_DTO {
     Set<Roles> roles;
     String refreshToken;
     String accessToken;
+    Boolean mustChangePassword;
 
 }
