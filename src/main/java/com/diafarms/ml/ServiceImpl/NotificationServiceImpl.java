@@ -78,6 +78,20 @@ public class NotificationServiceImpl implements NotificationService {
         return result;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<NotificationDTO> getActiveNotificationsForProjet(String projetUniqueId) {
+        return projetsRepo.findByUniqueId(projetUniqueId)
+            .map(p -> {
+                List<NotificationDTO> result = new ArrayList<>();
+                addStockNotification(result, p);
+                addMortaliteNotification(result, p);
+                result.sort(Comparator.comparing((NotificationDTO n) -> "CRITIQUE".equals(n.getLevel()) ? 0 : 1));
+                return result;
+            })
+            .orElse(List.of());
+    }
+
     private void addStockNotification(List<NotificationDTO> result, Projets p) {
         double achete = nz(alimentationRepo.sumAcheteByProjetId(p.getId()));
         if (achete <= 0) return; // pas encore d'achat : rien à signaler

@@ -29,7 +29,9 @@ import com.diafarms.ml.models.Batiment.StatutBatiment;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.BatimentRepo;
+import com.diafarms.ml.repository.CollecteOeufsRepo;
 import com.diafarms.ml.repository.InvestissementRepartitionRepository;
+import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.OccupationBatimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.RaceRepo;
@@ -59,6 +61,32 @@ public class ProjetImpl implements ProjetServices {
     private final InvestissementRepartitionRepository investissementRepartitionRepo;
     private final OtherService otherService;
     private final LogsServices logs;
+    private final MortaliteRepo mortaliteRepo;
+    private final CollecteOeufsRepo collecteOeufsRepo;
+
+    private static final int TAUX_PONTE_WINDOW_DAYS = 7;
+
+    // Mortalité cumulée réelle (morts / effectif initial) et taux de ponte
+    // récent (moyenne journalière des 7 derniers jours / effectif actuel) —
+    // ProjetsDTO.fromEntity(data) seul les mettait à 0.0 en dur.
+    private Double computeMortaliteCumulee(Projets p) {
+        if (p.getNbSujets() == null || p.getNbSujets() <= 0) return 0.0;
+        Integer morts = mortaliteRepo.sumMortsByProjetId(p.getId());
+        double taux = ((morts == null ? 0 : morts) * 100.0) / p.getNbSujets();
+        return Math.round(taux * 10) / 10.0;
+    }
+
+    private Double computeTauxPonte(Projets p) {
+        if (p.getNbSujets() == null || p.getNbSujets() <= 0) return 0.0;
+        Integer morts = mortaliteRepo.sumMortsByProjetId(p.getId());
+        int effectifActuel = p.getNbSujets() - (morts == null ? 0 : morts);
+        if (effectifActuel <= 0) return 0.0;
+
+        Integer oeufsRecents = collecteOeufsRepo.sumOeufsByProjetIdSince(p.getId(), LocalDate.now().minusDays(TAUX_PONTE_WINDOW_DAYS));
+        double moyenneJournaliere = (oeufsRecents == null ? 0 : oeufsRecents) / (double) TAUX_PONTE_WINDOW_DAYS;
+        double taux = (moyenneJournaliere / effectifActuel) * 100;
+        return Math.round(taux * 10) / 10.0;
+    }
 
     // AJOUT DE L'INJECTION ICI :
     private final ProjectAlertConfigService projectAlertConfigService;
@@ -165,8 +193,8 @@ public class ProjetImpl implements ProjetServices {
     public ProjetsDTO getProjetByUniqueId(String uniqueId) {
         Projets projet = projetsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
-        
-        return ProjetsDTO.fromEntity(projet);
+
+        return ProjetsDTO.fromEntity(projet, computeTauxPonte(projet), computeMortaliteCumulee(projet));
     }
 
     // ============================================================
@@ -441,7 +469,7 @@ public class ProjetImpl implements ProjetServices {
             );
         }
 
-        return ProjetsDTO.fromEntity(updatedProjet);
+        return ProjetsDTO.fromEntity(updatedProjet, computeTauxPonte(updatedProjet), computeMortaliteCumulee(updatedProjet));
     }
     
     @Override

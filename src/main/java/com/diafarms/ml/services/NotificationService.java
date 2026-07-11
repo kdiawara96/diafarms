@@ -13,6 +13,13 @@ public interface NotificationService {
      */
     List<NotificationDTO> getActiveNotifications();
 
+    /**
+     * Même calcul (stock, mortalité) mais limité à un seul projet, sans état
+     * de lecture — sert à la section "Alertes actives aujourd'hui" de la
+     * Fiche Projet.
+     */
+    List<NotificationDTO> getActiveNotificationsForProjet(String projetUniqueId);
+
     void markRead(String key);
 
     void markAllRead();

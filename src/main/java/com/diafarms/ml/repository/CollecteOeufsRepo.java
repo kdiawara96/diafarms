@@ -1,5 +1,6 @@
 package com.diafarms.ml.repository;
 
+import java.time.LocalDate;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -26,4 +27,9 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
                                 @Param("projetUniqueId") String projetUniqueId,
                                 @Param("batimentUniqueId") String batimentUniqueId,
                                 Pageable pageable);
+
+    // Sert au calcul du taux de ponte récent (moyenne journalière des N derniers jours).
+    @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
+    Integer sumOeufsByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
 }

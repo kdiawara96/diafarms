@@ -28,6 +28,15 @@ public class NotificationController {
         }
     }
 
+    @GetMapping("/projet/{projetUniqueId}")
+    public ResponseEntity<ApiResponse<List<NotificationDTO>>> listForProjet(@PathVariable String projetUniqueId) {
+        try {
+            return ApiResponse.createResponse("Alertes du projet récupérées", HttpStatus.OK, service.getActiveNotificationsForProjet(projetUniqueId), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PutMapping("/{key}/read")
     public ResponseEntity<ApiResponse<String>> markRead(@PathVariable String key) {
         try {
