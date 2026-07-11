@@ -24,18 +24,40 @@ public class EmailServiceImpl implements EmailService {
     @Override
     public boolean sendWelcomeEmail(String to, String fullName, String username, String password) {
         try {
+            // multipart=true + setText(plain, html) : fournit une alternative texte
+            // brut en plus du HTML. Les emails HTML-only depuis un compte Gmail
+            // personnel (pas un domaine authentifié SPF/DKIM dédié) sont beaucoup
+            // plus souvent classés comme spam par les filtres.
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromAddress, "DiaFarms");
             helper.setTo(to);
-            helper.setSubject("Bienvenue sur DiaFarms — vos identifiants de connexion");
-            helper.setText(buildHtmlBody(fullName, username, password), true);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject("Vos identifiants DiaFarms");
+            helper.setText(buildPlainTextBody(fullName, username, password), buildHtmlBody(fullName, username, password));
             mailSender.send(message);
             return true;
         } catch (Exception e) {
             log.error("Échec de l'envoi de l'email de bienvenue à {} : {}", to, e.getMessage());
             return false;
         }
+    }
+
+    private String buildPlainTextBody(String fullName, String username, String password) {
+        return """
+            Bonjour %s,
+
+            Votre espace DiaFarms a été créé avec succès. Voici vos identifiants de connexion :
+
+            Identifiant : %s
+            Mot de passe temporaire : %s
+
+            Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre première connexion.
+
+            Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+
+            L'équipe DiaFarms
+            """.formatted(fullName, username, password);
     }
 
     private String buildHtmlBody(String fullName, String username, String password) {
