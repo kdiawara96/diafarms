@@ -23,9 +23,9 @@ public class QRCodeService {
     private final UtilisateursRepo utilisateursRepo;
     private final AESService aesService;
 
-    public String generateAndEncryptQRCode(String uniqueId, String fullName, 
+    public String generateAndEncryptQRCode(String uniqueId, String fullName,
                                           String rolesPipe, Instant expiresAt, Instant now) {
-        
+
         // 1. JWT Token génération
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject(uniqueId)
@@ -40,15 +40,13 @@ public class QRCodeService {
 
         String token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
 
-        // 2. Objet d'échange chiffré
+        // 2. Objet d'échange chiffré : volontairement minimal (voir QrCodeEncrypte) pour
+        // que le QR reste scannable — fullName/role restent disponibles via les claims du JWT.
         QrCodeEncrypte qrCode = QrCodeEncrypte.builder()
-                .qrGeneratedAt(LocalDateTime.ofInstant(now, ZoneId.systemDefault()))
-                .qrExpiresAt(expiresAt.getEpochSecond() > now.plus(36500, ChronoUnit.DAYS).getEpochSecond() 
-                        ? null 
+                .qrExpiresAt(expiresAt.getEpochSecond() > now.plus(36500, ChronoUnit.DAYS).getEpochSecond()
+                        ? null
                         : LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault()))
-                .role(rolesPipe)
                 .uniqueIdUser(uniqueId)
-                .fullNameUser(fullName)
                 .token(token)
                 .build();
 

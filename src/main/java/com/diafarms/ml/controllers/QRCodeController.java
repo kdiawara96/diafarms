@@ -10,6 +10,7 @@ import com.diafarms.ml.DTO.QRCodeRequestDTO;
 import com.diafarms.ml.DTO.QrCodeEncrypte;
 import com.diafarms.ml.config.QRCodeService;
 import com.diafarms.ml.enums.TokenDuration;
+import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.repository.UtilisateursRepo;
@@ -88,11 +89,19 @@ public class QRCodeController {
                 throw new RuntimeException("Ce compte est suspendu.");
             }
 
+            // fullName/role viennent de scannedUser (déjà chargé depuis la BDD) plutôt que du
+            // contenu déchiffré : QrCodeEncrypte a été allégé au strict nécessaire pour que le
+            // QR reste scannable (voir QrCodeEncrypte).
+            String rolesPipe = scannedUser.getRoles().stream()
+                    .map(Roles::getRole)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.joining("|"));
+
             Map<String, Object> result = Map.of(
                 "valid", true,
-                "uniqueId", qrCode.getUniqueIdUser(),
-                "fullName", qrCode.getFullNameUser(),
-                "role", qrCode.getRole()
+                "uniqueId", scannedUser.getUniqueId(),
+                "fullName", scannedUser.getFullName(),
+                "role", rolesPipe
             );
             
             return ApiResponse.createResponse("QR Code scanné et validé avec succès", HttpStatus.OK, result, null);
