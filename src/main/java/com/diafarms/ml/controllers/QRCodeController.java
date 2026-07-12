@@ -81,7 +81,13 @@ public class QRCodeController {
             }
 
             QrCodeEncrypte qrCode = qrCodeService.decryptAndValidate(encryptedQr);
-            
+
+            Utilisateurs scannedUser = utilisateursRepo.findByUniqueId(qrCode.getUniqueIdUser())
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+            if (!Boolean.TRUE.equals(scannedUser.getStatut())) {
+                throw new RuntimeException("Ce compte est suspendu.");
+            }
+
             Map<String, Object> result = Map.of(
                 "valid", true,
                 "uniqueId", qrCode.getUniqueIdUser(),

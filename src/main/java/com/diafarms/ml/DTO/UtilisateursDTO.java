@@ -33,6 +33,10 @@ public class UtilisateursDTO {
     private String telephone;
     private boolean statut;
     private String password;
+    private Boolean mustChangePassword;
+    // Non nul seulement dans la réponse de création de compte : indique si l'email
+    // contenant les identifiants a réellement pu être envoyé.
+    private Boolean emailSent;
 
     private String infoQrcodeEncrypte;
 
@@ -75,6 +79,7 @@ public class UtilisateursDTO {
                 .email(utilisateur.getEmail())
                 .telephone(utilisateur.getTelephone())
                 .statut(utilisateur.getStatut())
+                .mustChangePassword(utilisateur.getMustChangePassword())
                 .createdAt(utilisateur.getInitialisation().getCreatedAt())
                 .updatedAt(utilisateur.getInitialisation().getUpdatedAt())
                 .lastLogin(utilisateur.getLastLogin())
@@ -83,13 +88,10 @@ public class UtilisateursDTO {
     }
 
     /**
-     * Construit un DTO depuis l'entité Utilisateurs.
-     * 
-     * @param utilisateur l'entité persistée
-     * @param plainPassword le mot de passe en clair (pour affichage initial)
-     * @return le DTO formaté
+     * Construit un DTO depuis l'entité Utilisateurs, pour la réponse de création
+     * de compte (mot de passe en clair + statut d'envoi de l'email d'identifiants).
      */
-    public static UtilisateursDTO fromEntity(Utilisateurs utilisateur, String plainPassword) {
+    public static UtilisateursDTO fromEntity(Utilisateurs utilisateur, String plainPassword, Boolean emailSent) {
         if (utilisateur == null) {
             return null;
         }
@@ -109,7 +111,9 @@ public class UtilisateursDTO {
                 .qrExpiresAt(utilisateur.getQrExpiresAt())
                 .telephone(utilisateur.getTelephone())
                 .statut(utilisateur.getStatut())
+                .mustChangePassword(utilisateur.getMustChangePassword())
                 .password(plainPassword)
+                .emailSent(emailSent)
                 .createdAt(utilisateur.getInitialisation().getCreatedAt())
                 .updatedAt(utilisateur.getInitialisation().getUpdatedAt())
                 .lastLogin(utilisateur.getLastLogin())
@@ -117,11 +121,15 @@ public class UtilisateursDTO {
                 .build();
     }
 
+    public static UtilisateursDTO fromEntity(Utilisateurs utilisateur, String plainPassword) {
+        return fromEntity(utilisateur, plainPassword, null);
+    }
+
     /**
      * Version sans mot de passe (pour les requêtes ultérieures).
      */
     public static UtilisateursDTO fromEntity(Utilisateurs utilisateur) {
-        return fromEntity(utilisateur, null);
+        return fromEntity(utilisateur, null, null);
     }
 
     private static Set<RoleDTO> mapToRoleDtos(Set<Roles> roles) {

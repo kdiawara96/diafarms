@@ -1,0 +1,115 @@
+package com.diafarms.ml.controllers;
+
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import com.diafarms.ml.DTO.TransactionDTO;
+import com.diafarms.ml.DTO.TransactionStatsDTO;
+import com.diafarms.ml.enums.StatutTransaction;
+import com.diafarms.ml.enums.TypeTransaction;
+import com.diafarms.ml.others.ApiResponse;
+import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.request.create.TransactionCreate;
+import com.diafarms.ml.request.others.RejectTransactionRequest;
+import com.diafarms.ml.request.update.TransactionUpdate;
+import com.diafarms.ml.services.TransactionService;
+
+import lombok.RequiredArgsConstructor;
+
+@RestController
+@RequestMapping("/diafarms/api/v1/transactions")
+@RequiredArgsConstructor
+public class TransactionControllers {
+
+    private final TransactionService service;
+
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponse<PaginatedResponse<TransactionDTO>>> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String statut,
+            @RequestParam(required = false) String projetUniqueId) {
+        try {
+            TypeTransaction typeEnum = (type != null && !type.isBlank() && !type.equalsIgnoreCase("tous"))
+                    ? TypeTransaction.valueOf(type.toUpperCase()) : null;
+            StatutTransaction statutEnum = (statut != null && !statut.isBlank() && !statut.equalsIgnoreCase("tous"))
+                    ? StatutTransaction.valueOf(statut.toUpperCase()) : null;
+
+            PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum, projetUniqueId);
+            return ApiResponse.createResponse("Liste des transactions récupérée", HttpStatus.OK, response, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Paramètre type/statut invalide", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur lors de la récupération des transactions", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<TransactionStatsDTO>> stats() {
+        try {
+            return ApiResponse.createResponse("Statistiques récupérées", HttpStatus.OK, service.getStats(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur lors du calcul des statistiques", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PostMapping("/create")
+    public ResponseEntity<ApiResponse<TransactionDTO>> create(@RequestBody TransactionCreate request) {
+        try {
+            return ApiResponse.createResponse("Transaction créée avec succès", HttpStatus.CREATED, service.create(request), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/update/{uniqueId}")
+    public ResponseEntity<ApiResponse<TransactionDTO>> update(@PathVariable String uniqueId, @RequestBody TransactionUpdate request) {
+        try {
+            return ApiResponse.createResponse("Transaction modifiée avec succès", HttpStatus.OK, service.update(uniqueId, request), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/deleteOrRecover/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, service.deleteOrRecover(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/valider/{uniqueId}")
+    public ResponseEntity<ApiResponse<TransactionDTO>> valider(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Transaction validée avec succès", HttpStatus.OK, service.valider(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/rejeter/{uniqueId}")
+    public ResponseEntity<ApiResponse<TransactionDTO>> rejeter(@PathVariable String uniqueId, @RequestBody RejectTransactionRequest request) {
+        try {
+            return ApiResponse.createResponse("Transaction rejetée avec succès", HttpStatus.OK, service.rejeter(uniqueId, request), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+}

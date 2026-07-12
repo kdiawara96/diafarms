@@ -15,4 +15,5 @@ public class InvestissementRepartitionDTO {
     private LocalDate dateFin;
     private Integer moisUtilises;
     private Double montantAlloue;
+    private Boolean projetSupprime; // true si le projet lié a été supprimé (soft-delete)
 }

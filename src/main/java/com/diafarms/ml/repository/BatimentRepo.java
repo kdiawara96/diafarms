@@ -3,6 +3,8 @@ package com.diafarms.ml.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -45,7 +47,7 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
             SELECT o
             FROM OccupationBatiment o
             WHERE o.batiment = b
-            AND (o.dateSortie IS NULL OR o.dateSortie >= CURRENT_DATE)
+            AND (o.dateSortie IS NULL OR o.dateSortie > CURRENT_DATE)
         )
         """)
     List<Batiment> findAvailableByFarmId(@Param("farmId") Long farmId);
@@ -62,8 +64,22 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
            "AND (LOWER(b.nom) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(b.description) LIKE LOWER(CONCAT('%', :search, '%')))")
     List<Batiment> searchBatimentsByFarm(
-        @Param("farmId") Long farmId, 
+        @Param("farmId") Long farmId,
         @Param("search") String search
+    );
+
+    // Variantes paginées, pour la liste "Gestion des Bâtiments" (recherche + pagination serveur)
+    @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId AND b.initialisation.removed = false")
+    Page<Batiment> findActiveByFarmId(@Param("farmId") Long farmId, Pageable pageable);
+
+    @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId " +
+           "AND b.initialisation.removed = false " +
+           "AND (LOWER(b.nom) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(b.description) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<Batiment> searchBatimentsByFarm(
+        @Param("farmId") Long farmId,
+        @Param("search") String search,
+        Pageable pageable
     );
 
     // Optionnel : compter par statut

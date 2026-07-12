@@ -47,8 +47,6 @@ public class Investissement {
     @Column(nullable = false)
     private String nom;
 
-    private String icon; 
-
     @Column(nullable = false)
     private Double montant; // En FCFA
 

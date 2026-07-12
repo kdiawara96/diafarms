@@ -91,6 +91,24 @@ public class AlimentationControllers {
     }
 
     // ============================================================
+    // LIST GLOBAL (paginée, pour la page Production)
+    // ============================================================
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.others.PaginatedResponse<AlimentationDTO>>> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String projetUniqueId,
+            @RequestParam(required = false) String batimentUniqueId) {
+        try {
+            var result = services.list(page, size, search, projetUniqueId, batimentUniqueId);
+            return ApiResponse.createResponse("Liste des alimentations récupérée", HttpStatus.OK, result, null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    // ============================================================
     // GET BY UNIQUE ID
     // ============================================================
     @GetMapping("/{uniqueId}")

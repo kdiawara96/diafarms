@@ -4,10 +4,10 @@ package com.diafarms.ml.services;
 import com.diafarms.ml.DTO.InvestissementDTO;
 import com.diafarms.ml.DTO.InvestissementRepartitionDTO;
 import com.diafarms.ml.DTO.InvestissementStatsDTO;
-import com.diafarms.ml.models.Investissement;
 import com.diafarms.ml.models.InvestissementRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.InvestissementRequest;
+import com.diafarms.ml.request.update.InvestissementUpdateRequestDTO;
 
 import java.util.List;
 
@@ -18,12 +18,14 @@ public interface InvestissementService {
     PaginatedResponse<InvestissementDTO> getInvestissementsPagines(String uniqueIdUser, int page, int size);
     InvestissementDTO getInvestissementParUniqueId(String uniqueId);
     InvestissementDTO creerInvestissement(InvestissementRequest investissement, String utilisateurUniqueId);
-    InvestissementDTO modifierInvestissement(String uniqueId, Investissement investissementDetails);
+    InvestissementDTO modifierInvestissement(String uniqueId, InvestissementUpdateRequestDTO dto);
     void supprimerInvestissement(String uniqueId);
     InvestissementStatsDTO getInvestissementsStats(String utilisateurUniqueId);
+    
 
     // --- Actions Répartitions ---
     List<InvestissementRepartitionDTO> getRepartitionsParInvestissement(String uniqueId);
     InvestissementRepartitionDTO ajouterRepartition(String invUniqueId, String projetUniqueId, InvestissementRepartition repartition);
     Double getCoutAmortissementProjet(String projetUniqueId);
+    String supprimerRepartition(Long id);
 }

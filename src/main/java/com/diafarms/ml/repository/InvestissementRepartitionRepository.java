@@ -14,7 +14,14 @@ public interface InvestissementRepartitionRepository extends JpaRepository<Inves
     // Trouver toutes les répartitions liées à un investissement spécifique
     List<InvestissementRepartition> findByInvestissementUniqueId(String uniqueId);
 
+    // Répartitions encore actives (non clôturées) pour un projet donné
+    @Query("SELECT r FROM InvestissementRepartition r WHERE r.projet.uniqueId = :projetUniqueId AND r.dateFin IS NULL")
+    List<InvestissementRepartition> findActiveByProjetUniqueId(@Param("projetUniqueId") String projetUniqueId);
+
     // Requete complexe : Récupérer le coût d'amortissement total absorbé par un projet spécifique (Bande P-001)
     @Query("SELECT COALESCE(SUM(r.montantAlloue), 0.0) FROM InvestissementRepartition r WHERE r.projet.uniqueId = :projetUniqueId")
     Double getSommeAmortissementParProjet(@Param("projetUniqueId") String projetUniqueId);
+
+    // Pour vérifier proprement l'existence avant suppression
+    boolean existsById(Long id);
 }

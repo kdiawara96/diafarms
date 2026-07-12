@@ -19,8 +19,10 @@ import com.diafarms.ml.enums.AlertStatus;
 import com.diafarms.ml.enums.AlertType;
 import com.diafarms.ml.models.ProjectAlertConfig;
 import com.diafarms.ml.models.Projets;
+import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.ProjectAlertConfigRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.ProjectAlertConfigService;
 import com.diafarms.ml.template.ProjectAlertTemplate;
 
@@ -33,6 +35,8 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
 
     private final ProjetsRepo projetsRepository;
     private final ProjectAlertConfigRepo alertConfigRepository;
+    private final LogsServices logs;
+    private final OtherService OtherService;
 
     /**
      * Insère toutes les alertes par défaut à la création d'un projet
@@ -137,7 +141,24 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
             alert.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
 
-        return ProjectAlertTableDTO.fromEntity(alertConfigRepository.save(alert));
+        ProjectAlertConfig saved = alertConfigRepository.save(alert);
+
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if (currentUser != null) {
+            logs.addLogs(
+                    currentUser.getId(),
+                    saved.getId(),
+                    "ProjectAlertConfig",
+                    "Basculement du statut de l'alerte '" + saved.getAlertType() + "' → " + saved.getStatus()
+            );
+        }
+
+        return ProjectAlertTableDTO.fromEntity(saved);
         } else {
             throw new RuntimeException("Alerte introuvable avec l'ID: " + alertId);
         }
@@ -202,6 +223,22 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
                 alertConfigRepository.save(newVaccin);
             }
         }
+
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if (currentUser != null) {
+            logs.addLogs(
+                    currentUser.getId(),
+                    null,
+                    "ProjectAlertConfig",
+                    "Mise à jour groupée de " + requests.size() + " configuration(s) d'alerte pour le projet " + uniqueId
+            );
+        }
+
         return "Données mises à jour avec succès";
     }
 
@@ -209,6 +246,20 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
     public String remove(Long alertId) {
 
         if (alertId != null) {
+            Utilisateurs currentUser = null;
+            try {
+                currentUser = OtherService.getCurrentUser();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            if (currentUser != null) {
+                logs.addLogs(
+                        currentUser.getId(),
+                        alertId,
+                        "ProjectAlertConfig",
+                        "Suppression de la configuration d'alerte ID " + alertId
+                );
+            }
             alertConfigRepository.deleteById(alertId);
             return "Données mises à jour avec succès";
         } else {

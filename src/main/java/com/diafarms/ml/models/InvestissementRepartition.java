@@ -30,11 +30,32 @@ public class InvestissementRepartition {
     @Column(nullable = false)
     private LocalDate dateDebut;
 
-    private LocalDate dateFin; // Null si toujours en cours d'utilisation sur ce projet
+    private LocalDate dateFin; // Figé à la clôture
 
     @Column(nullable = false)
-    private Integer moisUtilises;
+    private Integer moisUtilises; // Figé à la clôture
 
     @Column(nullable = false)
     private Double montantAlloue; // La part financière d'amortissement supportée par ce projet
+
+
+    // =========================================================================
+    // METHODE DE PRE-ARCHIVAGE (Calculée avant d'enregistrer en dur à la clôture)
+    // =========================================================================
+    public void figerLaVentilation(LocalDate finDuProjet) {
+        this.dateFin = finDuProjet;
+        
+        if (this.dateDebut != null && this.dateFin != null) {
+            long jours = java.time.temporal.ChronoUnit.DAYS.between(this.dateDebut, this.dateFin);
+            double moisCalcul = jours / 30.4375;
+            
+            this.moisUtilises = (int) Math.round(moisCalcul);
+            
+            if (this.investissement != null) {
+                double totalImpute = moisCalcul * this.investissement.getAmortissementMensuel();
+                // On plafonne au montant max de l'investissement pour rester cohérent
+                this.montantAlloue = Math.min(this.investissement.getMontant(), Math.round(totalImpute * 100.0) / 100.0);
+            }
+        }
+    }
 }

@@ -4,6 +4,7 @@ package com.diafarms.ml.models;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 import com.diafarms.ml.commons.Initialisation;
 
@@ -37,6 +38,8 @@ public class Alimentation {
     @Column(name = "date_distribution", nullable = false)
     private LocalDate dateDistribution; // Date à laquelle l'aliment a été donné/acheté
 
+    private LocalTime heure;
+
     @Column(name = "observations", length = 500)
     private String observations; // Pour noter un changement de fournisseur, un refus de d'aliment, etc.
 
@@ -47,6 +50,12 @@ public class Alimentation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;
+
+    // Optionnel, ajouté pour unifier avec les autres saisies de production
+    // (Collecte œufs / Soins / Mortalité).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batiment_id")
+    private Batiment batiment;
 
     // Lien avec la ferme pour la sécurité des données multi-locataires
     @ManyToOne(fetch = FetchType.LAZY)

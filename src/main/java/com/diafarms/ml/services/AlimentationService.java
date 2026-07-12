@@ -4,6 +4,7 @@ package com.diafarms.ml.services;
 import java.util.List;
 
 import com.diafarms.ml.DTO.AlimentationDTO;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.AlimentationCreate;
 import com.diafarms.ml.request.update.AlimentationUpdate;
 public interface AlimentationService {
@@ -13,4 +14,5 @@ public interface AlimentationService {
     AlimentationDTO delete(String uniqueId);
     List<AlimentationDTO> findByProjetUniqueId(String uniqueIdProjet);
     AlimentationDTO findByUniqueId(String uniqueId);
+    PaginatedResponse<AlimentationDTO> list(int page, int size, String search, String projetUniqueId, String batimentUniqueId);
 }

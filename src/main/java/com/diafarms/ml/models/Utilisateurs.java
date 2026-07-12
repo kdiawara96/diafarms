@@ -76,6 +76,21 @@ public class Utilisateurs {
     @Column(name = "statut")
     private Boolean statut = true;
 
+    // Force le changement de mot de passe à la prochaine connexion (comptes créés
+    // avec un mot de passe généré automatiquement). Boolean (pas boolean) : les
+    // lignes existantes restent NULL après l'ALTER TABLE, traité comme "false".
+    @Column(name = "must_change_password")
+    private Boolean mustChangePassword = false;
+
+    // Mot de passe oublié : code à 6 chiffres envoyé par email, à usage unique
+    // et à courte durée de vie (voir PasswordResetServiceImpl). String (pas
+    // int) pour ne pas perdre les zéros en tête du code.
+    @Column(name = "reset_password_code", length = 6)
+    private String resetPasswordCode;
+
+    @Column(name = "reset_password_code_expiry")
+    private LocalDateTime resetPasswordCodeExpiry;
+
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     @Column(name = "last_login", length = 50)
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)

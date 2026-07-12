@@ -84,6 +84,15 @@ public class ProjetsDTO {
 
 
        public static ProjetsDTO fromEntity(Projets data) {
+        return fromEntity(data, 0.0, 0.0);
+       }
+
+       /**
+        * @param tauxPonte moyenne journalière récente d'œufs collectés / effectif
+        *                   actuel (%), calculée par l'appelant (accès aux repos).
+        * @param mortaliteCumulee morts cumulés / effectif initial (%), idem.
+        */
+       public static ProjetsDTO fromEntity(Projets data, Double tauxPonte, Double mortaliteCumulee) {
         if (data == null) {
                 return null;
         }
@@ -129,8 +138,8 @@ public class ProjetsDTO {
                 // .fichiersMedia(data.getFichiers() != null ? data.getFichiers().stream()
                 //         .map(FichierMediaDTO::fromEntity)
                 //         .toList() : java.util.Collections.emptyList())
-                .tauxPonte(0.0)
-                .mortaliteCumulee(0.0)
+                .tauxPonte(tauxPonte)
+                .mortaliteCumulee(mortaliteCumulee)
                 .build();
         }
 

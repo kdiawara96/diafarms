@@ -1,18 +1,27 @@
 package com.diafarms.ml.ServiceImpl;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.AlimentationDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Alimentation;
+import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.AlimentationRepo;
+import com.diafarms.ml.repository.BatimentRepo;
+import com.diafarms.ml.repository.ConsommationAlimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.request.create.AlimentationCreate;
 import com.diafarms.ml.request.update.AlimentationUpdate;
@@ -25,10 +34,12 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AlimentationImpl implements AlimentationService {
-    
+
 
     private final AlimentationRepo alimentationRepo;
     private final ProjetsRepo projetsRepo;
+    private final BatimentRepo batimentRepo;
+    private final ConsommationAlimentRepo consommationAlimentRepo;
     private final OtherService otherService;
     private final LogsServices logs;
 
@@ -80,8 +91,12 @@ public class AlimentationImpl implements AlimentationService {
                 ? LocalDate.parse(data.getDateDistribution())
                 : LocalDate.now()
         );
+        alimentation.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         alimentation.setObservations(data.getObservations());
         alimentation.setProjet(projet);
+        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
+            alimentation.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
+        }
         alimentation.setFarm(farm);
         alimentation.setInitialisation(Initialisation.init());
 
@@ -126,6 +141,18 @@ public class AlimentationImpl implements AlimentationService {
             alimentation.setSac(data.getSac());
         }
         if (data.getQuantiteKg() != null) {
+            if (data.getQuantiteKg() < ancienneQuantite) {
+                Long projetId = alimentation.getProjet().getId();
+                double totalAchete = alimentationRepo.sumAcheteByProjetId(projetId);
+                double totalConsomme = consommationAlimentRepo.sumConsommeByProjetId(projetId);
+                double nouveauTotalAchete = totalAchete - ancienneQuantite + data.getQuantiteKg();
+                if (nouveauTotalAchete < totalConsomme) {
+                    throw new RuntimeException(
+                        "Impossible de réduire cet achat : le stock consommé (" + totalConsomme
+                            + " kg) dépasserait le stock acheté (" + nouveauTotalAchete + " kg) pour ce projet."
+                    );
+                }
+            }
             alimentation.setQuantiteKg(data.getQuantiteKg());
         }
         if (data.getCoutTotal() != null) {
@@ -138,6 +165,12 @@ public class AlimentationImpl implements AlimentationService {
         }
         if (data.getObservations() != null) {
             alimentation.setObservations(data.getObservations());
+        }
+        if (data.getHeure() != null) {
+            alimentation.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
+        }
+        if (data.getBatimentUniqueId() != null) {
+            alimentation.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
         }
 
         // Mise à jour date
@@ -163,50 +196,32 @@ public class AlimentationImpl implements AlimentationService {
     @Override
     @Transactional
     public AlimentationDTO delete(String uniqueId) {
-        // // 1. Trouver l'alimentation
-        // Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
-        //         .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
-
-        // // 2. Vérifier si déjà supprimée
-        // if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
-        //     throw new RuntimeException("Cette alimentation est déjà supprimée.");
-        // }
-
-        // // 3. Soft delete
-        // alimentation.getInitialisation().setRemoved(true);
-        // alimentation.setInitialisation(Initialisation.updateDate(alimentation.getInitialisation()));
-
-        // Alimentation deleted = alimentationRepo.save(alimentation);
-
-        // // 4. Log
-        // Utilisateurs currentUser = getCurrentUserSafe();
-
-        // logAction(currentUser, deleted,
-        //     "Suppression de l'alimentation '" + deleted.getNomAliment()
-        //         + "' (" + deleted.getQuantiteKg() + " kg) du projet '"
-        //         + deleted.getProjet().getTitre() + "'"
-        // );
-
-        // return AlimentationDTO.fromEntityList(deleted);
-
-         // 1. Trouver l'alimentation
+        // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
 
-        // 2. Log AVANT suppression (car après on n'y a plus accès)
+        // 2. Vérifier si déjà supprimée
+        if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
+            throw new RuntimeException("Cette alimentation est déjà supprimée.");
+        }
+
+        // 3. Soft delete (le hard delete précédent effaçait définitivement la ligne,
+        // incohérent avec le reste de l'app où tout est récupérable)
+        alimentation.getInitialisation().setRemoved(true);
+        alimentation.setInitialisation(Initialisation.updateDate(alimentation.getInitialisation()));
+
+        Alimentation deleted = alimentationRepo.save(alimentation);
+
+        // 4. Log
         Utilisateurs currentUser = getCurrentUserSafe();
-        
-        logAction(currentUser, alimentation,
-            "Suppression définitive de l'alimentation '" + alimentation.getNomAliment()
-                + "' (" + alimentation.getQuantiteKg() + " kg) du projet '"
-                + alimentation.getProjet().getTitre() + "'"
+
+        logAction(currentUser, deleted,
+            "Suppression de l'alimentation '" + deleted.getNomAliment()
+                + "' (" + deleted.getQuantiteKg() + " kg) du projet '"
+                + deleted.getProjet().getTitre() + "'"
         );
 
-        // 3. Suppression réelle
-        alimentationRepo.delete(alimentation);
-
-        // 4. Retourner le DTO (avant suppression ou reconstruit)
-        return AlimentationDTO.fromEntityList(alimentation);
+        return AlimentationDTO.fromEntityList(deleted);
     }
 
     // ============================================================
@@ -233,5 +248,34 @@ public class AlimentationImpl implements AlimentationService {
         return AlimentationDTO.fromEntityList(alimentation);
     }
 
+    // ============================================================
+    // LIST GLOBAL (paginée, pour la page Production)
+    // ============================================================
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<AlimentationDTO> list(int page, int size, String search, String projetUniqueId, String batimentUniqueId) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateDistribution"));
+
+        Utilisateurs currentUser = getCurrentUserSafe();
+        Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;
+
+        String searchParam = (search == null || search.isBlank()) ? null : "%" + search.trim().toLowerCase() + "%";
+        String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
+        String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
+
+        Page<Alimentation> resultPage = alimentationRepo.search(farmId, projetParam, batimentParam, searchParam, pageable);
+
+        List<AlimentationDTO> dtoList = resultPage.getContent().stream()
+                .map(AlimentationDTO::fromEntityList)
+                .toList();
+
+        return new PaginatedResponse<>(
+                dtoList,
+                resultPage.getNumber() + 1,
+                resultPage.getTotalPages(),
+                resultPage.getTotalElements(),
+                resultPage.getSize()
+        );
+    }
 
 }
