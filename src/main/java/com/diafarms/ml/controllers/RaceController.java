@@ -3,6 +3,7 @@ package com.diafarms.ml.controllers;
 import com.diafarms.ml.DTO.RaceDTO;
 import com.diafarms.ml.models.Race;
 import com.diafarms.ml.others.ApiResponse;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.services.RaceServices;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -58,6 +59,20 @@ public class RaceController {
         try {
             List<RaceDTO> result = services.findAll();
             return ApiResponse.createResponse("Liste récupérée", HttpStatus.OK, result, null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    // ==================== LIST PAGINÉE (recherche + pagination serveur) ====================
+    @GetMapping("/list-paginated")
+    public ResponseEntity<ApiResponse<PaginatedResponse<RaceDTO>>> listPaginated(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search) {
+        try {
+            PaginatedResponse<RaceDTO> result = services.listPaginated(page, size, search);
+            return ApiResponse.createResponse("Liste paginée récupérée", HttpStatus.OK, result, null);
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

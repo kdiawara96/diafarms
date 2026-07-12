@@ -4,9 +4,14 @@ import com.diafarms.ml.DTO.RaceDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Race;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.RaceRepo;
 import com.diafarms.ml.services.RaceServices;
 import com.diafarms.ml.services.LogsServices;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -223,6 +228,38 @@ public class RaceImpl implements RaceServices {
         // Cas de secours (ex: pas d'utilisateur connecté ou pas de ferme associée)
         // Vous pouvez soit lever une exception, soit retourner une liste vide, soit tout afficher
         return Collections.emptyList();
+    }
+
+    @Override
+    public PaginatedResponse<RaceDTO> listPaginated(int page, int size, String search) {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
+        Page<Race> racePage = Page.empty(pageable);
+
+        if (currentUser != null && currentUser.getFarm() != null) {
+            Long farmId = currentUser.getFarm().getId();
+            racePage = (search != null && !search.trim().isEmpty())
+                    ? raceRepo.searchRacesByFarm(farmId, search.trim(), pageable)
+                    : raceRepo.findAllActiveByFarm(farmId, pageable);
+        }
+
+        List<RaceDTO> dtoList = racePage.getContent().stream()
+                .map(RaceDTO::toDTO)
+                .collect(Collectors.toList());
+
+        return new PaginatedResponse<>(
+                dtoList,
+                racePage.getNumber(),
+                racePage.getTotalPages(),
+                racePage.getTotalElements(),
+                racePage.getSize()
+        );
     }
 
 }

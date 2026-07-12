@@ -1,5 +1,7 @@
 package com.diafarms.ml.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -46,4 +48,15 @@ public interface RaceRepo extends JpaRepository<Race, Long> {
 
     @Query("SELECT COUNT(r) > 0 FROM Race r WHERE r.identifiant = :identifiant")
     boolean existsByIdentifiant(@Param("identifiant") String identifiant);
+
+    // Variantes paginées, pour la liste "Gestion des Races" (recherche + pagination serveur)
+    @Query("SELECT r FROM Race r WHERE r.farm.id = :farmId AND r.initialisation.removed = false")
+    Page<Race> findAllActiveByFarm(@Param("farmId") Long farmId, Pageable pageable);
+
+    @Query("SELECT r FROM Race r WHERE r.farm.id = :farmId " +
+           "AND r.initialisation.removed = false " +
+           "AND (LOWER(r.nom) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(r.origine) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(r.description) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<Race> searchRacesByFarm(@Param("farmId") Long farmId, @Param("search") String search, Pageable pageable);
 }
