@@ -472,10 +472,37 @@ public class ProjetImpl implements ProjetServices {
         return ProjetsDTO.fromEntity(updatedProjet, computeTauxPonte(updatedProjet), computeMortaliteCumulee(updatedProjet));
     }
     
+    /**
+     * Liste des projets pour les sélecteurs (dropdowns web + mobile). Un ADMIN/SUPER_ADMIN
+     * voit tous les projets de sa ferme ; un PRODUCTEUR/FINANCIER ne voit que ceux où il
+     * est explicitement désigné responsableProduction ou responsableFinance — avant ce
+     * correctif, n'importe quel utilisateur authentifié recevait tous les projets de
+     * toutes les fermes, sans distinction de rôle ni d'affectation.
+     */
     @Override
     public List<ProjetsSelect> selectEntity() {
-        return projetsRepo.findByInitialisation_RemovedFalse()
-                .stream()
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null) {
+            return List.of();
+        }
+
+        boolean isAdmin = currentUser.getRoles() != null && currentUser.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+
+        List<Projets> projets;
+        if (isAdmin && currentUser.getFarm() == null) {
+            // Compte admin système de bootstrap, jamais rattaché à une ferme (voir
+            // MlApplication.run()) : accès complet plutôt que bloqué par l'absence de ferme.
+            projets = projetsRepo.findByInitialisation_RemovedFalse();
+        } else if (currentUser.getFarm() == null) {
+            projets = List.of();
+        } else if (isAdmin) {
+            projets = projetsRepo.findAllActiveByFarm(currentUser.getFarm().getId());
+        } else {
+            projets = projetsRepo.findAssignedToUser(currentUser.getFarm().getId(), currentUser.getUniqueId());
+        }
+
+        return projets.stream()
                 .map(ProjetsSelect::selectEntity)
                 .toList();
     }

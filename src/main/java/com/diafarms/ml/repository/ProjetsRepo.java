@@ -38,4 +38,15 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
 
      // 🔥 Récupère tous les projets non supprimés
     List<Projets> findByInitialisation_RemovedFalse();
+
+    // Utilisés par /projets/select : un ADMIN voit tous les projets de sa ferme, un
+    // PRODUCTEUR/FINANCIER ne voit que ceux où il est explicitement désigné responsable
+    // (auparavant /projets/select ne filtrait ni par ferme ni par affectation : n'importe
+    // quel utilisateur authentifié voyait tous les projets de toutes les fermes).
+    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false")
+    List<Projets> findAllActiveByFarm(@Param("farmId") Long farmId);
+
+    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
+           "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId)")
+    List<Projets> findAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 }
