@@ -47,6 +47,7 @@ public class QRCodeController {
             Instant expiresAt = duration.calculateExpiry(now);
 
             String encryptedQr = qrCodeService.generateAndEncryptQRCode(
+                    user.getUsername(),
                     user.getUniqueId(),
                     user.getFullName(),
                     rolesPipe,

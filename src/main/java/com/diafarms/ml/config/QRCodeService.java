@@ -23,12 +23,19 @@ public class QRCodeService {
     private final UtilisateursRepo utilisateursRepo;
     private final AESService aesService;
 
-    public String generateAndEncryptQRCode(String uniqueId, String fullName,
+    public String generateAndEncryptQRCode(String username, String uniqueId, String fullName,
                                           String rolesPipe, Instant expiresAt, Instant now) {
 
-        // 1. JWT Token génération
+        // 1. JWT Token génération — le subject DOIT être le username, pas le uniqueId :
+        // OtherService.getCurrentUser() (utilisé par la quasi-totalité des endpoints, dont
+        // /projets/select) résout l'utilisateur via findByUsername(jwt.getSubject()). Avec
+        // uniqueId en subject, cette recherche échouait silencieusement (retour null) pour
+        // toute requête authentifiée par un token issu d'un QR, d'où un utilisateur "connecté"
+        // mais sans aucune donnée (projets, etc.) alors que le token JWT lui-même est valide.
+        // scope (espaces, pas pipes) plutôt que role : c'est le nom de claim que
+        // JwtGrantedAuthoritiesConverter lit par défaut pour peupler les authorities.
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .subject(uniqueId)
+                .subject(username)
                 .issuedAt(now)
                 .expiresAt(expiresAt)
                 .issuer("diafarms-qr")
@@ -36,6 +43,7 @@ public class QRCodeService {
                 .claim("uniqueId", uniqueId)
                 .claim("fullName", fullName)
                 .claim("role", rolesPipe)
+                .claim("scope", rolesPipe == null ? "" : rolesPipe.replace("|", " "))
                 .build();
 
         String token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
