@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,22 +51,36 @@ public class authControllers {
         @RequestParam("password") String password,
         @RequestParam(value = "ouiRefresh", defaultValue = "false") boolean ouiRefresh,
         @RequestParam(value = "refreshToken", required = false) String refreshToken,
+        @RequestHeader(value = "X-Client-Type", required = false) String clientType,
         HttpServletResponse httpServletResponse){
         try {
             ResponseEntity<Object> result = serives.jwt(grantType, identifiant, password, ouiRefresh, refreshToken);
             Object body = result.getBody();
+            boolean isMobileClient = "mobile".equalsIgnoreCase(clientType);
 
             if (body instanceof UsersAuth_DTO authModel && authModel.getAccessToken() != null) {
                 cookieAuthUtils.setAccessCookie(httpServletResponse, authModel.getAccessToken(), ACCESS_TOKEN_TTL_SECONDS);
                 if (authModel.getRefreshToken() != null) {
                     cookieAuthUtils.setRefreshCookie(httpServletResponse, authModel.getRefreshToken(), REFRESH_TOKEN_TTL_SECONDS);
                 }
-                authModel.setAccessToken(null);
-                authModel.setRefreshToken(null);
+                // Le web s'appuie uniquement sur le cookie HttpOnly (le token ne doit jamais
+                // atteindre le JS, pour limiter l'impact d'une XSS). Un client mobile natif n'a
+                // pas de jar de cookies pratique : on lui laisse le token dans le corps JSON.
+                if (!isMobileClient) {
+                    authModel.setAccessToken(null);
+                    authModel.setRefreshToken(null);
+                }
             }
 
-            // Réponse réussie
-            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, body, null);
+            // Message et status réels : auparavant le status était toujours écrasé par
+            // HttpStatus.OK et le message toujours "Opération réussie", même en cas
+            // d'identifiant/mot de passe incorrect (AuthImpl renvoie alors un Map
+            // {errorMessage: ...} avec un status 401 qui n'était jamais propagé).
+            String message = "Opération réussie";
+            if (body instanceof java.util.Map<?, ?> errorBody && errorBody.get("errorMessage") != null) {
+                message = String.valueOf(errorBody.get("errorMessage"));
+            }
+            return ApiResponse.createResponse(message, HttpStatus.valueOf(result.getStatusCode().value()), body, null);
         } catch ( NoSuchElementException e) {
             // Gestion des erreurs de validation
             List<String> errors = Arrays.asList(e.getMessage());

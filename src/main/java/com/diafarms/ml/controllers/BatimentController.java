@@ -3,6 +3,7 @@ package com.diafarms.ml.controllers;
 import com.diafarms.ml.DTO.BatimentsDTO;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.others.ApiResponse;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.services.BatimentServices;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -169,6 +170,30 @@ public class BatimentController {
                 "Erreur interne du serveur", 
                 HttpStatus.INTERNAL_SERVER_ERROR, 
                 null, 
+                List.of("Une erreur inattendue s'est produite")
+            );
+        }
+    }
+
+    // ==================== LIST PAGINÉE (recherche + pagination serveur) ====================
+    @GetMapping("/list-paginated")
+    public ResponseEntity<ApiResponse<PaginatedResponse<BatimentsDTO>>> listPaginated(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search) {
+        try {
+            PaginatedResponse<BatimentsDTO> result = services.listPaginated(page, size, search);
+            return ApiResponse.createResponse(
+                "Liste paginée récupérée",
+                HttpStatus.OK,
+                result,
+                null
+            );
+        } catch (Exception e) {
+            return ApiResponse.createResponse(
+                "Erreur interne du serveur",
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                null,
                 List.of("Une erreur inattendue s'est produite")
             );
         }

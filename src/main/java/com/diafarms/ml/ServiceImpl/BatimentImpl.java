@@ -7,10 +7,15 @@ import com.diafarms.ml.DTO.BatimentsDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.services.BatimentServices;
 import com.diafarms.ml.services.LogsServices;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -228,5 +233,37 @@ public class BatimentImpl implements BatimentServices {
                         .map(BatimentsDTO::select)
                         .collect(Collectors.toList());
    }
+
+    @Override
+    public PaginatedResponse<BatimentsDTO> listPaginated(int page, int size, String search) {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
+        Page<Batiment> batimentPage = Page.empty(pageable);
+
+        if (currentUser != null) {
+            Long farmId = currentUser.getFarm().getId();
+            batimentPage = (search != null && !search.trim().isEmpty())
+                    ? batimentRepo.searchBatimentsByFarm(farmId, search.trim(), pageable)
+                    : batimentRepo.findActiveByFarmId(farmId, pageable);
+        }
+
+        List<BatimentsDTO> dtoList = batimentPage.getContent().stream()
+                .map(BatimentsDTO::toDTO)
+                .collect(Collectors.toList());
+
+        return new PaginatedResponse<>(
+                dtoList,
+                batimentPage.getNumber(),
+                batimentPage.getTotalPages(),
+                batimentPage.getTotalElements(),
+                batimentPage.getSize()
+        );
+    }
 
 }
