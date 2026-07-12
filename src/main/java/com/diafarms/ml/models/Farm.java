@@ -23,6 +23,11 @@ public class Farm {
     @Column(name = "unique_id", nullable = false, unique = true , length = 50)
     private String uniqueId;
 
+    // Ville de la ferme, utilisée pour géolocaliser la météo (WeatherService) — une
+    // ferme opère à un seul endroit, donc granularité farm plutôt que par projet.
+    @Column(name = "ville", length = 100)
+    private String ville;
+
     @OneToMany(mappedBy = "farm")
     private List<Utilisateurs> utilisateurs;
 

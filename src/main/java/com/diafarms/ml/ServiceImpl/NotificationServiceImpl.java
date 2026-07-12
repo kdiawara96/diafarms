@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -14,16 +15,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.NotificationDTO;
 import com.diafarms.ml.enums.StatutTransaction;
+import com.diafarms.ml.enums.AlertType;
+import com.diafarms.ml.enums.ThresholdKey;
 import com.diafarms.ml.models.NotificationRead;
+import com.diafarms.ml.models.ProjectAlertConfig;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
 import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.NotificationReadRepo;
+import com.diafarms.ml.repository.ProjectAlertConfigRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.TransactionRepo;
 import com.diafarms.ml.services.NotificationService;
+import com.diafarms.ml.services.WeatherService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -42,6 +48,8 @@ public class NotificationServiceImpl implements NotificationService {
     private final MortaliteRepo mortaliteRepo;
     private final TransactionRepo transactionRepo;
     private final NotificationReadRepo notificationReadRepo;
+    private final ProjectAlertConfigRepo projectAlertConfigRepo;
+    private final WeatherService weatherService;
     private final OtherService otherService;
 
     @Override
@@ -57,6 +65,7 @@ public class NotificationServiceImpl implements NotificationService {
         for (Projets p : projets) {
             addStockNotification(result, p);
             addMortaliteNotification(result, p);
+            addMeteoNotification(result, p);
         }
 
         long nbAttente = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.EN_ATTENTE);
@@ -86,6 +95,7 @@ public class NotificationServiceImpl implements NotificationService {
                 List<NotificationDTO> result = new ArrayList<>();
                 addStockNotification(result, p);
                 addMortaliteNotification(result, p);
+                addMeteoNotification(result, p);
                 result.sort(Comparator.comparing((NotificationDTO n) -> "CRITIQUE".equals(n.getLevel()) ? 0 : 1));
                 return result;
             })
@@ -119,6 +129,63 @@ public class NotificationServiceImpl implements NotificationService {
         } else if (taux >= MORTALITE_WARNING_PCT) {
             result.add(mortaliteNotif(p, "WARNING", "Mortalité cumulée à surveiller — " + p.getCode() + " (" + round1(taux) + "%)"));
         }
+    }
+
+    /**
+     * Seuils WEATHER_* configurés via /alertes (ProjectAlertConfig, alertType=METEO) mais
+     * jamais évalués jusqu'ici faute d'appel météo — voir ProjectAlertTemplate pour le
+     * mapping ThresholdKey -> métrique : DAILY_WARNING/DAILY_CRITICAL = seuils de
+     * température, CUMULATIVE_CRITICAL = humidité max, WEEKLY_CRITICAL = humidité min.
+     */
+    private void addMeteoNotification(List<NotificationDTO> result, Projets p) {
+        if (p.getFarm() == null || p.getFarm().getVille() == null || p.getFarm().getVille().isBlank()) return;
+
+        Optional<WeatherService.WeatherSnapshot> weatherOpt = weatherService.getCurrentWeather(p.getFarm().getVille());
+        if (weatherOpt.isEmpty()) return;
+        WeatherService.WeatherSnapshot weather = weatherOpt.get();
+
+        List<ProjectAlertConfig> configs = projectAlertConfigRepo.findActiveAlertsByProjectUniqueId(p.getUniqueId());
+        for (ProjectAlertConfig cfg : configs) {
+            if (cfg.getAlertType() != AlertType.METEO || cfg.getNumericValue() == null || cfg.getThresholdKey() == null) continue;
+            double seuil = cfg.getNumericValue().doubleValue();
+            String level = cfg.getLevel().name();
+
+            switch (cfg.getThresholdKey()) {
+                case DAILY_WARNING, DAILY_CRITICAL -> {
+                    if (weather.temperatureC() >= seuil) {
+                        result.add(meteoNotif(p, "temp-" + cfg.getThresholdKey(), level,
+                                "Température élevée (" + round1(weather.temperatureC()) + "°C) — " + p.getCode()
+                                        + " (seuil " + round1(seuil) + "°C)"));
+                    }
+                }
+                case CUMULATIVE_CRITICAL -> {
+                    if (weather.humidityPct() >= seuil) {
+                        result.add(meteoNotif(p, "humidite-max", level,
+                                "Humidité élevée (" + round1(weather.humidityPct()) + "%) — " + p.getCode()
+                                        + " (seuil " + round1(seuil) + "%)"));
+                    }
+                }
+                case WEEKLY_CRITICAL -> {
+                    if (weather.humidityPct() <= seuil) {
+                        result.add(meteoNotif(p, "humidite-min", level,
+                                "Humidité faible (" + round1(weather.humidityPct()) + "%) — " + p.getCode()
+                                        + " (seuil " + round1(seuil) + "%)"));
+                    }
+                }
+            }
+        }
+    }
+
+    private NotificationDTO meteoNotif(Projets p, String metricKey, String level, String message) {
+        return NotificationDTO.builder()
+            .key("meteo-" + metricKey + "-" + p.getUniqueId())
+            .type("METEO")
+            .level(level)
+            .message(message)
+            .projetCode(p.getCode())
+            .projetUniqueId(p.getUniqueId())
+            .actionPath("/projets/" + p.getUniqueId())
+            .build();
     }
 
     private NotificationDTO stockNotif(Projets p, String level, String message) {
