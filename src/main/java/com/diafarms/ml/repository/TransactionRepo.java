@@ -45,4 +45,13 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.farm.id = :farmId AND t.initialisation.removed = false " +
         "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE AND t.type = :type")
     Double sumMontantValideByType(@Param("farmId") Long farmId, @Param("type") TypeTransaction type);
+
+    // Chiffre d'affaires réel d'un projet (voir ProjetsDTO.fromEntity/fromEntityList) :
+    // uniquement les transactions rattachées directement (t.projet), pas celles
+    // "communes" concernant plusieurs projets (projetsConcernes) — sinon un JOIN sur
+    // cette relation ManyToMany ferait du fan-out et fausserait la somme.
+    @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.projet.id = :projetId " +
+        "AND t.initialisation.removed = false " +
+        "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE AND t.type = :type")
+    Double sumMontantValideByProjetIdAndType(@Param("projetId") Long projetId, @Param("type") TypeTransaction type);
 }

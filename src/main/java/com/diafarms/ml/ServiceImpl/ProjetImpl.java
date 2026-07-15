@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.diafarms.ml.DTO.ProjetAssigneDTO;
 import com.diafarms.ml.DTO.ProjetsDTO;
 import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.commons.Initialisation;
@@ -27,9 +28,13 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.Vaccination;
 import com.diafarms.ml.models.Batiment.StatutBatiment;
 import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.enums.TypeTransaction;
+import com.diafarms.ml.models.ConsommationAliment;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
+import com.diafarms.ml.repository.ConsommationAlimentRepo;
+import com.diafarms.ml.repository.TransactionRepo;
 import com.diafarms.ml.repository.InvestissementRepartitionRepository;
 import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.OccupationBatimentRepo;
@@ -55,6 +60,8 @@ public class ProjetImpl implements ProjetServices {
     private final RaceRepo raceRepo;
     private final UtilisateursRepo utilisateursRepo;
     private final AlimentationRepo alimentationRepo;
+    private final ConsommationAlimentRepo consommationAlimentRepo;
+    private final TransactionRepo transactionRepo;
     private final VaccinationRepo vaccinationRepo;
     private final OccupationBatimentRepo occupationBatimentRepo;
     private final BatimentRepo batimentRepo;
@@ -74,6 +81,14 @@ public class ProjetImpl implements ProjetServices {
         Integer morts = mortaliteRepo.sumMortsByProjetId(p.getId());
         double taux = ((morts == null ? 0 : morts) * 100.0) / p.getNbSujets();
         return Math.round(taux * 10) / 10.0;
+    }
+
+    // Chiffre d'affaires réel (pas une projection) : somme des transactions "entrée"
+    // validées du projet. Voir ProjetsDTO.fromEntity/fromEntityList — remplace
+    // data.getChiffreAffaires(), figé à 0.0 depuis la création du projet.
+    private Double computeChiffreAffairesReel(Projets p) {
+        Double montant = transactionRepo.sumMontantValideByProjetIdAndType(p.getId(), TypeTransaction.ENTREE);
+        return montant == null ? 0.0 : montant;
     }
 
     private Double computeTauxPonte(Projets p) {
@@ -176,7 +191,7 @@ public class ProjetImpl implements ProjetServices {
 
         // Mapping des entités vers le DTO de listage
         List<ProjetsDTO> dtoList = projetsPage.getContent().stream()
-                .map(ProjetsDTO::fromEntityList)
+                .map(p -> ProjetsDTO.fromEntityList(p, computeTauxPonte(p), computeMortaliteCumulee(p), computeChiffreAffairesReel(p)))
                 .toList();
 
         return new PaginatedResponse<>(
@@ -194,7 +209,7 @@ public class ProjetImpl implements ProjetServices {
         Projets projet = projetsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
 
-        return ProjetsDTO.fromEntity(projet, computeTauxPonte(projet), computeMortaliteCumulee(projet));
+        return ProjetsDTO.fromEntity(projet, computeTauxPonte(projet), computeMortaliteCumulee(projet), computeChiffreAffairesReel(projet));
     }
 
     // ============================================================
@@ -250,10 +265,13 @@ public class ProjetImpl implements ProjetServices {
         projet.setResponsableFinance(responsableFinance);
         projet.setFarm(farm);
 
-        // Calculer CA prévu et marge nette initiale
         double caTotalSujets = (data.getNbSujets() != null ? data.getNbSujets() : 0) * (data.getPuSujet() != null ? data.getPuSujet() : 0) + (data.getAutresDepense() != null ? data.getAutresDepense() : 0);
         projet.setCaTotalSujets(caTotalSujets);
-        projet.setChiffreAffaires(0.0); 
+        // chiffreAffaires (colonne entité) n'est plus lu par le DTO : le "chiffre
+        // d'affaires" exposé au front est calculé à la volée depuis les transactions
+        // "entrée" validées du projet (voir computeChiffreAffairesReel), forcément 0
+        // à la création puisqu'aucune vente n'a encore été saisie.
+        projet.setChiffreAffaires(0.0);
         projet.setMargeNette(0.0); // Sera calculé plus tard avec tous les coûts réels
 
         projet.setInitialisation(Initialisation.init());
@@ -397,6 +415,113 @@ public class ProjetImpl implements ProjetServices {
                 : "Projet récupéré.";
     }
 
+    /**
+     * Clôture (archive) définitivement un projet, ou le rouvre — DISTINCT de
+     * deleteOrRecoverProjet (removed = suppression/corbeille). C'est le SEUL
+     * mécanisme qui fait passer initialisation.archive à true : un projet ne devient
+     * jamais "terminé" tout seul juste parce que sa date de fin prévue est dépassée
+     * (fréquent en élevage réel — un lot peut durer plus longtemps que prévu), il faut
+     * une action explicite de l'admin. C'est ce champ "active" (!archive) qui est
+     * ensuite utilisé partout pour ne pas ramener un projet clos sur le mobile hors
+     * ligne (voir ProjetsSelect.selectEntity), plutôt que de comparer une date.
+     */
+    @Override
+    @Transactional
+    public String archiveOrRecoverProjet(String uniqueId) {
+        Projets projet = projetsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Projet non trouvé avec l'uniqueId : " + uniqueId));
+
+        boolean archive = !Boolean.TRUE.equals(projet.getInitialisation().getArchive());
+        projet.getInitialisation().setArchive(archive);
+        projetsRepo.save(projet);
+
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser != null) {
+            logs.addLogs(
+                currentUser.getId(),
+                projet.getId(),
+                "Projet",
+                (archive ? "Clôture" : "Réouverture") + " du projet '" + projet.getTitre() + "'"
+            );
+        }
+
+        return archive
+                ? "Projet clôturé."
+                : "Projet rouvert.";
+    }
+
+    /**
+     * Transfère le stock d'aliment restant (achats - consommations) d'un projet vers
+     * un autre, typiquement juste avant sa clôture — pour ne pas perdre un reste de
+     * sac déjà payé. Valorisé au prix moyen d'achat au kg du projet source (pas juste
+     * la quantité), sinon la valeur du stock disparaîtrait du bilan à la clôture.
+     * Concrètement : un nouvel achat (Alimentation) dans le projet cible, compensé par
+     * une consommation dans le projet source pour que son stock retombe à 0.
+     */
+    @Override
+    @Transactional
+    public String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId) {
+        if (projetSourceUniqueId.equals(projetCibleUniqueId)) {
+            throw new IllegalArgumentException("Le projet cible doit être différent du projet à clôturer.");
+        }
+        Projets source = projetsRepo.findByUniqueId(projetSourceUniqueId)
+                .orElseThrow(() -> new RuntimeException("Projet source introuvable : " + projetSourceUniqueId));
+        Projets cible = projetsRepo.findByUniqueId(projetCibleUniqueId)
+                .orElseThrow(() -> new RuntimeException("Projet cible introuvable : " + projetCibleUniqueId));
+
+        double achete = nz(alimentationRepo.sumAcheteByProjetId(source.getId()));
+        double consomme = nz(consommationAlimentRepo.sumConsommeByProjetId(source.getId()));
+        double restantKg = achete - consomme;
+        if (restantKg <= 0) {
+            return "Aucun stock d'aliment restant à transférer.";
+        }
+
+        double coutAchete = nz(alimentationRepo.sumCoutAcheteByProjetId(source.getId()));
+        double prixMoyenKg = achete > 0 ? coutAchete / achete : 0.0;
+        double valeurTransferee = Math.round(restantKg * prixMoyenKg * 100) / 100.0;
+
+        Utilisateurs currentUser = getCurrentUserSafe();
+        Farm farm = currentUser != null ? currentUser.getFarm() : null;
+
+        Alimentation entree = new Alimentation();
+        entree.setUniqueId(generateUID());
+        entree.setNomAliment("Transfert depuis " + source.getCode());
+        entree.setQuantiteKg(restantKg);
+        entree.setCoutTotal(valeurTransferee);
+        entree.setDateDistribution(LocalDate.now());
+        entree.setObservations("Stock restant transféré lors de la clôture du projet " + source.getCode());
+        entree.setProjet(cible);
+        entree.setFarm(farm);
+        entree.setInitialisation(Initialisation.init());
+        alimentationRepo.save(entree);
+
+        ConsommationAliment sortie = new ConsommationAliment();
+        sortie.setUniqueId(generateUID());
+        sortie.setProjet(source);
+        sortie.setDate(LocalDate.now());
+        sortie.setQuantiteKg(restantKg);
+        sortie.setFarm(farm);
+        sortie.setInitialisation(Initialisation.init());
+        consommationAlimentRepo.save(sortie);
+
+        if (currentUser != null) {
+            logs.addLogs(
+                currentUser.getId(),
+                source.getId(),
+                "Projet",
+                "Transfert de " + restantKg + " kg d'aliment (valeur " + valeurTransferee
+                    + " FCFA) vers le projet '" + cible.getCode() + "'"
+            );
+        }
+
+        return "Stock transféré : " + restantKg + " kg vers " + cible.getCode() + ".";
+    }
+
+    private double nz(Double v) {
+        return v == null ? 0.0 : v;
+    }
+
     @Override
     @Transactional
     public ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data) {
@@ -450,7 +575,8 @@ public class ProjetImpl implements ProjetServices {
         
         double caTotalSujets = (nbSujets * puSujet) + autresDepense;
         projet.setCaTotalSujets(caTotalSujets);
-        // projet.setChiffreAffaires(caTotalSujets);
+        // chiffreAffaires n'est plus recalculé ici : voir computeChiffreAffairesReel,
+        // le DTO l'écrase avec la somme réelle des transactions "entrée" validées.
 
         // 5. Sauvegarder
         Projets updatedProjet = projetsRepo.save(projet);
@@ -469,7 +595,7 @@ public class ProjetImpl implements ProjetServices {
             );
         }
 
-        return ProjetsDTO.fromEntity(updatedProjet, computeTauxPonte(updatedProjet), computeMortaliteCumulee(updatedProjet));
+        return ProjetsDTO.fromEntity(updatedProjet, computeTauxPonte(updatedProjet), computeMortaliteCumulee(updatedProjet), computeChiffreAffairesReel(updatedProjet));
     }
     
     /**
@@ -507,6 +633,41 @@ public class ProjetImpl implements ProjetServices {
                 .toList();
     }
 
-    
-    
+    /**
+     * Derniers projets associés à un utilisateur (responsable production et/ou
+     * finance), pour la modale "Profil & Accès Mobile Utilisateur" côté web. Portée
+     * par la ferme de l'ADMIN appelant (comme selectEntity ci-dessus) : si
+     * l'utilisateur ciblé n'appartient pas à cette ferme, la liste renvoyée est vide
+     * plutôt que de risquer une fuite de données inter-fermes.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjetAssigneDTO> getProjetsAssignes(String userUniqueId, int limit) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) {
+            return List.of();
+        }
+
+        List<Projets> projets = projetsRepo.findRecentAssignedToUser(
+                currentUser.getFarm().getId(), userUniqueId, PageRequest.of(0, limit));
+
+        return projets.stream().map(p -> {
+            List<String> roles = new java.util.ArrayList<>();
+            if (p.getResponsableProduction() != null && userUniqueId.equals(p.getResponsableProduction().getUniqueId())) {
+                roles.add("PRODUCTEUR");
+            }
+            if (p.getResponsableFinance() != null && userUniqueId.equals(p.getResponsableFinance().getUniqueId())) {
+                roles.add("FINANCIER");
+            }
+            return ProjetAssigneDTO.builder()
+                    .uniqueId(p.getUniqueId())
+                    .code(p.getCode())
+                    .titre(p.getTitre())
+                    .createdAt(p.getInitialisation() != null ? p.getInitialisation().getCreatedAt() : null)
+                    .active(p.getInitialisation() == null || !Boolean.TRUE.equals(p.getInitialisation().getArchive()))
+                    .roles(roles)
+                    .build();
+        }).toList();
+    }
+
 }

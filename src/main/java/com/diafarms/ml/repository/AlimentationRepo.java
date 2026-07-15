@@ -37,4 +37,10 @@ public interface AlimentationRepo extends JpaRepository<Alimentation, Long> {
     @Query("SELECT COALESCE(SUM(a.quantiteKg), 0.0) FROM Alimentation a " +
         "WHERE a.projet.id = :projetId AND a.initialisation.removed = false")
     Double sumAcheteByProjetId(@Param("projetId") Long projetId);
+
+    // Sert à calculer le prix moyen au kg d'un projet (coût / quantité achetée), pour
+    // valoriser un transfert de stock restant vers un autre projet à la clôture.
+    @Query("SELECT COALESCE(SUM(a.coutTotal), 0.0) FROM Alimentation a " +
+        "WHERE a.projet.id = :projetId AND a.initialisation.removed = false")
+    Double sumCoutAcheteByProjetId(@Param("projetId") Long projetId);
 }

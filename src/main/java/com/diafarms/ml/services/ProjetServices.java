@@ -2,6 +2,7 @@ package com.diafarms.ml.services;
 
 import java.util.List;
 
+import com.diafarms.ml.DTO.ProjetAssigneDTO;
 import com.diafarms.ml.DTO.ProjetsDTO;
 import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.others.PaginatedResponse;
@@ -15,7 +16,11 @@ public interface ProjetServices {
     ProjetsDTO createProjet(ProjetCreate data);
     ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data);
     String deleteOrRecoverProjet(String uniqueId);
+    String archiveOrRecoverProjet(String uniqueId);
+    String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId);
 
     List<ProjetsSelect> selectEntity();
+
+    List<ProjetAssigneDTO> getProjetsAssignes(String userUniqueId, int limit);
 
 }

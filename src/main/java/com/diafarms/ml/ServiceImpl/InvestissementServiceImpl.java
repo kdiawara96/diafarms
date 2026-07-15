@@ -237,7 +237,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 .stream()
                 .map(r -> InvestissementRepartitionDTO.builder()
                         .id(r.getId())
-                        .codeProjet(r.getProjet() != null ? r.getProjet().getCode() : null)
+                        .codeProjet(r.getProjet() != null ? r.getProjet().getUniqueId() : null)
                         .titreProjet(r.getProjet() != null ? r.getProjet().getTitre() : null)
                         .dateDebut(r.getDateDebut())
                         .dateFin(r.getDateFin())
@@ -434,7 +434,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                         }
                         return InvestissementRepartitionDTO.builder()
                                 .id(r.getId())
-                                .codeProjet(r.getProjet() != null ? r.getProjet().getCode() : null)
+                                .codeProjet(r.getProjet() != null ? r.getProjet().getUniqueId() : null)
                                 .titreProjet(r.getProjet() != null ? r.getProjet().getTitre() : null)
                                 .dateDebut(r.getDateDebut())
                                 .dateFin(r.getDateFin() != null ? r.getDateFin() : finTheorique)

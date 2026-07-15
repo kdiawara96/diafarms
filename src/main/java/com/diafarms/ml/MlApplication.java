@@ -74,6 +74,8 @@ public class MlApplication implements CommandLineRunner {
 
         for (String roleName : rolesToCheck) {
             Roles role = rolesRepo.findByRole(roleName);
+
+            
             if (role == null) {
                 role = new Roles();
                 role.setRole(roleName);

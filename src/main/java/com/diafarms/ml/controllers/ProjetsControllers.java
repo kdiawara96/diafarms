@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.diafarms.ml.DTO.ProjetAssigneDTO;
 import com.diafarms.ml.DTO.ProjetsDTO;
 import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.others.ApiResponse;
@@ -100,6 +101,42 @@ public class ProjetsControllers {
         }
     }
 
+    // Clôture/réouverture (archive) d'un projet — distinct de /delete (corbeille) :
+    // voir ProjetImpl.archiveOrRecoverProjet. C'est cette action, explicite côté admin,
+    // qui fait disparaître un projet du mobile hors ligne (ProjetsSelect.active), pas
+    // sa date de fin prévue.
+    @PutMapping("/archive/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> archiveOrRecoverProjet(@PathVariable String uniqueId) {
+        try {
+            String result = services.archiveOrRecoverProjet(uniqueId);
+            return ApiResponse.createResponse("Projet mis à jour avec succès", HttpStatus.OK, result, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+        // Transfert du stock d'aliment restant vers un autre projet, typiquement juste
+        // avant la clôture — voir ProjetImpl.transfererStock.
+        @PutMapping("/{uniqueId}/transferer-stock/{projetCibleUniqueId}")
+        public ResponseEntity<ApiResponse<String>> transfererStock(
+                @PathVariable String uniqueId,
+                @PathVariable String projetCibleUniqueId) {
+            try {
+                String result = services.transfererStock(uniqueId, projetCibleUniqueId);
+                return ApiResponse.createResponse("Transfert effectué", HttpStatus.OK, result, null);
+            } catch (IllegalArgumentException e) {
+                return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+            } catch (RuntimeException e) {
+                return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+            } catch (Exception e) {
+                return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+            }
+        }
+
         @GetMapping("/select")
         public ResponseEntity<ApiResponse<List<ProjetsSelect>>> selectProjet() {
             try {
@@ -109,6 +146,20 @@ public class ProjetsControllers {
                 return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
             } catch (RuntimeException e) {
                 return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+            } catch (Exception e) {
+                return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+            }
+        }
+
+        // Derniers projets associés à un utilisateur (production et/ou finance), pour la
+        // modale "Profil & Accès Mobile Utilisateur" côté web.
+        @GetMapping("/assignes/{userUniqueId}")
+        public ResponseEntity<ApiResponse<List<ProjetAssigneDTO>>> getProjetsAssignes(
+                @PathVariable String userUniqueId,
+                @RequestParam(defaultValue = "7") int limit) {
+            try {
+                List<ProjetAssigneDTO> result = services.getProjetsAssignes(userUniqueId, limit);
+                return ApiResponse.createResponse("Projets associés récupérés avec succès", HttpStatus.OK, result, null);
             } catch (Exception e) {
                 return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
             }

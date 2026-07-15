@@ -32,8 +32,12 @@ public class Alimentation {
     @Column(name = "quantite_kg", nullable = false)
     private Double quantiteKg; // Quantité distribuée ou achetée en kg (
 
-    @Column(name = "cout_total", nullable = false)
-    private Double coutTotal; // Coût de cette alimentation pour le suivi financier
+    // Optionnel : le coût d'un achat d'aliment se déclare désormais comme une sortie
+    // d'argent (Transaction) côté Finance, pas ici — ce champ ne reste que pour les
+    // achats saisis avant cette séparation Production/Finance, ou saisis manuellement
+    // depuis Fiche Projet (web) qui continue de le proposer.
+    @Column(name = "cout_total")
+    private Double coutTotal;
 
     @Column(name = "date_distribution", nullable = false)
     private LocalDate dateDistribution; // Date à laquelle l'aliment a été donné/acheté

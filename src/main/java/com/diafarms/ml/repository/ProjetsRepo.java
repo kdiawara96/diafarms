@@ -49,4 +49,13 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
            "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId)")
     List<Projets> findAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
+
+    // Variante triée/limitée de findAssignedToUser, pour la modale "Profil & Accès Mobile
+    // Utilisateur" côté web (derniers projets associés) — actifs ET archivés inclus
+    // volontairement (seul le soft-delete "removed" est exclu), le statut actif/inactif
+    // étant affiché tel quel plutôt que filtré.
+    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
+           "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId) " +
+           "ORDER BY p.initialisation.createdAt DESC")
+    List<Projets> findRecentAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId, Pageable pageable);
 }

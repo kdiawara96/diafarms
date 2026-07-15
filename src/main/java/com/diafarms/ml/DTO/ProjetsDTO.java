@@ -33,7 +33,7 @@ public class ProjetsDTO {
      private Double puSujet;
      private Double autresDepense;
      private Double caTotalSujets; // CA total = nbSujets × puSujet + autresDepense
-     private Double chiffreAffaires; // CA prévu (chiffre d'affaires) = nb
+     private Double chiffreAffaires; // CA réel = somme des transactions "entrée" validées du projet (voir fromEntity/fromEntityList)
      private Double margeNette;  
      private Objectif objectif;
 
@@ -51,7 +51,21 @@ public class ProjetsDTO {
      private Double mortaliteCumulee;
 
 
-     public static ProjetsDTO fromEntityList(Projets data) {
+     /**
+      * @param tauxPonte moyenne journalière récente d'œufs collectés / effectif
+      *                   actuel (%), calculée par l'appelant (accès aux repos).
+      * @param mortaliteCumulee morts cumulés / effectif initial (%), idem — sans ce
+      *                   paramètre le champ restait null côté liste paginée des
+      *                   projets (contrairement à fromEntity), d'où un "null" affiché
+      *                   en clair par le front (ex: dialogue de clôture) au lieu d'un
+      *                   pourcentage réel.
+      * @param chiffreAffairesReel somme des transactions "entrée" validées du projet
+      *                   (ventes d'œufs, vente réforme, etc.), calculée par l'appelant.
+      *                   Remplace data.getChiffreAffaires() : cette colonne entité reste
+      *                   figée à 0.0 depuis la création du projet (jamais recalculée),
+      *                   donc plus une vraie donnée de chiffre d'affaires.
+      */
+     public static ProjetsDTO fromEntityList(Projets data, Double tauxPonte, Double mortaliteCumulee, Double chiffreAffairesReel) {
         if (data == null) {
             return null;
         }
@@ -66,7 +80,7 @@ public class ProjetsDTO {
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
                 .nbSujets(data.getNbSujets())
-                .chiffreAffaires(data.getChiffreAffaires())
+                .chiffreAffaires(chiffreAffairesReel)
                 .caTotalSujets(data.getCaTotalSujets())
                 .margeNette(data.getMargeNette())
                 .puSujet(data.getPuSujet())
@@ -77,22 +91,25 @@ public class ProjetsDTO {
                 .occupationBatiment(data.getOccupations() != null ? data.getOccupations().stream()
                         .map(OccupationBatimentDTO::fromEntityList)
                         .toList() : null)
-             
+                .tauxPonte(tauxPonte)
+                .mortaliteCumulee(mortaliteCumulee)
                 .build();
     }
 
 
 
        public static ProjetsDTO fromEntity(Projets data) {
-        return fromEntity(data, 0.0, 0.0);
+        return fromEntity(data, 0.0, 0.0, 0.0);
        }
 
        /**
         * @param tauxPonte moyenne journalière récente d'œufs collectés / effectif
         *                   actuel (%), calculée par l'appelant (accès aux repos).
         * @param mortaliteCumulee morts cumulés / effectif initial (%), idem.
+        * @param chiffreAffairesReel voir fromEntityList — même remplacement de
+        *                   data.getChiffreAffaires() par la somme réelle des ventes.
         */
-       public static ProjetsDTO fromEntity(Projets data, Double tauxPonte, Double mortaliteCumulee) {
+       public static ProjetsDTO fromEntity(Projets data, Double tauxPonte, Double mortaliteCumulee, Double chiffreAffairesReel) {
         if (data == null) {
                 return null;
         }
@@ -107,7 +124,7 @@ public class ProjetsDTO {
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
                 .nbSujets(data.getNbSujets())
-                .chiffreAffaires(data.getChiffreAffaires())
+                .chiffreAffaires(chiffreAffairesReel)
                 .caTotalSujets(data.getCaTotalSujets())
                 .margeNette(data.getMargeNette())
                 .puSujet(data.getPuSujet())

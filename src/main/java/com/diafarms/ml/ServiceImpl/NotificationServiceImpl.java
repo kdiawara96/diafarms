@@ -41,6 +41,7 @@ public class NotificationServiceImpl implements NotificationService {
     private static final int STOCK_WARNING_DAYS_THRESHOLD = 3;
     private static final double MORTALITE_WARNING_PCT = 2.0;
     private static final double MORTALITE_CRITIQUE_PCT = 5.0;
+    private static final double ECHEANCE_WARNING_MIN_PCT = 0.10;
 
     private final ProjetsRepo projetsRepo;
     private final AlimentationRepo alimentationRepo;
@@ -66,6 +67,7 @@ public class NotificationServiceImpl implements NotificationService {
             addStockNotification(result, p);
             addMortaliteNotification(result, p);
             addMeteoNotification(result, p);
+            addEcheanceNotification(result, p);
         }
 
         long nbAttente = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.EN_ATTENTE);
@@ -96,6 +98,7 @@ public class NotificationServiceImpl implements NotificationService {
                 addStockNotification(result, p);
                 addMortaliteNotification(result, p);
                 addMeteoNotification(result, p);
+                addEcheanceNotification(result, p);
                 result.sort(Comparator.comparing((NotificationDTO n) -> "CRITIQUE".equals(n.getLevel()) ? 0 : 1));
                 return result;
             })
@@ -174,6 +177,47 @@ public class NotificationServiceImpl implements NotificationService {
                 }
             }
         }
+    }
+
+    /**
+     * Seuil proportionnel (pas fixe en jours) : les projets de la ferme vont de ~45
+     * jours (chair) à 330+ jours (ponte), un seuil fixe serait déclenché bien trop tôt
+     * pour les cycles courts ou bien trop tard pour les longs. On avertit dans les
+     * derniers 10% de la durée totale prévue, et on signale un dépassement dès que
+     * finPrevue est passée — sans jamais archiver automatiquement (voir
+     * ProjetImpl.archiveOrRecoverProjet, seule action qui clôture réellement).
+     */
+    private void addEcheanceNotification(List<NotificationDTO> result, Projets p) {
+        if (p.getDebut() == null || p.getFinPrevue() == null) return;
+        if (p.getInitialisation() != null && Boolean.TRUE.equals(p.getInitialisation().getArchive())) return;
+
+        long dureeTotale = java.time.temporal.ChronoUnit.DAYS.between(p.getDebut(), p.getFinPrevue());
+        if (dureeTotale <= 0) return;
+        long joursRestants = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), p.getFinPrevue());
+
+        if (joursRestants < 0) {
+            result.add(echeanceNotif(p, "CRITIQUE",
+                "Date de fin dépassée de " + Math.abs(joursRestants) + " jour(s) — " + p.getCode()));
+            return;
+        }
+
+        long seuilJours = Math.max(1, Math.round(dureeTotale * ECHEANCE_WARNING_MIN_PCT));
+        if (joursRestants <= seuilJours) {
+            result.add(echeanceNotif(p, "WARNING",
+                "Fin de projet proche (" + joursRestants + " jour(s) restant(s)) — " + p.getCode()));
+        }
+    }
+
+    private NotificationDTO echeanceNotif(Projets p, String level, String message) {
+        return NotificationDTO.builder()
+            .key("echeance-" + p.getUniqueId())
+            .type("ECHEANCE")
+            .level(level)
+            .message(message)
+            .projetCode(p.getCode())
+            .projetUniqueId(p.getUniqueId())
+            .actionPath("/projets/" + p.getUniqueId())
+            .build();
     }
 
     private NotificationDTO meteoNotif(Projets p, String metricKey, String level, String message) {
