@@ -6,41 +6,42 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.diafarms.ml.DTO.StockOeufsDTO;
-import com.diafarms.ml.DTO.VenteOeufsDTO;
+import com.diafarms.ml.DTO.EffectifReformeDTO;
+import com.diafarms.ml.DTO.ReformeDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
-import com.diafarms.ml.request.create.VenteOeufsCreate;
-import com.diafarms.ml.request.update.VenteOeufsUpdate;
-import com.diafarms.ml.services.VenteOeufsService;
+import com.diafarms.ml.request.create.ReformeCreate;
+import com.diafarms.ml.request.update.ReformeUpdate;
+import com.diafarms.ml.services.ReformeService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente d'œufs (Finance) : à l'échelle de la ferme entière, pas d'un projet précis —
-// pas de paramètre projetUniqueId ici, contrairement aux endpoints Production.
 @RestController
-@RequestMapping("/diafarms/api/v1/ventes-oeufs")
+@RequestMapping("/diafarms/api/v1/reformes")
 @RequiredArgsConstructor
-public class VenteOeufsControllers {
+public class ReformeControllers {
 
-    private final VenteOeufsService service;
+    private final ReformeService service;
 
     @GetMapping("/list")
-    public ResponseEntity<ApiResponse<PaginatedResponse<VenteOeufsDTO>>> list(
+    public ResponseEntity<ApiResponse<PaginatedResponse<ReformeDTO>>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String projetUniqueId,
+            @RequestParam(required = false) String batimentUniqueId) {
         try {
-            PaginatedResponse<VenteOeufsDTO> response = service.list(page, size);
-            return ApiResponse.createResponse("Liste des ventes d'œufs récupérée", HttpStatus.OK, response, null);
+            PaginatedResponse<ReformeDTO> response = service.list(page, size, search, projetUniqueId, batimentUniqueId);
+            return ApiResponse.createResponse("Liste des réformes récupérée", HttpStatus.OK, response, null);
         } catch (Exception e) {
-            return ApiResponse.createResponse("Erreur lors de la récupération des ventes d'œufs", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+            return ApiResponse.createResponse("Erreur lors de la récupération des réformes", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
     }
 
-    @GetMapping("/stock")
-    public ResponseEntity<ApiResponse<StockOeufsDTO>> getStock() {
+    @GetMapping("/effectif/{projetUniqueId}")
+    public ResponseEntity<ApiResponse<EffectifReformeDTO>> getEffectif(@PathVariable String projetUniqueId) {
         try {
-            return ApiResponse.createResponse("Stock d'œufs récupéré", HttpStatus.OK, service.getStock(), null);
+            return ApiResponse.createResponse("Effectif vivant récupéré", HttpStatus.OK, service.getEffectif(projetUniqueId), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -49,9 +50,9 @@ public class VenteOeufsControllers {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<ApiResponse<VenteOeufsDTO>> create(@RequestBody VenteOeufsCreate request) {
+    public ResponseEntity<ApiResponse<ReformeDTO>> create(@RequestBody ReformeCreate request) {
         try {
-            return ApiResponse.createResponse("Vente d'œufs enregistrée avec succès", HttpStatus.CREATED, service.create(request), null);
+            return ApiResponse.createResponse("Réforme enregistrée avec succès", HttpStatus.CREATED, service.create(request), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -60,9 +61,9 @@ public class VenteOeufsControllers {
     }
 
     @PutMapping("/update/{uniqueId}")
-    public ResponseEntity<ApiResponse<VenteOeufsDTO>> update(@PathVariable String uniqueId, @RequestBody VenteOeufsUpdate request) {
+    public ResponseEntity<ApiResponse<ReformeDTO>> update(@PathVariable String uniqueId, @RequestBody ReformeUpdate request) {
         try {
-            return ApiResponse.createResponse("Vente d'œufs modifiée avec succès", HttpStatus.OK, service.update(uniqueId, request), null);
+            return ApiResponse.createResponse("Réforme modifiée avec succès", HttpStatus.OK, service.update(uniqueId, request), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

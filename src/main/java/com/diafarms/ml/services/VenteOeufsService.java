@@ -14,7 +14,7 @@ public interface VenteOeufsService {
 
     String deleteOrRecover(String uniqueId);
 
-    PaginatedResponse<VenteOeufsDTO> list(int page, int size, String projetUniqueId, String batimentUniqueId);
+    PaginatedResponse<VenteOeufsDTO> list(int page, int size);
 
-    StockOeufsDTO getStock(String projetUniqueId);
+    StockOeufsDTO getStock();
 }

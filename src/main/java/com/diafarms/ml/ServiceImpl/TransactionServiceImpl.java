@@ -16,6 +16,7 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
+import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
@@ -99,8 +100,9 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public TransactionDTO createFromSource(Projets projet, Double montant, String categorie, java.time.LocalDate date,
-                                            String description, SourceTransaction sourceType, String sourceUniqueId) {
+    public TransactionDTO createFromSource(Projets projet, Farm farm, Double montant, String categorie, java.time.LocalDate date,
+                                            String description, SourceTransaction sourceType, String sourceUniqueId,
+                                            java.util.List<String> projetsConcernesUniqueIds) {
         Transaction t = new Transaction();
         t.setUniqueId(java.util.UUID.randomUUID().toString());
         t.setRef(generateRef());
@@ -111,9 +113,12 @@ public class TransactionServiceImpl implements TransactionService {
         t.setCategorie(categorie);
         t.setStatut(StatutTransaction.EN_ATTENTE);
         t.setProjet(projet);
+        if (projetsConcernesUniqueIds != null && !projetsConcernesUniqueIds.isEmpty()) {
+            t.setProjetsConcernes(projetsRepo.findByUniqueIdIn(projetsConcernesUniqueIds));
+        }
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
-        t.setFarm(projet != null ? projet.getFarm() : null);
+        t.setFarm(farm);
         t.setInitialisation(Initialisation.init());
 
         Transaction saved = transactionRepo.save(t);

@@ -6,7 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.diafarms.ml.DTO.EffectifReformeDTO;
+import com.diafarms.ml.DTO.StockReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
@@ -16,6 +16,8 @@ import com.diafarms.ml.services.VenteReformeService;
 
 import lombok.RequiredArgsConstructor;
 
+// Vente réforme (Finance) : à l'échelle de la ferme entière — pas de paramètre
+// projetUniqueId, contrairement aux endpoints Production (/reformes/*).
 @RestController
 @RequestMapping("/diafarms/api/v1/ventes-reforme")
 @RequiredArgsConstructor
@@ -26,21 +28,19 @@ public class VenteReformeControllers {
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<PaginatedResponse<VenteReformeDTO>>> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String projetUniqueId,
-            @RequestParam(required = false) String batimentUniqueId) {
+            @RequestParam(defaultValue = "10") int size) {
         try {
-            PaginatedResponse<VenteReformeDTO> response = service.list(page, size, projetUniqueId, batimentUniqueId);
+            PaginatedResponse<VenteReformeDTO> response = service.list(page, size);
             return ApiResponse.createResponse("Liste des ventes réforme récupérée", HttpStatus.OK, response, null);
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors de la récupération des ventes réforme", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
     }
 
-    @GetMapping("/effectif/{projetUniqueId}")
-    public ResponseEntity<ApiResponse<EffectifReformeDTO>> getEffectif(@PathVariable String projetUniqueId) {
+    @GetMapping("/stock")
+    public ResponseEntity<ApiResponse<StockReformeDTO>> getStock() {
         try {
-            return ApiResponse.createResponse("Effectif vivant récupéré", HttpStatus.OK, service.getEffectif(projetUniqueId), null);
+            return ApiResponse.createResponse("Stock de réforme récupéré", HttpStatus.OK, service.getStock(), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {

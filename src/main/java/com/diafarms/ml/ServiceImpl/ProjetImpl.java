@@ -70,8 +70,7 @@ public class ProjetImpl implements ProjetServices {
     private final LogsServices logs;
     private final MortaliteRepo mortaliteRepo;
     private final CollecteOeufsRepo collecteOeufsRepo;
-    private final com.diafarms.ml.repository.VenteOeufsRepo venteOeufsRepo;
-    private final com.diafarms.ml.repository.VenteReformeRepo venteReformeRepo;
+    private final com.diafarms.ml.repository.ReformeRepo reformeRepo;
 
     private static final int TAUX_PONTE_WINDOW_DAYS = 7;
 
@@ -105,23 +104,17 @@ public class ProjetImpl implements ProjetServices {
         return Math.round(taux * 10) / 10.0;
     }
 
-    // Stock d'œufs vendables (collectés - cassés - vendus) et effectif vivant
-    // (nbSujets initial - mortalité - déjà réformés) — mêmes stocks que ceux validés
-    // à la création par VenteOeufsImpl/VenteReformeImpl, exposés ici pour l'affichage
-    // (Fiche Projet, bilan de clôture) sans dupliquer le calcul côté front.
+    // Effectif vivant (nbSujets initial - mortalité - déjà réformés, Production) —
+    // même calcul que celui validé à la création par ReformeImpl, exposé ici pour
+    // l'affichage (Fiche Projet, bilan de clôture) sans dupliquer le calcul côté
+    // front. sujetsReformesCumulee vient de Reforme (comptage Production), plus de
+    // VenteReforme (Finance, plafonnée à l'échelle de la ferme, pas par projet).
     private int nzInt(Integer v) {
         return v == null ? 0 : v;
     }
 
-    private Integer computeStockOeufsRestant(Projets p) {
-        int totalCollecte = nzInt(collecteOeufsRepo.sumOeufsCollectesByProjetId(p.getId()));
-        int totalCasse = nzInt(collecteOeufsRepo.sumOeufsCassesByProjetId(p.getId()));
-        int totalVendu = nzInt(venteOeufsRepo.sumQuantiteByProjetId(p.getId()));
-        return (totalCollecte - totalCasse) - totalVendu;
-    }
-
     private Integer computeSujetsReformesCumulee(Projets p) {
-        return nzInt(venteReformeRepo.sumSujetsVendusByProjetId(p.getId()));
+        return nzInt(reformeRepo.sumSujetsByProjetId(p.getId()));
     }
 
     private Integer computeEffectifVivant(Projets p) {
@@ -220,7 +213,7 @@ public class ProjetImpl implements ProjetServices {
         // Mapping des entités vers le DTO de listage
         List<ProjetsDTO> dtoList = projetsPage.getContent().stream()
                 .map(p -> ProjetsDTO.fromEntityList(p, computeTauxPonte(p), computeMortaliteCumulee(p), computeChiffreAffairesReel(p),
-                        computeStockOeufsRestant(p), computeSujetsReformesCumulee(p), computeEffectifVivant(p)))
+                        computeSujetsReformesCumulee(p), computeEffectifVivant(p)))
                 .toList();
 
         return new PaginatedResponse<>(
@@ -239,7 +232,7 @@ public class ProjetImpl implements ProjetServices {
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
 
         return ProjetsDTO.fromEntity(projet, computeTauxPonte(projet), computeMortaliteCumulee(projet), computeChiffreAffairesReel(projet),
-                computeStockOeufsRestant(projet), computeSujetsReformesCumulee(projet), computeEffectifVivant(projet));
+                computeSujetsReformesCumulee(projet), computeEffectifVivant(projet));
     }
 
     // ============================================================
@@ -626,7 +619,7 @@ public class ProjetImpl implements ProjetServices {
         }
 
         return ProjetsDTO.fromEntity(updatedProjet, computeTauxPonte(updatedProjet), computeMortaliteCumulee(updatedProjet), computeChiffreAffairesReel(updatedProjet),
-                computeStockOeufsRestant(updatedProjet), computeSujetsReformesCumulee(updatedProjet), computeEffectifVivant(updatedProjet));
+                computeSujetsReformesCumulee(updatedProjet), computeEffectifVivant(updatedProjet));
     }
     
     /**

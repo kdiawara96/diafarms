@@ -1,6 +1,6 @@
 package com.diafarms.ml.services;
 
-import com.diafarms.ml.DTO.EffectifReformeDTO;
+import com.diafarms.ml.DTO.StockReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.VenteReformeCreate;
@@ -14,7 +14,7 @@ public interface VenteReformeService {
 
     String deleteOrRecover(String uniqueId);
 
-    PaginatedResponse<VenteReformeDTO> list(int page, int size, String projetUniqueId, String batimentUniqueId);
+    PaginatedResponse<VenteReformeDTO> list(int page, int size);
 
-    EffectifReformeDTO getEffectif(String projetUniqueId);
+    StockReformeDTO getStock();
 }

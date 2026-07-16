@@ -33,13 +33,14 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
     Integer sumOeufsByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
 
-    // Totaux vie-entière (pas fenêtrés) : servent au stock d'œufs vendables
-    // (collectés - cassés - vendus), voir VenteOeufsImpl.
+    // Totaux vie-entière (pas fenêtrés) à l'échelle de TOUTE LA FERME (pas d'un seul
+    // projet) : servent au stock d'œufs vendables (collectés - cassés - vendus) côté
+    // Finance, voir VenteOeufsImpl — la vente n'est pas rattachée à un projet précis.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
-        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
-    Integer sumOeufsCollectesByProjetId(@Param("projetId") Long projetId);
+        "WHERE c.farm.id = :farmId AND c.initialisation.removed = false")
+    Integer sumOeufsCollectesByFarmId(@Param("farmId") Long farmId);
 
     @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
-        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
-    Integer sumOeufsCassesByProjetId(@Param("projetId") Long projetId);
+        "WHERE c.farm.id = :farmId AND c.initialisation.removed = false")
+    Integer sumOeufsCassesByFarmId(@Param("farmId") Long farmId);
 }

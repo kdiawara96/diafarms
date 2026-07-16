@@ -4,7 +4,6 @@ import lombok.Data;
 
 @Data
 public class VenteOeufsUpdate {
-    private String batimentUniqueId; // optionnel
     private String date;
     private String heure;
     private Integer quantiteOeufs;

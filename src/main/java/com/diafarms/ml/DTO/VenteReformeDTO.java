@@ -25,10 +25,6 @@ public class VenteReformeDTO {
     private Integer nombreSujets;
     private Double prixUnitaire;
     private Double montant;
-    private String projetCode;
-    private String projetUniqueId;
-    private String batimentNom;
-    private String batimentUniqueId;
     private LocalDateTime createdAt;
 
     public static VenteReformeDTO fromEntity(VenteReforme v) {
@@ -41,10 +37,6 @@ public class VenteReformeDTO {
                 .nombreSujets(v.getNombreSujets())
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
-                .projetCode(v.getProjet() != null ? v.getProjet().getCode() : null)
-                .projetUniqueId(v.getProjet() != null ? v.getProjet().getUniqueId() : null)
-                .batimentNom(v.getBatiment() != null ? v.getBatiment().getNom() : null)
-                .batimentUniqueId(v.getBatiment() != null ? v.getBatiment().getUniqueId() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
                 .build();
     }

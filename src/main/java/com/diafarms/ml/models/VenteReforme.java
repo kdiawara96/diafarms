@@ -20,10 +20,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Vente réforme (sujets vivants vendus), plafonnée par l'effectif vivant =
-// nbSujets initial du projet moins la mortalité cumulée moins les ventes déjà
-// enregistrées. Chaque création génère automatiquement une Transaction "entrée"
-// liée (voir TransactionService.createFromSource).
+// Vente réforme — acte Finance, PAS Production : pas rattachée à un projet précis,
+// plafonnée par le total réformé (Reforme, Production) de TOUTE LA FERME moins ce
+// qui a déjà été vendu (voir VenteReformeImpl). Génère automatiquement une
+// Transaction "entrée" commune (Transaction.projet = null).
 @Entity
 @Table(name = "ventes_reforme")
 @Getter
@@ -55,15 +55,7 @@ public class VenteReforme {
     private Double montant;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "projet_id", nullable = false)
-    private Projets projet;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "batiment_id")
-    private Batiment batiment;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "farm_id")
+    @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
 
     @Embedded

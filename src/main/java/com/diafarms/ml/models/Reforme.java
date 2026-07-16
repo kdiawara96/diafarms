@@ -20,18 +20,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Vente d'œufs — acte Finance, PAS Production : pas rattachée à un projet précis,
-// plafonnée par le total collecté (CollecteOeufs, Production) de TOUTE LA FERME
-// moins ce qui a déjà été vendu (voir VenteOeufsImpl). Génère automatiquement une
-// Transaction "entrée" commune (Transaction.projet = null), comme les autres
-// mouvements d'argent non rattachés à un seul projet.
+// Réforme (sujets retirés du cheptel vivant pour abattage/vente), saisie Production
+// au même titre que Mortalité — un pur comptage, jamais de prix. La vente réelle
+// (avec montant) est une opération Finance distincte (VenteReforme), qui puise dans
+// le total réformé de toute la ferme, pas projet par projet.
 @Entity
-@Table(name = "ventes_oeufs")
+@Table(name = "reformes")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class VenteOeufs {
+public class Reforme {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -45,19 +44,22 @@ public class VenteOeufs {
 
     private LocalTime heure;
 
-    @Column(name = "quantite_oeufs", nullable = false)
-    private Integer quantiteOeufs;
+    @Column(name = "nombre_sujets", nullable = false)
+    private Integer nombreSujets;
 
-    // Informatif seulement (moyenne/négociation) : le montant réellement encaissé
-    // est celui de la Transaction générée, jamais recalculé depuis prixUnitaire.
-    @Column(name = "prix_unitaire")
-    private Double prixUnitaire;
-
-    @Column(nullable = false)
-    private Double montant;
+    @Column(length = 500)
+    private String cause;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "farm_id", nullable = false)
+    @JoinColumn(name = "projet_id", nullable = false)
+    private Projets projet;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batiment_id")
+    private Batiment batiment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "farm_id")
     private Farm farm;
 
     @Embedded
