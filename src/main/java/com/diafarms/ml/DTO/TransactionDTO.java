@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
 import com.diafarms.ml.models.Transaction;
@@ -36,6 +37,8 @@ public class TransactionDTO {
     private String validateurNom;
     private LocalDateTime dateValidation;
     private LocalDateTime createdAt;
+    private SourceTransaction sourceType;
+    private String sourceUniqueId;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -58,6 +61,8 @@ public class TransactionDTO {
                 .validateurNom(t.getValidateur() != null ? t.getValidateur().getFullName() : null)
                 .dateValidation(t.getDateValidation())
                 .createdAt(t.getInitialisation() != null ? t.getInitialisation().getCreatedAt() : null)
+                .sourceType(t.getSourceType())
+                .sourceUniqueId(t.getSourceUniqueId())
                 .build();
     }
 }

@@ -32,4 +32,14 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
     Integer sumOeufsByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
+
+    // Totaux vie-entière (pas fenêtrés) : servent au stock d'œufs vendables
+    // (collectés - cassés - vendus), voir VenteOeufsImpl.
+    @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
+    Integer sumOeufsCollectesByProjetId(@Param("projetId") Long projetId);
+
+    @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
+    Integer sumOeufsCassesByProjetId(@Param("projetId") Long projetId);
 }

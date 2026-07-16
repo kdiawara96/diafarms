@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
 
@@ -94,6 +95,23 @@ public class Transaction {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id")
     private Farm farm;
+
+    // Provenance de la transaction : MANUEL (saisie libre, formulaire Transaction
+    // classique) ou générée automatiquement par une vente (VenteOeufs/VenteReforme,
+    // via TransactionService.createFromSource) — remplace le repérage fragile par
+    // regex sur `description` ("Vente réforme - lot de N sujets") utilisé côté front
+    // avant cette entité. sourceUniqueId pointe vers VenteOeufs.uniqueId ou
+    // VenteReforme.uniqueId selon sourceType, jamais les deux.
+    // columnDefinition avec DEFAULT explicite : indispensable pour que ddl-auto=update
+    // puisse ajouter cette colonne NOT NULL sur la table `transactions` existante (déjà
+    // peuplée) — sans DEFAULT, Postgres refuse l'ALTER TABLE ADD COLUMN ... NOT NULL.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false, length = 20,
+            columnDefinition = "varchar(20) not null default 'MANUEL'")
+    private SourceTransaction sourceType = SourceTransaction.MANUEL;
+
+    @Column(name = "source_unique_id", length = 50)
+    private String sourceUniqueId;
 
     @Embedded
     private Initialisation initialisation;

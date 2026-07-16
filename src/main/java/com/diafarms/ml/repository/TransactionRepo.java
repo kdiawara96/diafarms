@@ -18,6 +18,11 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
 
     Optional<Transaction> findByUniqueId(String uniqueId);
 
+    // Retrouve la transaction "recette" générée automatiquement par une vente
+    // (VenteOeufs/VenteReforme), pour la faire suivre (montant, removed) quand la
+    // vente source est modifiée ou supprimée — voir TransactionService.createFromSource.
+    Optional<Transaction> findBySourceUniqueId(String sourceUniqueId);
+
     @Query("SELECT COUNT(t) > 0 FROM Transaction t WHERE t.ref = :ref")
     boolean existsByRef(@Param("ref") String ref);
 

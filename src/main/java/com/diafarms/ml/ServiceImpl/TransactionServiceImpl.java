@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.TransactionStatsDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
 import com.diafarms.ml.models.Projets;
@@ -94,6 +95,48 @@ public class TransactionServiceImpl implements TransactionService {
         }
 
         return TransactionDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public TransactionDTO createFromSource(Projets projet, Double montant, String categorie, java.time.LocalDate date,
+                                            String description, SourceTransaction sourceType, String sourceUniqueId) {
+        Transaction t = new Transaction();
+        t.setUniqueId(java.util.UUID.randomUUID().toString());
+        t.setRef(generateRef());
+        t.setType(TypeTransaction.ENTREE);
+        t.setDate(date != null ? date : java.time.LocalDate.now());
+        t.setDescription(description);
+        t.setMontant(montant);
+        t.setCategorie(categorie);
+        t.setStatut(StatutTransaction.EN_ATTENTE);
+        t.setProjet(projet);
+        t.setSourceType(sourceType);
+        t.setSourceUniqueId(sourceUniqueId);
+        t.setFarm(projet != null ? projet.getFarm() : null);
+        t.setInitialisation(Initialisation.init());
+
+        Transaction saved = transactionRepo.save(t);
+        return TransactionDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public void toggleRemovedBySource(String sourceUniqueId) {
+        transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
+            t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
+            transactionRepo.save(t);
+        });
+    }
+
+    @Override
+    @Transactional
+    public void updateMontantBySource(String sourceUniqueId, Double montant) {
+        transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
+            t.setMontant(montant);
+            t.getInitialisation().setUpdatedAt(LocalDateTime.now());
+            transactionRepo.save(t);
+        });
     }
 
     @Override
