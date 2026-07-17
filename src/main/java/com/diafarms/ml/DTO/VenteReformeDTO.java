@@ -3,6 +3,7 @@ package com.diafarms.ml.DTO;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 import com.diafarms.ml.models.VenteReforme;
 
@@ -26,6 +27,7 @@ public class VenteReformeDTO {
     private Double prixUnitaire;
     private Double montant;
     private LocalDateTime createdAt;
+    private List<VenteReformeRepartitionDTO> repartitions;
 
     public static VenteReformeDTO fromEntity(VenteReforme v) {
         if (v == null) return null;
@@ -38,6 +40,9 @@ public class VenteReformeDTO {
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
+                .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()
+                        .map(VenteReformeRepartitionDTO::fromEntity)
+                        .toList() : java.util.Collections.emptyList())
                 .build();
     }
 }

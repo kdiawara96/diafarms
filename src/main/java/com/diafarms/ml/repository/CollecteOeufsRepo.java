@@ -33,9 +33,8 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
     Integer sumOeufsByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
 
-    // Totaux vie-entière (pas fenêtrés) à l'échelle de TOUTE LA FERME (pas d'un seul
-    // projet) : servent au stock d'œufs vendables (collectés - cassés - vendus) côté
-    // Finance, voir VenteOeufsImpl — la vente n'est pas rattachée à un projet précis.
+    // Totaux vie-entière (pas fenêtrés) à l'échelle de TOUTE LA FERME : plafond global
+    // de la vente d'œufs (Finance), voir VenteOeufsImpl.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.farm.id = :farmId AND c.initialisation.removed = false")
     Integer sumOeufsCollectesByFarmId(@Param("farmId") Long farmId);
@@ -43,4 +42,15 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
         "WHERE c.farm.id = :farmId AND c.initialisation.removed = false")
     Integer sumOeufsCassesByFarmId(@Param("farmId") Long farmId);
+
+    // Totaux vie-entière PAR PROJET : servent à répartir proportionnellement chaque
+    // vente farm-wide entre les projets contributeurs (voir VenteOeufsImpl —
+    // la part de chaque projet dans la vente = sa part dans le stock disponible).
+    @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
+    Integer sumOeufsCollectesByProjetId(@Param("projetId") Long projetId);
+
+    @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
+    Integer sumOeufsCassesByProjetId(@Param("projetId") Long projetId);
 }

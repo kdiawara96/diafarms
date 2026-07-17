@@ -3,6 +3,7 @@ package com.diafarms.ml.DTO;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 import com.diafarms.ml.models.VenteOeufs;
 
@@ -26,6 +27,10 @@ public class VenteOeufsDTO {
     private Double prixUnitaire;
     private Double montant;
     private LocalDateTime createdAt;
+    // Part de chaque projet contributeur dans cette vente (voir VenteOeufsRepartition) —
+    // permet d'afficher qui a apporté quoi, la vraie donnée reste les Transactions
+    // générées une par projet.
+    private List<VenteOeufsRepartitionDTO> repartitions;
 
     public static VenteOeufsDTO fromEntity(VenteOeufs v) {
         if (v == null) return null;
@@ -38,6 +43,9 @@ public class VenteOeufsDTO {
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
+                .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()
+                        .map(VenteOeufsRepartitionDTO::fromEntity)
+                        .toList() : java.util.Collections.emptyList())
                 .build();
     }
 }

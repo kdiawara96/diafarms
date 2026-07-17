@@ -101,8 +101,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionDTO createFromSource(Projets projet, Farm farm, Double montant, String categorie, java.time.LocalDate date,
-                                            String description, SourceTransaction sourceType, String sourceUniqueId,
-                                            java.util.List<String> projetsConcernesUniqueIds) {
+                                            String description, SourceTransaction sourceType, String sourceUniqueId) {
         Transaction t = new Transaction();
         t.setUniqueId(java.util.UUID.randomUUID().toString());
         t.setRef(generateRef());
@@ -113,9 +112,6 @@ public class TransactionServiceImpl implements TransactionService {
         t.setCategorie(categorie);
         t.setStatut(StatutTransaction.EN_ATTENTE);
         t.setProjet(projet);
-        if (projetsConcernesUniqueIds != null && !projetsConcernesUniqueIds.isEmpty()) {
-            t.setProjetsConcernes(projetsRepo.findByUniqueIdIn(projetsConcernesUniqueIds));
-        }
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
         t.setFarm(farm);

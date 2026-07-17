@@ -1,14 +1,10 @@
 package com.diafarms.ml.request.create;
 
-import java.util.List;
-
 import lombok.Data;
 
-// Pas de projetUniqueId : vente Finance à l'échelle de la ferme entière, voir
-// VenteOeufsImpl. projetsConcernesUniqueIds (optionnel) tague les projets qui ont
-// contribué au lot vendu — même mécanique que TransactionCreate pour les
-// transactions "communes" (association informative, pas de répartition
-// proportionnelle du montant entre les projets tagués).
+// Pas de projetUniqueId : la répartition entre projets contributeurs est calculée
+// automatiquement côté serveur, au prorata du stock disponible de chacun — voir
+// VenteOeufsImpl.
 @Data
 public class VenteOeufsCreate {
     private String date;
@@ -16,5 +12,4 @@ public class VenteOeufsCreate {
     private Integer quantiteOeufs;
     private Double prixUnitaire; // optionnel, informatif
     private Double montant;
-    private List<String> projetsConcernesUniqueIds; // optionnel
 }

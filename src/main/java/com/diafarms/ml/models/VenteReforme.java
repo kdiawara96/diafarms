@@ -2,9 +2,11 @@ package com.diafarms.ml.models;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 import com.diafarms.ml.commons.Initialisation;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -14,16 +16,17 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Vente réforme — acte Finance, PAS Production : pas rattachée à un projet précis,
-// plafonnée par le total réformé (Reforme, Production) de TOUTE LA FERME moins ce
-// qui a déjà été vendu (voir VenteReformeImpl). Génère automatiquement une
-// Transaction "entrée" commune (Transaction.projet = null).
+// Vente réforme — acte Finance, plafonnée par le total réformé (Reforme, Production)
+// de TOUTE LA FERME moins déjà vendu (voir VenteReformeImpl.getStock). Répartie au
+// prorata de l'effectif réformé disponible de chaque projet contributeur — voir
+// VenteOeufs pour le détail du mécanisme.
 @Entity
 @Table(name = "ventes_reforme")
 @Getter
@@ -57,6 +60,9 @@ public class VenteReforme {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
+
+    @OneToMany(mappedBy = "venteReforme", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<VenteReformeRepartition> repartitions;
 
     @Embedded
     private Initialisation initialisation;

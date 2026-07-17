@@ -2,7 +2,9 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -13,13 +15,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.StockReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
+import com.diafarms.ml.DTO.VenteReformeRepartitionDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.Farm;
+import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteReforme;
+import com.diafarms.ml.models.VenteReformeRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.ReformeRepo;
+import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.VenteReformeCreate;
 import com.diafarms.ml.request.update.VenteReformeUpdate;
@@ -29,15 +36,18 @@ import com.diafarms.ml.services.VenteReformeService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente réforme (Finance) : acte commercial, PAS une saisie Production — pas
-// rattachée à un projet précis, plafonnée par le total réformé (Reforme, Production)
-// de TOUTE LA FERME de l'utilisateur courant, moins ce qui a déjà été vendu.
+// Vente réforme (Finance) : voir VenteOeufsImpl pour le détail du mécanisme —
+// plafonnée par le total réformé (Reforme, Production) de TOUTE LA FERME moins déjà
+// vendu, répartie automatiquement au prorata du nombre de sujets réformés
+// disponibles de chaque projet contributeur.
 @Service
 @RequiredArgsConstructor
 public class VenteReformeImpl implements VenteReformeService {
 
     private final VenteReformeRepo venteReformeRepo;
+    private final VenteReformeRepartitionRepo repartitionRepo;
     private final ReformeRepo reformeRepo;
+    private final ProjetsRepo projetsRepo;
     private final LogsServices logs;
     private final OtherService otherService;
     private final TransactionService transactionService;
@@ -55,10 +65,50 @@ public class VenteReformeImpl implements VenteReformeService {
         return v == null ? 0 : v;
     }
 
-    private int stockRestant(Long farmId) {
+    private int stockFermeRestant(Long farmId) {
         int totalReforme = nz(reformeRepo.sumSujetsByFarmId(farmId));
         int totalVendu = nz(venteReformeRepo.sumSujetsVendusByFarmId(farmId));
         return totalReforme - totalVendu;
+    }
+
+    private Map<Long, Integer> disponibleParProjet(List<Projets> projets) {
+        Map<Long, Integer> disponible = new LinkedHashMap<>();
+        for (Projets p : projets) {
+            int reforme = nz(reformeRepo.sumSujetsByProjetId(p.getId()));
+            int vendu = nz(repartitionRepo.sumSujetsByProjetId(p.getId()));
+            int restant = reforme - vendu;
+            if (restant > 0) disponible.put(p.getId(), restant);
+        }
+        return disponible;
+    }
+
+    private List<VenteReformeRepartition> repartirEtCreerTransactions(VenteReforme saved, Farm farm, int nombreSujets, double montant) {
+        List<Projets> projetsActifs = projetsRepo.findAllActiveByFarm(farm.getId());
+        Map<Long, Integer> disponible = disponibleParProjet(projetsActifs);
+        Map<Long, Projets> projetsParId = projetsActifs.stream()
+                .collect(java.util.stream.Collectors.toMap(Projets::getId, p -> p));
+
+        List<RepartitionUtil.Part> parts = RepartitionUtil.repartir(nombreSujets, montant, disponible);
+        List<VenteReformeRepartition> lignes = new java.util.ArrayList<>();
+
+        for (RepartitionUtil.Part part : parts) {
+            Projets projet = projetsParId.get(part.projetId);
+
+            VenteReformeRepartition r = new VenteReformeRepartition();
+            r.setUniqueId(java.util.UUID.randomUUID().toString());
+            r.setVenteReforme(saved);
+            r.setProjet(projet);
+            r.setNombreSujetsAttribue(part.quantite);
+            r.setMontantAttribue(part.montant);
+            lignes.add(repartitionRepo.save(r));
+
+            transactionService.createFromSource(
+                    projet, farm, part.montant, "Vente réforme", saved.getDate(),
+                    "Vente réforme — " + part.quantite + " sujet(s) (part de " + saved.getNombreSujets() + " vendus)",
+                    SourceTransaction.VENTE_REFORME, r.getUniqueId()
+            );
+        }
+        return lignes;
     }
 
     @Override
@@ -77,7 +127,7 @@ public class VenteReformeImpl implements VenteReformeService {
             throw new IllegalArgumentException("Le montant de la vente doit être positif.");
         }
 
-        int restant = stockRestant(farm.getId());
+        int restant = stockFermeRestant(farm.getId());
         if (data.getNombreSujets() > restant) {
             throw new IllegalArgumentException(
                 "Stock de sujets réformés insuffisant pour la ferme (" + restant + " sujet(s) restants)."
@@ -96,17 +146,14 @@ public class VenteReformeImpl implements VenteReformeService {
 
         VenteReforme saved = venteReformeRepo.save(v);
 
-        transactionService.createFromSource(
-                null, farm, saved.getMontant(), "Vente réforme", saved.getDate(),
-                "Vente réforme — " + saved.getNombreSujets() + " sujet(s)",
-                SourceTransaction.VENTE_REFORME, saved.getUniqueId(),
-                data.getProjetsConcernesUniqueIds()
-        );
+        List<VenteReformeRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getNombreSujets(), data.getMontant());
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
-                "Vente réforme de " + saved.getNombreSujets() + " sujet(s) (" + saved.getMontant() + " FCFA)");
+                "Vente réforme de " + saved.getNombreSujets() + " sujet(s) (" + saved.getMontant() + " FCFA), répartie entre les projets contributeurs");
 
-        return VenteReformeDTO.fromEntity(saved);
+        VenteReformeDTO dto = VenteReformeDTO.fromEntity(saved);
+        dto.setRepartitions(lignes.stream().map(VenteReformeRepartitionDTO::fromEntity).toList());
+        return dto;
     }
 
     @Override
@@ -117,6 +164,10 @@ public class VenteReformeImpl implements VenteReformeService {
 
         if (data.getDate() != null) v.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
+        if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
+
+        boolean redistribuer = data.getNombreSujets() != null || data.getMontant() != null;
+
         if (data.getNombreSujets() != null) {
             if (data.getNombreSujets() <= 0) {
                 throw new IllegalArgumentException("Le nombre de sujets vendus doit être positif.");
@@ -124,15 +175,15 @@ public class VenteReformeImpl implements VenteReformeService {
             Long farmId = v.getFarm().getId();
             int totalReforme = nz(reformeRepo.sumSujetsByFarmId(farmId));
             int totalVendu = nz(venteReformeRepo.sumSujetsVendusByFarmId(farmId));
-            int nouveauTotalVendu = totalVendu - v.getNombreSujets() + data.getNombreSujets();
+            int ancienNombre = nz(v.getNombreSujets());
+            int nouveauTotalVendu = totalVendu - ancienNombre + data.getNombreSujets();
             if (nouveauTotalVendu > totalReforme) {
                 throw new IllegalArgumentException(
-                    "Stock de sujets réformés insuffisant pour la ferme (" + (totalReforme - (totalVendu - v.getNombreSujets())) + " sujet(s) restants)."
+                    "Stock de sujets réformés insuffisant pour la ferme (" + (totalReforme - (totalVendu - ancienNombre)) + " sujet(s) restants)."
                 );
             }
             v.setNombreSujets(data.getNombreSujets());
         }
-        if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
         if (data.getMontant() != null) {
             if (data.getMontant() <= 0) {
                 throw new IllegalArgumentException("Le montant de la vente doit être positif.");
@@ -144,14 +195,27 @@ public class VenteReformeImpl implements VenteReformeService {
         }
 
         VenteReforme saved = venteReformeRepo.save(v);
-        transactionService.updateMontantBySource(saved.getUniqueId(), saved.getMontant());
+
+        List<VenteReformeRepartition> lignesActuelles;
+        if (redistribuer) {
+            List<VenteReformeRepartition> anciennes = repartitionRepo.findByVenteReforme_UniqueId(saved.getUniqueId());
+            for (VenteReformeRepartition ancienne : anciennes) {
+                transactionService.toggleRemovedBySource(ancienne.getUniqueId());
+            }
+            repartitionRepo.deleteAll(anciennes);
+            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getNombreSujets(), saved.getMontant());
+        } else {
+            lignesActuelles = repartitionRepo.findByVenteReforme_UniqueId(saved.getUniqueId());
+        }
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme", "Modification d'une vente réforme");
         }
 
-        return VenteReformeDTO.fromEntity(saved);
+        VenteReformeDTO dto = VenteReformeDTO.fromEntity(saved);
+        dto.setRepartitions(lignesActuelles.stream().map(VenteReformeRepartitionDTO::fromEntity).toList());
+        return dto;
     }
 
     @Override
@@ -163,7 +227,10 @@ public class VenteReformeImpl implements VenteReformeService {
         v.getInitialisation().setRemoved(!v.getInitialisation().getRemoved());
         venteReformeRepo.save(v);
         boolean removed = v.getInitialisation().getRemoved();
-        transactionService.toggleRemovedBySource(v.getUniqueId());
+
+        for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(uniqueId)) {
+            transactionService.toggleRemovedBySource(r.getUniqueId());
+        }
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
