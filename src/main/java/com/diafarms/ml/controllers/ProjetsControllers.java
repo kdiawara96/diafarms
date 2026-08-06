@@ -101,15 +101,33 @@ public class ProjetsControllers {
         }
     }
 
-    // Clôture/réouverture (archive) d'un projet — distinct de /delete (corbeille) :
-    // voir ProjetImpl.archiveOrRecoverProjet. C'est cette action, explicite côté admin,
-    // qui fait disparaître un projet du mobile hors ligne (ProjetsSelect.active), pas
-    // sa date de fin prévue.
-    @PutMapping("/archive/{uniqueId}")
-    public ResponseEntity<ApiResponse<String>> archiveOrRecoverProjet(@PathVariable String uniqueId) {
+    // Clôture d'un projet — distinct de /delete (corbeille) : voir
+    // ProjetImpl.cloturerProjet. C'est cette action, explicite côté admin, qui fait
+    // disparaître un projet du mobile hors ligne (ProjetsSelect.active), pas sa date
+    // de fin prévue. Rejette explicitement un projet déjà clôturé (voir rouvrirProjet
+    // pour l'action inverse) plutôt que de re-toggler en silence.
+    @PutMapping("/cloturer/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> cloturerProjet(@PathVariable String uniqueId) {
         try {
-            String result = services.archiveOrRecoverProjet(uniqueId);
-            return ApiResponse.createResponse("Projet mis à jour avec succès", HttpStatus.OK, result, null);
+            String result = services.cloturerProjet(uniqueId);
+            return ApiResponse.createResponse("Projet clôturé avec succès", HttpStatus.OK, result, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    // Réouverture d'un projet clôturé — refusée si la date de fin prévue est déjà
+    // passée (voir ProjetImpl.rouvrirProjet). Le stock d'aliment déjà transféré vers
+    // un autre projet lors de la clôture (transferer-stock) n'est jamais restitué.
+    @PutMapping("/rouvrir/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> rouvrirProjet(@PathVariable String uniqueId) {
+        try {
+            String result = services.rouvrirProjet(uniqueId);
+            return ApiResponse.createResponse("Projet rouvert avec succès", HttpStatus.OK, result, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {

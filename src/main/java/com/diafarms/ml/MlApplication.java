@@ -90,8 +90,17 @@ public class MlApplication implements CommandLineRunner {
         }
 
         // =====================================================
-        // 2️⃣ CREATION DE L’UTILISATEUR ADMIN PAR DEFAUT
+        // 2️⃣ CREATION DE L’UTILISATEUR SUPER_ADMIN PAR DEFAUT
         // =====================================================
+        // SUPER_ADMIN est le SEUL rôle autorisé à exister sans ferme (compte
+        // système de bootstrap, transversal à toutes les fermes) — tous les
+        // autres comptes (ADMIN, PRODUCTEUR, FINANCIER) sont créés avec une
+        // ferme obligatoire via UtilisateurImpl (soit une nouvelle ferme à
+        // l'inscription, soit celle de l'admin qui les crée). Voir les
+        // vérifications `currentUser.getFarm() != null` ajoutées dans les
+        // services de lecture (Race, Batiment, Projets, Investissements,
+        // Logs, Utilisateurs) : elles traitent ce compte comme "aucune
+        // donnée de ferme" plutôt que de planter avec un NullPointerException.
         if (!utilisateursRepo.existsByUsername(adminUsername)) {
 
             Utilisateurs admin = new Utilisateurs();
@@ -104,14 +113,14 @@ public class MlApplication implements CommandLineRunner {
             admin.setStatut(true);
             admin.setInitialisation(Initialisation.init());
 
-            // role
+            // role — SUPER_ADMIN, jamais ADMIN : voir commentaire ci-dessus.
             Set<Roles> roles = new HashSet<>();
-            roles.add(rolesRepo.findByRole(defaultRole)); // ADMIN
+            roles.add(rolesRepo.findByRole(roleSUPER_ADMIN));
             admin.setRoles(roles);
 
             utilisateursRepo.save(admin);
 
-            System.out.println("✔ Utilisateur ADMIN créé !");
+            System.out.println("✔ Utilisateur SUPER_ADMIN créé !");
         } else {
             System.out.println("✔ Admin déjà existant, pas de création.");
         }

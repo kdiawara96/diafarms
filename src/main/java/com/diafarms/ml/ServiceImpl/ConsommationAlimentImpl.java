@@ -186,13 +186,15 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
         Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
 
-        Double totalAchete = alimentationRepo.sumAcheteByProjetId(projet.getId());
-        Double totalConsomme = consommationRepo.sumConsommeByProjetId(projet.getId());
-        double restant = (totalAchete != null ? totalAchete : 0.0) - (totalConsomme != null ? totalConsomme : 0.0);
+        Double acheteBrut = alimentationRepo.sumAcheteByProjetId(projet.getId());
+        Double consommeBrut = consommationRepo.sumConsommeByProjetId(projet.getId());
+        double totalAchete = Math.round((acheteBrut != null ? acheteBrut : 0.0) * 100.0) / 100.0;
+        double totalConsomme = Math.round((consommeBrut != null ? consommeBrut : 0.0) * 100.0) / 100.0;
+        double restant = Math.round((totalAchete - totalConsomme) * 100.0) / 100.0;
 
         return StockAlimentDTO.builder()
-                .totalAchete(totalAchete != null ? totalAchete : 0.0)
-                .totalConsomme(totalConsomme != null ? totalConsomme : 0.0)
+                .totalAchete(totalAchete)
+                .totalConsomme(totalConsomme)
                 .stockRestant(restant)
                 .statut(restant <= 0 ? "EPUISE" : "ACTIF")
                 .build();

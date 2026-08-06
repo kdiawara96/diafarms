@@ -185,7 +185,7 @@ public class NotificationServiceImpl implements NotificationService {
      * pour les cycles courts ou bien trop tard pour les longs. On avertit dans les
      * derniers 10% de la durée totale prévue, et on signale un dépassement dès que
      * finPrevue est passée — sans jamais archiver automatiquement (voir
-     * ProjetImpl.archiveOrRecoverProjet, seule action qui clôture réellement).
+     * ProjetImpl.cloturerProjet, seule action qui clôture réellement).
      */
     private void addEcheanceNotification(List<NotificationDTO> result, Projets p) {
         if (p.getDebut() == null || p.getFinPrevue() == null) return;

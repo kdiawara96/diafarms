@@ -222,7 +222,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             e.printStackTrace();
         }
         Long farmId = null;
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             farmId = currentUser.getFarm().getId();
         }
 
@@ -242,7 +242,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             e.printStackTrace();
         }
         Long farmId = null;
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             farmId = currentUser.getFarm().getId();
         }
 
@@ -261,7 +261,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             e.printStackTrace();
         }
         Long farmId = null;
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             farmId = currentUser.getFarm().getId();
         }
 
@@ -377,9 +377,10 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
 
         // 2. Validation optionnelle : Empêcher les doublons de téléphone avec un AUTRE utilisateur de la même ferme
-        if (dto.getTelephone() != null && !dto.getTelephone().trim().equalsIgnoreCase(u.getTelephone())) {
+        // (aucune vérification à faire pour un compte sans ferme, ex: SUPER_ADMIN)
+        if (u.getFarm() != null && dto.getTelephone() != null && !dto.getTelephone().trim().equalsIgnoreCase(u.getTelephone())) {
             boolean phoneExists = utilisateursRepo.existsByTelephoneAndFarmId(
-                    dto.getTelephone().trim(), 
+                    dto.getTelephone().trim(),
                     u.getFarm().getId()
             );
             if (phoneExists) {

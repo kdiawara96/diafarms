@@ -16,7 +16,8 @@ public interface ProjetServices {
     ProjetsDTO createProjet(ProjetCreate data);
     ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data);
     String deleteOrRecoverProjet(String uniqueId);
-    String archiveOrRecoverProjet(String uniqueId);
+    String cloturerProjet(String uniqueId);
+    String rouvrirProjet(String uniqueId);
     String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId);
 
     List<ProjetsSelect> selectEntity();

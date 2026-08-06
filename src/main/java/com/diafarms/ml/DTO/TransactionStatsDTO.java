@@ -17,4 +17,6 @@ public class TransactionStatsDTO {
     private long nbRejete;
     private Double totalEntreesValidees;
     private Double totalSortiesValidees;
+    private Double totalVenteOeufs;
+    private Double totalVenteReforme;
 }

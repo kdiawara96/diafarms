@@ -52,6 +52,11 @@ public class ProjetsDTO {
      private Integer sujetsReformesCumulee;
      private Integer effectifVivant;
 
+     // Reflet direct de !initialisation.archive — absent du DTO jusqu'ici, le front
+     // (Fiche Projet) n'avait aucun moyen de savoir si LE projet ouvert était déjà
+     // clôturé (contrairement à ProjetsSelect.active, utilisé pour les listes/select).
+     private Boolean active;
+
 
      /**
       * @param tauxPonte moyenne journalière récente d'œufs collectés / effectif
@@ -105,6 +110,7 @@ public class ProjetsDTO {
                 .mortaliteCumulee(mortaliteCumulee)
                 .sujetsReformesCumulee(sujetsReformesCumulee)
                 .effectifVivant(effectifVivant)
+                .active(!Boolean.TRUE.equals(data.getInitialisation().getArchive()))
                 .build();
     }
 
@@ -175,6 +181,7 @@ public class ProjetsDTO {
                 .mortaliteCumulee(mortaliteCumulee)
                 .sujetsReformesCumulee(sujetsReformesCumulee)
                 .effectifVivant(effectifVivant)
+                .active(data.getInitialisation() == null || !Boolean.TRUE.equals(data.getInitialisation().getArchive()))
                 .build();
         }
 

@@ -197,10 +197,10 @@ public class ProjetImpl implements ProjetServices {
 
         
         Long farmId = null;
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             farmId = currentUser.getFarm().getId();
         }
-        
+
         String searchParam = (search == null || search.isBlank()) ? null : search.trim();
         
         if (search != null && !search.isBlank()) {
@@ -439,39 +439,97 @@ public class ProjetImpl implements ProjetServices {
     }
 
     /**
-     * Clôture (archive) définitivement un projet, ou le rouvre — DISTINCT de
-     * deleteOrRecoverProjet (removed = suppression/corbeille). C'est le SEUL
-     * mécanisme qui fait passer initialisation.archive à true : un projet ne devient
-     * jamais "terminé" tout seul juste parce que sa date de fin prévue est dépassée
-     * (fréquent en élevage réel — un lot peut durer plus longtemps que prévu), il faut
-     * une action explicite de l'admin. C'est ce champ "active" (!archive) qui est
-     * ensuite utilisé partout pour ne pas ramener un projet clos sur le mobile hors
-     * ligne (voir ProjetsSelect.selectEntity), plutôt que de comparer une date.
+     * Clôture (archive) définitivement un projet — DISTINCT de deleteOrRecoverProjet
+     * (removed = suppression/corbeille). C'est le SEUL mécanisme qui fait passer
+     * initialisation.archive à true : un projet ne devient jamais "terminé" tout seul
+     * juste parce que sa date de fin prévue est dépassée (fréquent en élevage réel —
+     * un lot peut durer plus longtemps que prévu), il faut une action explicite de
+     * l'admin. C'est ce champ "active" (!archive) qui est ensuite utilisé partout
+     * pour ne pas ramener un projet clos sur le mobile hors ligne (voir
+     * ProjetsSelect.selectEntity), plutôt que de comparer une date.
+     *
+     * Rejette explicitement un projet déjà clôturé plutôt que de re-toggle en
+     * silence : l'ancienne version (archiveOrRecoverProjet) togglait sans condition,
+     * donc un second clic sur "Clôturer" (ou un double-submit) rouvrait le projet à
+     * son insu, affiché comme une clôture réussie côté front.
+     *
+     * Fige aussi les répartitions d'investissement (Ventilation analytique) encore
+     * actives sur ce projet — sinon elles restaient affichées "En cours / Continu"
+     * indéfiniment après la clôture, continuant silencieusement à accumuler de
+     * l'amortissement pour un projet pourtant terminé. Même logique que
+     * deleteOrRecoverProjet (corbeille), qui le faisait déjà pour la suppression
+     * mais pas pour la clôture.
      */
     @Override
     @Transactional
-    public String archiveOrRecoverProjet(String uniqueId) {
+    public String cloturerProjet(String uniqueId) {
         Projets projet = projetsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException(
                         "Projet non trouvé avec l'uniqueId : " + uniqueId));
 
-        boolean archive = !Boolean.TRUE.equals(projet.getInitialisation().getArchive());
-        projet.getInitialisation().setArchive(archive);
+        if (Boolean.TRUE.equals(projet.getInitialisation().getArchive())) {
+            throw new RuntimeException("Ce projet est déjà clôturé.");
+        }
+
+        projet.getInitialisation().setArchive(true);
         projetsRepo.save(projet);
 
+        List<InvestissementRepartition> repartitionsActives =
+                investissementRepartitionRepo.findActiveByProjetUniqueId(uniqueId);
+        for (InvestissementRepartition r : repartitionsActives) {
+            r.figerLaVentilation(LocalDate.now());
+        }
+        investissementRepartitionRepo.saveAll(repartitionsActives);
+
+        logCloture(projet, "Clôture");
+
+        return "Projet clôturé.";
+    }
+
+    /**
+     * Rouvre un projet clôturé — refusé si sa date de fin prévue est déjà passée :
+     * un projet rouvert au-delà de cette date resterait "actif" indéfiniment, avec
+     * un cheptel qu'on continuerait à saisir sur un lot censé être terminé. Refusé
+     * aussi si le projet n'est pas clôturé (rien à rouvrir).
+     *
+     * Le stock d'aliment déjà transféré vers un autre projet lors de la clôture
+     * (voir transfererStock) n'est PAS restitué par cette méthode : la réouverture
+     * ne touche jamais Alimentation/ConsommationAliment, uniquement le flag archive
+     * — le transfert reste définitif, comme un vrai mouvement de stock physique.
+     */
+    @Override
+    @Transactional
+    public String rouvrirProjet(String uniqueId) {
+        Projets projet = projetsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Projet non trouvé avec l'uniqueId : " + uniqueId));
+
+        if (!Boolean.TRUE.equals(projet.getInitialisation().getArchive())) {
+            throw new RuntimeException("Ce projet n'est pas clôturé.");
+        }
+        if (projet.getFinPrevue() != null && LocalDate.now().isAfter(projet.getFinPrevue())) {
+            throw new RuntimeException(
+                "Impossible de rouvrir : la date de fin prévue (" + projet.getFinPrevue() + ") est déjà passée."
+            );
+        }
+
+        projet.getInitialisation().setArchive(false);
+        projetsRepo.save(projet);
+        logCloture(projet, "Réouverture");
+
+        return "Projet rouvert.";
+    }
+
+    private void logCloture(Projets projet, String action) {
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(
                 currentUser.getId(),
                 projet.getId(),
                 "Projet",
-                (archive ? "Clôture" : "Réouverture") + " du projet '" + projet.getTitre() + "'"
+                action + " du projet '" + projet.getTitre() + "'"
             );
         }
-
-        return archive
-                ? "Projet clôturé."
-                : "Projet rouvert.";
     }
 
     /**
@@ -510,6 +568,7 @@ public class ProjetImpl implements ProjetServices {
         Alimentation entree = new Alimentation();
         entree.setUniqueId(generateUID());
         entree.setNomAliment("Transfert depuis " + source.getCode());
+        entree.setSac(0.0);
         entree.setQuantiteKg(restantKg);
         entree.setCoutTotal(valeurTransferee);
         entree.setDateDistribution(LocalDate.now());

@@ -45,7 +45,7 @@ public class BatimentImpl implements BatimentServices {
             e.printStackTrace();
         }
 
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
 
             if (batimentRepo.existsByNomIgnoreCaseAndFarmId(
                     batiment.getNom().trim(),
@@ -57,6 +57,10 @@ public class BatimentImpl implements BatimentServices {
             }
 
             batiment.setFarm(currentUser.getFarm());
+        } else if (currentUser != null) {
+            // Compte sans ferme (SUPER_ADMIN) : un bâtiment appartient forcément à
+            // une ferme, impossible d'en créer un sans en avoir une.
+            throw new RuntimeException("Votre compte n'est rattaché à aucune ferme — impossible de créer un bâtiment.");
         }
 
         Batiment savedBatiment = batimentRepo.save(batiment);
@@ -182,7 +186,7 @@ public class BatimentImpl implements BatimentServices {
 
         List<Batiment> batiments = List.of();
 
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             batiments = batimentRepo.findActiveByFarmId(currentUser.getFarm().getId()); // À créer dans le repo
         }
         return batiments.stream()
@@ -207,7 +211,7 @@ public class BatimentImpl implements BatimentServices {
 
         List<Batiment> batiments = List.of();
 
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             batiments = batimentRepo.searchBatimentsByFarm(currentUser.getFarm().getId(), search.trim());
         }
         return batiments.stream()
@@ -226,7 +230,7 @@ public class BatimentImpl implements BatimentServices {
 
         List<Batiment> batiments = List.of();
 
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             batiments = batimentRepo.findAvailableByFarmId(currentUser.getFarm().getId());
         }
         return batiments.stream()
@@ -246,7 +250,7 @@ public class BatimentImpl implements BatimentServices {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
         Page<Batiment> batimentPage = Page.empty(pageable);
 
-        if (currentUser != null) {
+        if (currentUser != null && currentUser.getFarm() != null) {
             Long farmId = currentUser.getFarm().getId();
             batimentPage = (search != null && !search.trim().isEmpty())
                     ? batimentRepo.searchBatimentsByFarm(farmId, search.trim(), pageable)

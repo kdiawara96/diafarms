@@ -138,8 +138,14 @@ public class LogsServicesImpl implements LogsServices {
             if (search != null && !search.isBlank()) {
                 logPage = logsRepo.searchLogs(search, pageable);
             } else {
-                logPage = logsRepo.findByFarmIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                    verificationUniqueId().getFarm().getId(), pageable);
+                Utilisateurs currentUser = verificationUniqueId();
+                if (currentUser == null || currentUser.getFarm() == null) {
+                    // Compte sans ferme (SUPER_ADMIN) : aucun log à lister ici.
+                    logPage = Page.empty(pageable);
+                } else {
+                    logPage = logsRepo.findByFarmIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
+                        currentUser.getFarm().getId(), pageable);
+                }
             }
 
             // Map en DTO avant de renvoyer

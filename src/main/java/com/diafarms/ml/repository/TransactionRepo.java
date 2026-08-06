@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
 import com.diafarms.ml.models.Transaction;
@@ -50,6 +51,14 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.farm.id = :farmId AND t.initialisation.removed = false " +
         "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE AND t.type = :type")
     Double sumMontantValideByType(@Param("farmId") Long farmId, @Param("type") TypeTransaction type);
+
+    // Recette réelle des ventes d'œufs/réforme (Comptabilité) : les transactions
+    // "entrée" générées automatiquement par une vente (voir
+    // TransactionService.createFromSource) portent ce sourceType, distinct d'une
+    // transaction "entrée" saisie manuellement.
+    @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.farm.id = :farmId AND t.initialisation.removed = false " +
+        "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE AND t.sourceType = :sourceType")
+    Double sumMontantValideBySourceType(@Param("farmId") Long farmId, @Param("sourceType") SourceTransaction sourceType);
 
     // Chiffre d'affaires réel d'un projet (voir ProjetsDTO.fromEntity/fromEntityList) :
     // uniquement les transactions rattachées directement (t.projet), pas celles

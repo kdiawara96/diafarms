@@ -12,7 +12,7 @@ spring:
       max-request-size: 100MB
 
 server:
-  port: ${APP_PORT:8093}
+  port: ${APP_PORT:9093}
 
 minio:
   url: ${MINIO_URL:http://localhost:9000}

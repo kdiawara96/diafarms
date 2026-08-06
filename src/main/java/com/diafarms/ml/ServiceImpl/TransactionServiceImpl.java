@@ -70,7 +70,19 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(data.getDescription());
         t.setMontant(data.getMontant());
         t.setCategorie(data.getCategorie());
-        t.setStatut(StatutTransaction.EN_ATTENTE);
+        // Une saisie faite par un ADMIN (côté web, en pratique — le mobile ne propose
+        // aucun écran de saisie à un compte ADMIN seul, voir HomeActivity.setupVisibilityByRole)
+        // est déjà validée : ce n'est qu'une saisie terrain (Producteur/Financier, mobile)
+        // qui doit d'abord passer par la validation manuelle habituelle.
+        boolean estAdmin = currentUser != null && currentUser.getRoles() != null && currentUser.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+        t.setStatut(estAdmin ? StatutTransaction.VALIDE : StatutTransaction.EN_ATTENTE);
+        if (estAdmin) {
+            // Même trace que la validation manuelle (voir valider()) : sans ça, "Dernière
+            // décision par" resterait vide pour une transaction pourtant déjà validée.
+            t.setValidateur(currentUser);
+            t.setDateValidation(LocalDateTime.now());
+        }
         t.setInitialisation(Initialisation.init());
 
         boolean commun = !Boolean.FALSE.equals(data.getCommun())
@@ -110,7 +122,15 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(description);
         t.setMontant(montant);
         t.setCategorie(categorie);
-        t.setStatut(StatutTransaction.EN_ATTENTE);
+        // Contrairement à une transaction manuelle (create() ci-dessus), une transaction
+        // générée depuis une vente d'œufs/réforme (voir VenteOeufsImpl/VenteReformeImpl)
+        // n'est pas une simple déclaration à vérifier : elle est bornée par le stock réel
+        // déjà validé (impossible de survendre, voir repartirEtCreerTransactions) — elle
+        // n'a donc pas besoin d'une validation manuelle séparée pour compter dans
+        // "Total entrées". Avant ce correctif, une vente restait invisible en
+        // comptabilité tant que quelqu'un ne validait pas sa transaction à la main.
+        t.setStatut(StatutTransaction.VALIDE);
+        t.setDateValidation(LocalDateTime.now());
         t.setProjet(projet);
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
@@ -284,6 +304,8 @@ public class TransactionServiceImpl implements TransactionService {
         long nbRejete = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.REJETE);
         Double totalEntrees = transactionRepo.sumMontantValideByType(farmId, TypeTransaction.ENTREE);
         Double totalSorties = transactionRepo.sumMontantValideByType(farmId, TypeTransaction.SORTIE);
+        Double totalVenteOeufs = transactionRepo.sumMontantValideBySourceType(farmId, SourceTransaction.VENTE_OEUFS);
+        Double totalVenteReforme = transactionRepo.sumMontantValideBySourceType(farmId, SourceTransaction.VENTE_REFORME);
 
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)
@@ -291,6 +313,8 @@ public class TransactionServiceImpl implements TransactionService {
                 .nbRejete(nbRejete)
                 .totalEntreesValidees(totalEntrees != null ? totalEntrees : 0.0)
                 .totalSortiesValidees(totalSorties != null ? totalSorties : 0.0)
+                .totalVenteOeufs(totalVenteOeufs != null ? totalVenteOeufs : 0.0)
+                .totalVenteReforme(totalVenteReforme != null ? totalVenteReforme : 0.0)
                 .build();
     }
 }

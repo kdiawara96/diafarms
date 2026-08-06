@@ -48,6 +48,10 @@ public class InvestissementServiceImpl implements InvestissementService {
                 // 1. Récupération de l'utilisateur et de sa ferme
                 Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueIdUser)
                         .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+                if (u.getFarm() == null) {
+                    // Compte sans ferme (SUPER_ADMIN) : aucun investissement à lister.
+                    return new PaginatedResponse<>(List.of(), 1, 0, 0, size);
+                }
                 Long farmId = u.getFarm().getId();
 
                 // 2. Préparation du Pageable (Spring Data commence à 0)
@@ -237,7 +241,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 .stream()
                 .map(r -> InvestissementRepartitionDTO.builder()
                         .id(r.getId())
-                        .codeProjet(r.getProjet() != null ? r.getProjet().getUniqueId() : null)
+                        .codeProjet(r.getProjet() != null ? r.getProjet().getCode() : null)
                         .titreProjet(r.getProjet() != null ? r.getProjet().getTitre() : null)
                         .dateDebut(r.getDateDebut())
                         .dateFin(r.getDateFin())
