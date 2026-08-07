@@ -54,7 +54,7 @@ public class authControllers {
         @RequestHeader(value = "X-Client-Type", required = false) String clientType,
         HttpServletResponse httpServletResponse){
         try {
-            ResponseEntity<Object> result = serives.jwt(grantType, identifiant, password, ouiRefresh, refreshToken);
+            ResponseEntity<Object> result = serives.jwt(grantType, identifiant, password, ouiRefresh, refreshToken, clientType);
             Object body = result.getBody();
             boolean isMobileClient = "mobile".equalsIgnoreCase(clientType);
 

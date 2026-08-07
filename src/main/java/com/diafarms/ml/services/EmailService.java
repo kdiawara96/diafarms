@@ -15,4 +15,12 @@ public interface EmailService {
      * réinitialisation de mot de passe.
      */
     boolean sendPasswordResetCode(String to, String fullName, String code);
+
+    /**
+     * Envoie un nouveau mot de passe généré par un ADMIN (bouton "Réinitialiser" sur
+     * la fiche utilisateur) — distinct de sendPasswordResetCode (code à saisir soi-même
+     * via /forgot-password) : ici le mot de passe est déjà changé côté serveur, l'email
+     * ne fait que le communiquer.
+     */
+    boolean sendPasswordResetByAdmin(String to, String fullName, String username, String newPassword);
 }

@@ -1,5 +1,6 @@
 package com.diafarms.ml.controllers;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -33,14 +34,29 @@ public class TransactionControllers {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String statut,
-            @RequestParam(required = false) String projetUniqueId) {
+            @RequestParam(required = false) String projetUniqueId,
+            // Réservé à un ADMIN/SUPER_ADMIN : se place dans la vue d'un financier choisi
+            // (voir TransactionServiceImpl.resolveProjetIdsScope). Un FINANCIER qui
+            // l'envoie lui-même est ignoré côté service, toujours restreint à son propre
+            // périmètre.
+            @RequestParam(required = false) String financierUniqueId,
+            // Réservé à un ADMIN/SUPER_ADMIN (page Ventes) : se place dans la vue d'un
+            // vendeur choisi (voir TransactionServiceImpl.resolveVendeurScopeForList). Un
+            // FINANCIER pur qui l'envoie lui-même est ignoré côté service, toujours
+            // restreint à ses propres ventes.
+            @RequestParam(required = false) String vendeurUniqueId,
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
         try {
             TypeTransaction typeEnum = (type != null && !type.isBlank() && !type.equalsIgnoreCase("tous"))
                     ? TypeTransaction.valueOf(type.toUpperCase()) : null;
             StatutTransaction statutEnum = (statut != null && !statut.isBlank() && !statut.equalsIgnoreCase("tous"))
                     ? StatutTransaction.valueOf(statut.toUpperCase()) : null;
+            LocalDate dateDebutParam = (dateDebut != null && !dateDebut.isBlank()) ? LocalDate.parse(dateDebut) : null;
+            LocalDate dateFinParam = (dateFin != null && !dateFin.isBlank()) ? LocalDate.parse(dateFin) : null;
 
-            PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum, projetUniqueId);
+            PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum, projetUniqueId,
+                    financierUniqueId, vendeurUniqueId, dateDebutParam, dateFinParam);
             return ApiResponse.createResponse("Liste des transactions récupérée", HttpStatus.OK, response, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Paramètre type/statut invalide", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
@@ -50,9 +66,15 @@ public class TransactionControllers {
     }
 
     @GetMapping("/stats")
-    public ResponseEntity<ApiResponse<TransactionStatsDTO>> stats() {
+    public ResponseEntity<ApiResponse<TransactionStatsDTO>> stats(
+            @RequestParam(required = false) String financierUniqueId,
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
         try {
-            return ApiResponse.createResponse("Statistiques récupérées", HttpStatus.OK, service.getStats(), null);
+            LocalDate dateDebutParam = (dateDebut != null && !dateDebut.isBlank()) ? LocalDate.parse(dateDebut) : null;
+            LocalDate dateFinParam = (dateFin != null && !dateFin.isBlank()) ? LocalDate.parse(dateFin) : null;
+            return ApiResponse.createResponse("Statistiques récupérées", HttpStatus.OK,
+                    service.getStats(financierUniqueId, dateDebutParam, dateFinParam), null);
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors du calcul des statistiques", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

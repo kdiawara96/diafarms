@@ -58,4 +58,13 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
            "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId) " +
            "ORDER BY p.initialisation.createdAt DESC")
     List<Projets> findRecentAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId, Pageable pageable);
+
+    // Périmètre financier strict (Comptabilité restreinte) : uniquement les projets où
+    // l'utilisateur est responsableFinance, pas responsableProduction — voir
+    // TransactionServiceImpl.resolveProjetIdsScope, qui l'utilise pour qu'un FINANCIER
+    // (ou l'ADMIN filtrant "voir comme un financier") ne voie que ce qui relève de sa
+    // responsabilité financière.
+    @Query("SELECT p.id FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
+           "AND p.responsableFinance.uniqueId = :userUniqueId")
+    List<Long> findProjetIdsAssignedAsFinanceToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 }

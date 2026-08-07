@@ -39,6 +39,9 @@ public class TransactionDTO {
     private LocalDateTime createdAt;
     private SourceTransaction sourceType;
     private String sourceUniqueId;
+    // Qui a initié la transaction (saisie manuelle ou vente à l'origine) — affiché sur
+    // la page Ventes quand un ADMIN regarde "tous les vendeurs", voir Ventes.tsx.
+    private String creeParNom;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -63,6 +66,7 @@ public class TransactionDTO {
                 .createdAt(t.getInitialisation() != null ? t.getInitialisation().getCreatedAt() : null)
                 .sourceType(t.getSourceType())
                 .sourceUniqueId(t.getSourceUniqueId())
+                .creeParNom(t.getCreePar() != null ? t.getCreePar().getFullName() : null)
                 .build();
     }
 }

@@ -222,6 +222,22 @@ public class usersControllers {
     }
 
     /**
+     * Réservé à un ADMIN/SUPER_ADMIN : génère un nouveau mot de passe pour un
+     * utilisateur et le lui envoie par email (jamais retourné dans la réponse).
+     */
+    @PostMapping("/reset-password/{uniqueId}")
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> resetPassword(@PathVariable String uniqueId) {
+        try {
+            UtilisateursDTO dto = services.resetPasswordAndNotify(uniqueId);
+            return ApiResponse.createResponse("Mot de passe réinitialisé et envoyé par email", HttpStatus.OK, dto, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    /**
      * Génère un nouvel identifiant unique pour révoquer l'ancien QR code et forcer la mise à jour mobile.
      */
     @PostMapping("/regenerate-qr/{uniqueId}")

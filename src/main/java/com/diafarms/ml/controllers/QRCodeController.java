@@ -8,11 +8,14 @@ import org.springframework.web.bind.annotation.*;
 
 import com.diafarms.ml.DTO.QRCodeRequestDTO;
 import com.diafarms.ml.DTO.QrCodeEncrypte;
+import com.diafarms.ml.commons.AppAccessRules;
 import com.diafarms.ml.config.QRCodeService;
 import com.diafarms.ml.enums.TokenDuration;
+import com.diafarms.ml.models.FarmAppSettings;
 import com.diafarms.ml.models.Roles;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.ApiResponse;
+import com.diafarms.ml.repository.FarmAppSettingsRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 
 import java.time.Instant;
@@ -30,6 +33,17 @@ public class QRCodeController {
 
     private final QRCodeService qrCodeService;
     private final UtilisateursRepo utilisateursRepo;
+    private final FarmAppSettingsRepo farmAppSettingsRepo;
+
+    private void ensureMobileAccessAllowed(Utilisateurs user) {
+        if (user.getFarm() == null) return; // SUPER_ADMIN sans ferme : jamais restreint
+        java.util.Set<String> roles = user.getRoles() == null ? java.util.Set.of()
+                : user.getRoles().stream().map(Roles::getRole).collect(Collectors.toSet());
+        FarmAppSettings settings = farmAppSettingsRepo.findByFarm_Id(user.getFarm().getId()).orElse(null);
+        if (!AppAccessRules.canAccessMobile(settings, roles)) {
+            throw new RuntimeException("L'accès à l'application mobile n'est pas activé pour ce rôle. Contactez votre administrateur.");
+        }
+    }
 
     @PostMapping("/generate")
     public ResponseEntity<ApiResponse<Map<String, String>>> generateQRCode(@RequestBody QRCodeRequestDTO request) {
@@ -37,8 +51,10 @@ public class QRCodeController {
             Utilisateurs user = utilisateursRepo.findByUniqueId(request.getUniqueId())
                     .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable"));
 
+            ensureMobileAccessAllowed(user);
+
             String rolesPipe = user.getRoles().stream()
-                    .map(r -> r.getRole()) 
+                    .map(r -> r.getRole())
                     .filter(Objects::nonNull)
                     .collect(Collectors.joining("|"));
 
@@ -89,6 +105,7 @@ public class QRCodeController {
             if (!Boolean.TRUE.equals(scannedUser.getStatut())) {
                 throw new RuntimeException("Ce compte est suspendu.");
             }
+            ensureMobileAccessAllowed(scannedUser);
 
             // fullName/role viennent de scannedUser (déjà chargé depuis la BDD) plutôt que du
             // contenu déchiffré : QrCodeEncrypte a été allégé au strict nécessaire pour que le

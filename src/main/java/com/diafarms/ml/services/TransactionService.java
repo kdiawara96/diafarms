@@ -9,6 +9,7 @@ import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Projets;
+import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.TransactionCreate;
 import com.diafarms.ml.request.others.RejectTransactionRequest;
@@ -28,9 +29,11 @@ public interface TransactionService {
      * attribuée à SON projet, pour que computeChiffreAffairesReel(projet) reste
      * exact). farm est pris en paramètre explicite pour rester cohérent avec le
      * reste de la Transaction sans dépendre d'un aller-retour projet.getFarm().
+     * creePar : qui a déclenché la vente (VenteOeufs/VenteReforme), pour que la page
+     * Ventes puisse restreindre un FINANCIER à ses propres ventes.
      */
     TransactionDTO createFromSource(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
-                                     String description, SourceTransaction sourceType, String sourceUniqueId);
+                                     String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar);
 
     /** Bascule removed sur la transaction liée à une vente supprimée/restaurée
      * (retrouvée via sourceUniqueId) — pas de recette fantôme après suppression. */
@@ -47,7 +50,17 @@ public interface TransactionService {
 
     TransactionDTO rejeter(String uniqueId, RejectTransactionRequest data);
 
-    PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut, String projetUniqueId);
+    /**
+     * financierUniqueId/vendeurUniqueId/dateDebut/dateFin sont optionnels : voir
+     * TransactionServiceImpl.resolveProjetIdsScope (restriction par projet, pour
+     * Comptabilité) et resolveVendeurScopeForList (restriction par créateur, pour
+     * Ventes) — deux axes différents. Un FINANCIER pur (voir hasOnlyRole côté front)
+     * est de toute façon forcé sur ses propres ventes, quel que soit vendeurUniqueId
+     * reçu — seul un ADMIN/SUPER_ADMIN peut choisir "voir comme" un vendeur précis.
+     */
+    PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,
+                                            String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
+                                            LocalDate dateDebut, LocalDate dateFin);
 
-    TransactionStatsDTO getStats();
+    TransactionStatsDTO getStats(String financierUniqueId, LocalDate dateDebut, LocalDate dateFin);
 }

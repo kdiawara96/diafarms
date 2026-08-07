@@ -42,4 +42,8 @@ public interface UtilisateursServices {
     UtilisateursDTO regenerateQRCodeToken(String uniqueId);
     UtilisateursDTO revoquerUtilisateur(String uniqueId);
     UtilisateursDTO changePassword(String uniqueId, UpdatePassResquest data);
+
+    /** Réservé à un ADMIN/SUPER_ADMIN : génère et envoie par email un nouveau mot de
+     * passe, jamais retourné en clair dans la réponse. */
+    UtilisateursDTO resetPasswordAndNotify(String uniqueId);
 }

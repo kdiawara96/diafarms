@@ -20,6 +20,7 @@ import com.diafarms.ml.enums.ThresholdKey;
 import com.diafarms.ml.models.NotificationRead;
 import com.diafarms.ml.models.ProjectAlertConfig;
 import com.diafarms.ml.models.Projets;
+import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
@@ -53,6 +54,23 @@ public class NotificationServiceImpl implements NotificationService {
     private final WeatherService weatherService;
     private final OtherService otherService;
 
+    // FINANCIER (ou PRODUCTEUR) est son SEUL rôle (pas de cumul) : un compte qui
+    // cumule les rôles garde les notifications complètes, un autre rôle justifiant
+    // déjà l'accès non restreint (même règle qu'ailleurs, voir
+    // TransactionServiceImpl.isPureFinancier / src/lib/roles.ts côté front).
+    private boolean isPureFinancier(Utilisateurs u) {
+        return isPureRole(u, "FINANCIER");
+    }
+
+    private boolean isPureProducteur(Utilisateurs u) {
+        return isPureRole(u, "PRODUCTEUR");
+    }
+
+    private boolean isPureRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && !u.getRoles().isEmpty()
+                && u.getRoles().stream().allMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
     @Override
     @Transactional
     public List<NotificationDTO> getActiveNotifications() {
@@ -60,26 +78,47 @@ public class NotificationServiceImpl implements NotificationService {
         if (currentUser == null || currentUser.getFarm() == null) return List.of();
         Long farmId = currentUser.getFarm().getId();
 
-        List<Projets> projets = projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent();
         List<NotificationDTO> result = new ArrayList<>();
 
-        for (Projets p : projets) {
-            addStockNotification(result, p);
-            addMortaliteNotification(result, p);
-            addMeteoNotification(result, p);
-            addEcheanceNotification(result, p);
+        // Stock/mortalité/météo/échéance (Production) et "N transactions en attente"
+        // (invite à valider, action réservée à un ADMIN) n'ont aucun sens pour un
+        // FINANCIER pur : il n'a accès ni à Production/Projets, ni à la validation.
+        // Voir plus bas addRejetNotification, qui LUI reste montrée (ça, ça le
+        // concerne : une de ses ventes vient d'être rejetée).
+        //
+        // Un PRODUCTEUR pur, à l'inverse, DOIT voir ces notifications (c'est son
+        // métier) mais uniquement pour SES projets assignés (responsableProduction),
+        // jamais ceux des autres producteurs — même logique de périmètre que
+        // Comptabilité pour un FINANCIER, voir TransactionServiceImpl.
+        if (!isPureFinancier(currentUser)) {
+            List<Projets> projets = isPureProducteur(currentUser)
+                    ? projetsRepo.findAssignedToUser(farmId, currentUser.getUniqueId())
+                    : projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent();
+            for (Projets p : projets) {
+                addStockNotification(result, p);
+                addMortaliteNotification(result, p);
+                addMeteoNotification(result, p);
+                addEcheanceNotification(result, p);
+            }
+
+            // La validation reste réservée à un ADMIN/SUPER_ADMIN (voir
+            // TransactionServiceImpl.valider/rejeter) : ce prompt n'est donc pertinent
+            // ni pour un FINANCIER pur (déjà exclu ci-dessus) ni pour un PRODUCTEUR pur.
+            if (!isPureProducteur(currentUser)) {
+                long nbAttente = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.EN_ATTENTE);
+                if (nbAttente > 0) {
+                    result.add(NotificationDTO.builder()
+                        .key("transactions-attente")
+                        .type("TRANSACTION")
+                        .level("WARNING")
+                        .message(nbAttente + " transaction(s) en attente de validation")
+                        .actionPath("/comptabilite")
+                        .build());
+                }
+            }
         }
 
-        long nbAttente = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.EN_ATTENTE);
-        if (nbAttente > 0) {
-            result.add(NotificationDTO.builder()
-                .key("transactions-attente")
-                .type("TRANSACTION")
-                .level("WARNING")
-                .message(nbAttente + " transaction(s) en attente de validation")
-                .actionPath("/comptabilite")
-                .build());
-        }
+        addRejetNotification(result, currentUser);
 
         applyReadState(result, currentUser.getId());
 
@@ -205,6 +244,28 @@ public class NotificationServiceImpl implements NotificationService {
         if (joursRestants <= seuilJours) {
             result.add(echeanceNotif(p, "WARNING",
                 "Fin de projet proche (" + joursRestants + " jour(s) restant(s)) — " + p.getCode()));
+        }
+    }
+
+    /**
+     * Une transaction que CET utilisateur a créée (vente, saisie manuelle...) vient
+     * d'être rejetée par un ADMIN — universel (pas réservé à FINANCIER), mais c'est
+     * la seule notification farm-wide qui reste montrée à un financier pur (voir
+     * getActiveNotifications) : contrairement au stock/mortalité/"en attente", ça le
+     * concerne directement, lui et personne d'autre.
+     */
+    private void addRejetNotification(List<NotificationDTO> result, Utilisateurs currentUser) {
+        for (Transaction t : transactionRepo.findRejeteesByCreeParId(currentUser.getId())) {
+            String message = "Transaction " + t.getRef() + " rejetée"
+                    + (t.getCommentaireRejet() != null && !t.getCommentaireRejet().isBlank()
+                        ? " : " + t.getCommentaireRejet() : "");
+            result.add(NotificationDTO.builder()
+                .key("rejet-" + t.getUniqueId())
+                .type("TRANSACTION")
+                .level("CRITIQUE")
+                .message(message)
+                .actionPath("/ventes")
+                .build());
         }
     }
 

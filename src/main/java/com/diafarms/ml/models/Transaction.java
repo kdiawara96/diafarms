@@ -113,6 +113,16 @@ public class Transaction {
     @Column(name = "source_unique_id", length = 50)
     private String sourceUniqueId;
 
+    // Qui a initié cette transaction (saisie manuelle ou vente œufs/réforme dont elle
+    // découle) — distinct de `validateur`, qui est qui a VALIDÉ/REJETÉ, pas qui a créé.
+    // Nullable : les transactions déjà en base avant ce champ n'ont personne à y
+    // mettre. Sert à restreindre la page Ventes à ses propres ventes pour un
+    // FINANCIER (voir TransactionServiceImpl.resolveVendeurScopeForList), alors que
+    // Comptabilité restreint par projet (responsableFinance) — deux axes différents.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cree_par_id")
+    private Utilisateurs creePar;
+
     @Embedded
     private Initialisation initialisation;
 }

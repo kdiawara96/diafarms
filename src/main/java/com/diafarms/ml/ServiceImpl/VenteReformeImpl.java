@@ -82,7 +82,7 @@ public class VenteReformeImpl implements VenteReformeService {
         return disponible;
     }
 
-    private List<VenteReformeRepartition> repartirEtCreerTransactions(VenteReforme saved, Farm farm, int nombreSujets, double montant) {
+    private List<VenteReformeRepartition> repartirEtCreerTransactions(VenteReforme saved, Farm farm, int nombreSujets, double montant, Utilisateurs creePar) {
         List<Projets> projetsActifs = projetsRepo.findAllActiveByFarm(farm.getId());
         Map<Long, Integer> disponible = disponibleParProjet(projetsActifs);
         Map<Long, Projets> projetsParId = projetsActifs.stream()
@@ -105,7 +105,7 @@ public class VenteReformeImpl implements VenteReformeService {
             transactionService.createFromSource(
                     projet, farm, part.montant, "Vente réforme", saved.getDate(),
                     "Vente réforme — " + part.quantite + " sujet(s) (part de " + saved.getNombreSujets() + " vendus)",
-                    SourceTransaction.VENTE_REFORME, r.getUniqueId()
+                    SourceTransaction.VENTE_REFORME, r.getUniqueId(), creePar
             );
         }
         return lignes;
@@ -146,7 +146,7 @@ public class VenteReformeImpl implements VenteReformeService {
 
         VenteReforme saved = venteReformeRepo.save(v);
 
-        List<VenteReformeRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getNombreSujets(), data.getMontant());
+        List<VenteReformeRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getNombreSujets(), data.getMontant(), currentUser);
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
                 "Vente réforme de " + saved.getNombreSujets() + " sujet(s) (" + saved.getMontant() + " FCFA), répartie entre les projets contributeurs");
@@ -159,6 +159,7 @@ public class VenteReformeImpl implements VenteReformeService {
     @Override
     @Transactional
     public VenteReformeDTO update(String uniqueId, VenteReformeUpdate data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
 
@@ -203,12 +204,11 @@ public class VenteReformeImpl implements VenteReformeService {
                 transactionService.toggleRemovedBySource(ancienne.getUniqueId());
             }
             repartitionRepo.deleteAll(anciennes);
-            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getNombreSujets(), saved.getMontant());
+            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getNombreSujets(), saved.getMontant(), currentUser);
         } else {
             lignesActuelles = repartitionRepo.findByVenteReforme_UniqueId(saved.getUniqueId());
         }
 
-        Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme", "Modification d'une vente réforme");
         }

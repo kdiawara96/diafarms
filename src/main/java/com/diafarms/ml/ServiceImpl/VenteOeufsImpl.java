@@ -93,7 +93,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
      * être appelé identiquement par create() et update(). Retourne les lignes créées
      * (plutôt que de compter sur saved.getRepartitions(), lazy et potentiellement pas
      * à jour dans le même contexte de persistance/transaction). */
-    private List<VenteOeufsRepartition> repartirEtCreerTransactions(VenteOeufs saved, Farm farm, int quantite, double montant) {
+    private List<VenteOeufsRepartition> repartirEtCreerTransactions(VenteOeufs saved, Farm farm, int quantite, double montant, Utilisateurs creePar) {
         List<Projets> projetsActifs = projetsRepo.findAllActiveByFarm(farm.getId());
         Map<Long, Integer> disponible = disponibleParProjet(projetsActifs);
         Map<Long, Projets> projetsParId = projetsActifs.stream()
@@ -116,7 +116,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
             transactionService.createFromSource(
                     projet, farm, part.montant, "Vente œufs", saved.getDate(),
                     "Vente de " + part.quantite + " œufs (part de " + saved.getQuantiteOeufs() + " vendus)",
-                    SourceTransaction.VENTE_OEUFS, r.getUniqueId()
+                    SourceTransaction.VENTE_OEUFS, r.getUniqueId(), creePar
             );
         }
         return lignes;
@@ -157,7 +157,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         VenteOeufs saved = venteOeufsRepo.save(v);
 
-        List<VenteOeufsRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getQuantiteOeufs(), data.getMontant());
+        List<VenteOeufsRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getQuantiteOeufs(), data.getMontant(), currentUser);
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs",
                 "Vente de " + saved.getQuantiteOeufs() + " œufs (" + saved.getMontant() + " FCFA), répartie entre les projets contributeurs");
@@ -170,6 +170,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
     @Override
     @Transactional
     public VenteOeufsDTO update(String uniqueId, VenteOeufsUpdate data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
@@ -219,12 +220,11 @@ public class VenteOeufsImpl implements VenteOeufsService {
                 transactionService.toggleRemovedBySource(ancienne.getUniqueId());
             }
             repartitionRepo.deleteAll(anciennes);
-            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getQuantiteOeufs(), saved.getMontant());
+            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getQuantiteOeufs(), saved.getMontant(), currentUser);
         } else {
             lignesActuelles = repartitionRepo.findByVenteOeufs_UniqueId(saved.getUniqueId());
         }
 
-        Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs", "Modification d'une vente d'œufs");
         }

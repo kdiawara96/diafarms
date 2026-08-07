@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -57,6 +58,77 @@ public class TransactionServiceImpl implements TransactionService {
         return ref;
     }
 
+    private boolean isAdmin(Utilisateurs u) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+    }
+
+    /**
+     * Restriction du RAPPORT (/transactions/stats, qui alimente les cartes KPI et le
+     * "Rapport général" de Comptabilité) : null = pas de restriction (vue ferme entière,
+     * réservé à un ADMIN/SUPER_ADMIN qui n'a pas choisi de financier précis) ; liste
+     * (éventuellement vide) = restreint aux transactions des projets où l'utilisateur
+     * ciblé est responsableFinance.
+     *
+     * Un utilisateur non-admin (FINANCIER) est TOUJOURS restreint à son propre périmètre,
+     * quel que soit financierUniqueId reçu du client — jamais celui d'un autre financier,
+     * sinon il suffirait de changer ce paramètre pour voir le rapport d'un collègue. Seul
+     * un ADMIN/SUPER_ADMIN peut se placer dans la vue d'un financier choisi ("voir comme").
+     */
+    private List<Long> resolveProjetIdsScope(Utilisateurs currentUser, Long farmId, String financierUniqueId) {
+        if (currentUser == null || farmId == null) {
+            return isAdmin(currentUser) ? null : List.of();
+        }
+        if (isAdmin(currentUser)) {
+            if (financierUniqueId == null || financierUniqueId.isBlank()) {
+                return null;
+            }
+            return projetsRepo.findProjetIdsAssignedAsFinanceToUser(farmId, financierUniqueId);
+        }
+        return projetsRepo.findProjetIdsAssignedAsFinanceToUser(farmId, currentUser.getUniqueId());
+    }
+
+    /**
+     * Restriction de la LISTE (/transactions/list) : contrairement au rapport ci-dessus,
+     * la liste n'est JAMAIS auto-restreinte pour un non-admin — elle reste utilisée telle
+     * quelle par la page Ventes (acte Finance à l'échelle de la ferme entière par
+     * conception, voir VenteOeufsImpl/VenteReformeImpl) et par le Dashboard admin. Seul un
+     * ADMIN/SUPER_ADMIN qui fournit explicitement financierUniqueId se place dans la vue
+     * scopée d'un financier (utilisé par le filtre "voir comme" de Comptabilité).
+     */
+    private List<Long> resolveProjetIdsScopeForList(Utilisateurs currentUser, Long farmId, String financierUniqueId) {
+        if (!isAdmin(currentUser) || farmId == null || financierUniqueId == null || financierUniqueId.isBlank()) {
+            return null;
+        }
+        return projetsRepo.findProjetIdsAssignedAsFinanceToUser(farmId, financierUniqueId);
+    }
+
+    // FINANCIER est son SEUL rôle (pas de cumul, ex: PRODUCTEUR + FINANCIER) : un
+    // compte qui cumule les rôles garde l'accès complet, un autre rôle justifiant
+    // déjà l'accès non restreint (même règle que hasOnlyRole côté front, voir
+    // src/lib/roles.ts).
+    private boolean isPureFinancier(Utilisateurs u) {
+        return u != null && u.getRoles() != null && !u.getRoles().isEmpty()
+                && u.getRoles().stream().allMatch(r -> "FINANCIER".equalsIgnoreCase(r.getRole()));
+    }
+
+    /**
+     * Restriction par CRÉATEUR de la LISTE (page Ventes) : un FINANCIER pur ne voit
+     * que ses propres ventes, quel que soit vendeurUniqueId reçu du client — jamais
+     * celui d'un collègue. Un ADMIN/SUPER_ADMIN peut choisir n'importe quel vendeur
+     * (ou aucun = tout le monde). Un PRODUCTEUR (ou un cumul de rôles) n'est pas
+     * restreint pour l'instant.
+     */
+    private String resolveVendeurScopeForList(Utilisateurs currentUser, String vendeurUniqueId) {
+        if (isAdmin(currentUser)) {
+            return (vendeurUniqueId == null || vendeurUniqueId.isBlank()) ? null : vendeurUniqueId;
+        }
+        if (isPureFinancier(currentUser)) {
+            return currentUser.getUniqueId();
+        }
+        return null;
+    }
+
     @Override
     @Transactional
     public TransactionDTO create(TransactionCreate data) {
@@ -74,8 +146,7 @@ public class TransactionServiceImpl implements TransactionService {
         // aucun écran de saisie à un compte ADMIN seul, voir HomeActivity.setupVisibilityByRole)
         // est déjà validée : ce n'est qu'une saisie terrain (Producteur/Financier, mobile)
         // qui doit d'abord passer par la validation manuelle habituelle.
-        boolean estAdmin = currentUser != null && currentUser.getRoles() != null && currentUser.getRoles().stream()
-                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+        boolean estAdmin = isAdmin(currentUser);
         t.setStatut(estAdmin ? StatutTransaction.VALIDE : StatutTransaction.EN_ATTENTE);
         if (estAdmin) {
             // Même trace que la validation manuelle (voir valider()) : sans ça, "Dernière
@@ -83,6 +154,7 @@ public class TransactionServiceImpl implements TransactionService {
             t.setValidateur(currentUser);
             t.setDateValidation(LocalDateTime.now());
         }
+        t.setCreePar(currentUser);
         t.setInitialisation(Initialisation.init());
 
         boolean commun = !Boolean.FALSE.equals(data.getCommun())
@@ -113,7 +185,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionDTO createFromSource(Projets projet, Farm farm, Double montant, String categorie, java.time.LocalDate date,
-                                            String description, SourceTransaction sourceType, String sourceUniqueId) {
+                                            String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar) {
         Transaction t = new Transaction();
         t.setUniqueId(java.util.UUID.randomUUID().toString());
         t.setRef(generateRef());
@@ -135,6 +207,7 @@ public class TransactionServiceImpl implements TransactionService {
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
         t.setFarm(farm);
+        t.setCreePar(creePar);
         t.setInitialisation(Initialisation.init());
 
         Transaction saved = transactionRepo.save(t);
@@ -222,10 +295,13 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionDTO valider(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (!isAdmin(currentUser)) {
+            throw new IllegalArgumentException("Seul un administrateur peut valider une transaction.");
+        }
+
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
-
-        Utilisateurs currentUser = getCurrentUserSafe();
 
         t.setStatut(StatutTransaction.VALIDE);
         t.setCommentaireRejet(null);
@@ -244,14 +320,16 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionDTO rejeter(String uniqueId, RejectTransactionRequest data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (!isAdmin(currentUser)) {
+            throw new IllegalArgumentException("Seul un administrateur peut rejeter une transaction.");
+        }
         if (data.getCommentaire() == null || data.getCommentaire().isBlank()) {
             throw new IllegalArgumentException("Un commentaire est obligatoire pour rejeter une transaction.");
         }
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
-
-        Utilisateurs currentUser = getCurrentUserSafe();
 
         t.setStatut(StatutTransaction.REJETE);
         t.setCommentaireRejet(data.getCommentaire());
@@ -269,7 +347,9 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut, String projetUniqueId) {
+    public PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,
+                                                   String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
+                                                   LocalDate dateDebut, LocalDate dateFin) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -278,7 +358,19 @@ public class TransactionServiceImpl implements TransactionService {
         String searchParam = (search == null || search.isBlank()) ? null : "%" + search.trim().toLowerCase() + "%";
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
 
-        Page<Transaction> transactionsPage = transactionRepo.search(farmId, type, statut, projetParam, searchParam, pageable);
+        String vendeurScope = resolveVendeurScopeForList(currentUser, vendeurUniqueId);
+        List<Long> scopedProjetIds = resolveProjetIdsScopeForList(currentUser, farmId, financierUniqueId);
+
+        Page<Transaction> transactionsPage;
+        if (vendeurScope != null) {
+            transactionsPage = transactionRepo.searchByCreePar(farmId, vendeurScope, type, statut, dateDebut, dateFin, searchParam, pageable);
+        } else if (scopedProjetIds != null && scopedProjetIds.isEmpty()) {
+            transactionsPage = Page.empty(pageable);
+        } else if (scopedProjetIds != null) {
+            transactionsPage = transactionRepo.searchScoped(scopedProjetIds, type, statut, projetParam, dateDebut, dateFin, searchParam, pageable);
+        } else {
+            transactionsPage = transactionRepo.search(farmId, type, statut, projetParam, dateDebut, dateFin, searchParam, pageable);
+        }
 
         List<TransactionDTO> dtoList = transactionsPage.getContent().stream()
                 .map(TransactionDTO::fromEntity)
@@ -295,17 +387,40 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public TransactionStatsDTO getStats() {
+    public TransactionStatsDTO getStats(String financierUniqueId, LocalDate dateDebut, LocalDate dateFin) {
         Utilisateurs currentUser = getCurrentUserSafe();
         Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;
 
-        long nbValide = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.VALIDE);
-        long nbAttente = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.EN_ATTENTE);
-        long nbRejete = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.REJETE);
-        Double totalEntrees = transactionRepo.sumMontantValideByType(farmId, TypeTransaction.ENTREE);
-        Double totalSorties = transactionRepo.sumMontantValideByType(farmId, TypeTransaction.SORTIE);
-        Double totalVenteOeufs = transactionRepo.sumMontantValideBySourceType(farmId, SourceTransaction.VENTE_OEUFS);
-        Double totalVenteReforme = transactionRepo.sumMontantValideBySourceType(farmId, SourceTransaction.VENTE_REFORME);
+        List<Long> scopedProjetIds = resolveProjetIdsScope(currentUser, farmId, financierUniqueId);
+
+        if (scopedProjetIds != null && scopedProjetIds.isEmpty()) {
+            return TransactionStatsDTO.builder()
+                    .nbValide(0).nbAttente(0).nbRejete(0)
+                    .totalEntreesValidees(0.0).totalSortiesValidees(0.0)
+                    .totalVenteOeufs(0.0).totalVenteReforme(0.0)
+                    .build();
+        }
+
+        long nbValide, nbAttente, nbRejete;
+        Double totalEntrees, totalSorties, totalVenteOeufs, totalVenteReforme;
+
+        if (scopedProjetIds != null) {
+            nbValide = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.VALIDE, dateDebut, dateFin);
+            nbAttente = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.EN_ATTENTE, dateDebut, dateFin);
+            nbRejete = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.REJETE, dateDebut, dateFin);
+            totalEntrees = transactionRepo.sumMontantValideByProjetIdsAndType(scopedProjetIds, TypeTransaction.ENTREE, dateDebut, dateFin);
+            totalSorties = transactionRepo.sumMontantValideByProjetIdsAndType(scopedProjetIds, TypeTransaction.SORTIE, dateDebut, dateFin);
+            totalVenteOeufs = transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_OEUFS, dateDebut, dateFin);
+            totalVenteReforme = transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_REFORME, dateDebut, dateFin);
+        } else {
+            nbValide = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.VALIDE, dateDebut, dateFin);
+            nbAttente = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.EN_ATTENTE, dateDebut, dateFin);
+            nbRejete = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.REJETE, dateDebut, dateFin);
+            totalEntrees = transactionRepo.sumMontantValideByTypeAndDateRange(farmId, TypeTransaction.ENTREE, dateDebut, dateFin);
+            totalSorties = transactionRepo.sumMontantValideByTypeAndDateRange(farmId, TypeTransaction.SORTIE, dateDebut, dateFin);
+            totalVenteOeufs = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_OEUFS, dateDebut, dateFin);
+            totalVenteReforme = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_REFORME, dateDebut, dateFin);
+        }
 
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)

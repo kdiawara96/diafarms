@@ -125,7 +125,12 @@ public class UtilisateurImpl implements UtilisateursServices {
 
         boolean emailSent = emailService.sendWelcomeEmail(user.getEmail(), user.getFullName(), generatedUsername, generatedPassword);
 
-        return UtilisateursDTO.fromEntity(user, generatedPassword, emailSent);
+        // Jamais le mot de passe en clair dans la réponse HTTP, même en cas d'échec
+        // d'envoi (emailSent=false) : c'était auparavant affiché en repli côté front
+        // (Login.tsx), ce qui exposait le mot de passe temporaire à l'écran — voir
+        // resetPasswordAndNotify pour le cas "email non reçu" (l'admin déclenche un
+        // renvoi plutôt que de lire le mot de passe affiché).
+        return UtilisateursDTO.fromEntity(user, null, emailSent);
     }
 
     /**
@@ -364,8 +369,10 @@ public class UtilisateurImpl implements UtilisateursServices {
 
         boolean emailSent = emailService.sendWelcomeEmail(savedUser.getEmail(), savedUser.getFullName(), generatedUsername, plainPassword);
 
-        // On retourne le DTO avec le mot de passe en clair uniquement à la création pour affichage
-        return UtilisateursDTO.fromEntity(savedUser, plainPassword, emailSent);
+        // Jamais le mot de passe en clair dans la réponse HTTP (voir save() ci-dessus) :
+        // seul l'email le porte. Si l'envoi échoue, l'admin peut redéclencher un envoi
+        // via resetPasswordAndNotify plutôt que de lire le mot de passe à l'écran.
+        return UtilisateursDTO.fromEntity(savedUser, null, emailSent);
     }
 
     // 4. Modifier un utilisateur existant
@@ -493,6 +500,47 @@ public class UtilisateurImpl implements UtilisateursServices {
         logsServices.addLogs(u.getId(), u.getId(), "Utilisateurs", "Changement de mot de passe par l'utilisateur lui-même");
 
         return UtilisateursDTO.fromEntity(saved);
+    }
+
+    private boolean isAdmin(Utilisateurs u) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+    }
+
+    // Réservé à un ADMIN/SUPER_ADMIN (bouton "Réinitialiser" sur la fiche
+    // utilisateur) : génère un nouveau mot de passe, l'envoie par email — jamais
+    // affiché à l'écran, voir save()/createUtilisateurProdOrFinan() pour le même
+    // principe à la création.
+    @Override
+    @Transactional
+    public UtilisateursDTO resetPasswordAndNotify(String uniqueId) {
+        Utilisateurs currentUser;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            currentUser = null;
+        }
+        if (!isAdmin(currentUser)) {
+            throw new RuntimeException("Seul un administrateur peut réinitialiser le mot de passe d'un utilisateur.");
+        }
+
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+        String newPassword = generateSecurePassword();
+        u.setPassword(encoder.encode(newPassword));
+        u.setMustChangePassword(true);
+        if (u.getInitialisation() != null) {
+            u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+        Utilisateurs saved = utilisateursRepo.save(u);
+
+        boolean emailSent = emailService.sendPasswordResetByAdmin(saved.getEmail(), saved.getFullName(), saved.getUsername(), newPassword);
+
+        logsServices.addLogs(currentUser.getId(), saved.getId(), "Utilisateurs",
+                "Réinitialisation du mot de passe de '" + saved.getFullName() + "' par un administrateur");
+
+        return UtilisateursDTO.fromEntity(saved, null, emailSent);
     }
 
     @Override

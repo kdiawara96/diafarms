@@ -23,7 +23,10 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
 
 import com.diafarms.ml.DTO.UsersAuth_DTO;
+import com.diafarms.ml.commons.AppAccessRules;
+import com.diafarms.ml.models.FarmAppSettings;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.repository.FarmAppSettingsRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.services.AuthServices;
 
@@ -33,6 +36,7 @@ import com.diafarms.ml.services.AuthServices;
 public class AuthImpl implements AuthServices {
 
     private final UtilisateursRepo repo;
+    private final FarmAppSettingsRepo farmAppSettingsRepo;
     private final JwtEncoder jwtEncoder;
     private final JwtDecoder jwtDecoder;
     private final AuthenticationManager authenticationManager;
@@ -44,18 +48,20 @@ public class AuthImpl implements AuthServices {
             JwtDecoder jwtDecoder,
             AuthenticationManager authenticationManager,
             UserDetailsService userDetailsService,
-            UtilisateursRepo repo
+            UtilisateursRepo repo,
+            FarmAppSettingsRepo farmAppSettingsRepo
     ) {
         this.jwtEncoder = jwtEncoder;
         this.jwtDecoder = jwtDecoder;
         this.authenticationManager = authenticationManager;
         this.userDetailsService = userDetailsService;
         this.repo = repo;
+        this.farmAppSettingsRepo = farmAppSettingsRepo;
     }
 
     @Override
     public ResponseEntity<Object> jwt(String grantType, String identifiant, String password,
-                                      boolean ouiRefresh, String refreshToken) {
+                                      boolean ouiRefresh, String refreshToken, String clientType) {
 
         String subject = null;
         String scope = null;
@@ -107,6 +113,24 @@ public class AuthImpl implements AuthServices {
         Utilisateurs currentUser = repo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
                 identifiant, identifiant, identifiant
         ).orElseThrow(() -> new IllegalArgumentException("Identifiant incorrect"));
+
+        // =============================== ACCÈS APP (PRODUCTEUR/FINANCIER) ===============================
+        // Ne s'applique qu'au login mot de passe (web ou mobile), pas au refresh d'une
+        // session déjà en cours — voir UserStatusJwtValidator pour la revalidation
+        // continue des tokens issus d'un QR (mobile), qui elle s'applique à chaque requête.
+        if (grantType.equals("password") && currentUser.getFarm() != null) {
+            java.util.Set<String> roles = currentUser.getRoles() == null ? java.util.Set.of()
+                    : currentUser.getRoles().stream().map(r -> r.getRole()).collect(Collectors.toSet());
+            FarmAppSettings settings = farmAppSettingsRepo.findByFarm_Id(currentUser.getFarm().getId()).orElse(null);
+            boolean isMobile = "mobile".equalsIgnoreCase(clientType);
+            boolean allowed = isMobile ? AppAccessRules.canAccessMobile(settings, roles) : AppAccessRules.canAccessWeb(settings, roles);
+            if (!allowed) {
+                String message = isMobile
+                        ? "L'accès à l'application mobile n'est pas activé pour votre rôle. Contactez votre administrateur."
+                        : "L'accès à l'application web n'est pas activé pour votre rôle. Contactez votre administrateur.";
+                return new ResponseEntity<>(Map.of("errorMessage", message), HttpStatus.FORBIDDEN);
+            }
+        }
 
         // =============================== CREATION DU JWT ===============================
         Instant now = Instant.now();

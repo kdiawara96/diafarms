@@ -61,6 +61,59 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Override
+    public boolean sendPasswordResetByAdmin(String to, String fullName, String username, String newPassword) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setTo(to);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject("Votre mot de passe DiaFarms a été réinitialisé");
+            helper.setText(buildAdminResetPlainTextBody(fullName, username, newPassword),
+                    buildAdminResetHtmlBody(fullName, username, newPassword));
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("Échec de l'envoi du mot de passe réinitialisé à {} : {}", to, e.getMessage());
+            return false;
+        }
+    }
+
+    private String buildAdminResetPlainTextBody(String fullName, String username, String newPassword) {
+        return """
+            Bonjour %s,
+
+            Un administrateur a réinitialisé votre mot de passe DiaFarms. Voici vos nouveaux identifiants :
+
+            Identifiant : %s
+            Nouveau mot de passe temporaire : %s
+
+            Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre prochaine connexion.
+
+            Si vous n'êtes pas à l'origine de cette demande, contactez votre administrateur.
+
+            L'équipe DiaFarms
+            """.formatted(fullName, username, newPassword);
+    }
+
+    private String buildAdminResetHtmlBody(String fullName, String username, String newPassword) {
+        return """
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
+              <h2 style="color: #15803d;">Mot de passe réinitialisé</h2>
+              <p>Bonjour %s,</p>
+              <p>Un administrateur a réinitialisé votre mot de passe DiaFarms. Voici vos nouveaux identifiants :</p>
+              <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 4px 0;"><strong>Identifiant :</strong> %s</p>
+                <p style="margin: 4px 0;"><strong>Nouveau mot de passe temporaire :</strong> %s</p>
+              </div>
+              <p>Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre prochaine connexion.</p>
+              <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, contactez votre administrateur.</p>
+              <p>L'équipe DiaFarms</p>
+            </div>
+            """.formatted(fullName, username, newPassword);
+    }
+
     private String buildResetPlainTextBody(String fullName, String code) {
         return """
             Bonjour %s,

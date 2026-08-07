@@ -20,7 +20,9 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
+import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.repository.ReformeRepo;
 import com.diafarms.ml.request.create.CollecteOeufsCreate;
 import com.diafarms.ml.request.update.CollecteOeufsUpdate;
 import com.diafarms.ml.services.CollecteOeufsService;
@@ -35,6 +37,8 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final ProjetsRepo projetsRepo;
     private final BatimentRepo batimentRepo;
+    private final MortaliteRepo mortaliteRepo;
+    private final ReformeRepo reformeRepo;
     private final LogsServices logs;
     private final OtherService otherService;
 
@@ -47,11 +51,37 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         }
     }
 
+    private int nz(Integer v) {
+        return v == null ? 0 : v;
+    }
+
+    // Une poule ne pond qu'un œuf par collecte au plus : le nombre d'œufs collectés
+    // en une saisie ne peut donc pas dépasser l'effectif vivant du projet au moment
+    // de la saisie — même formule que ReformeImpl.effectifVivant (nbSujets - mortalité
+    // cumulée - déjà réformés, un sujet réformé ne pondant plus), mais sans soustraire
+    // les collectes précédentes : contrairement à un cheptel qu'on réforme (ressource
+    // qui s'épuise), la ponte se renouvelle à chaque collecte, ce n'est pas un stock
+    // qu'on consomme.
+    private int effectifVivant(Projets projet) {
+        int nbSujets = projet.getNbSujets() == null ? 0 : projet.getNbSujets();
+        int morts = nz(mortaliteRepo.sumMortsByProjetId(projet.getId()));
+        int dejaReformes = nz(reformeRepo.sumSujetsByProjetId(projet.getId()));
+        return nbSujets - morts - dejaReformes;
+    }
+
     @Override
     @Transactional
     public CollecteOeufsDTO create(CollecteOeufsCreate data) {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
+
+        int oeufsCollectes = data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0;
+        int effectif = effectifVivant(projet);
+        if (oeufsCollectes > effectif) {
+            throw new IllegalArgumentException(
+                "Le nombre d'œufs collectés ne peut pas dépasser l'effectif vivant du projet (" + effectif + " poule(s))."
+            );
+        }
 
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -90,7 +120,15 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
 
         if (data.getDate() != null) c.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
-        if (data.getOeufsCollectes() != null) c.setOeufsCollectes(data.getOeufsCollectes());
+        if (data.getOeufsCollectes() != null) {
+            int effectif = effectifVivant(c.getProjet());
+            if (data.getOeufsCollectes() > effectif) {
+                throw new IllegalArgumentException(
+                    "Le nombre d'œufs collectés ne peut pas dépasser l'effectif vivant du projet (" + effectif + " poule(s))."
+                );
+            }
+            c.setOeufsCollectes(data.getOeufsCollectes());
+        }
         if (data.getOeufsCasses() != null) c.setOeufsCasses(data.getOeufsCasses());
         if (data.getBatimentUniqueId() != null) {
             c.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
