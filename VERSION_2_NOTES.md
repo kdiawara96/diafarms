@@ -72,6 +72,40 @@ Le client a commencé à saisir sur papier → besoin d'importer en masse plutô
 - Petite incohérence cosmétique connue et non corrigée : sur le formulaire mobile générique réutilisé pour Vente de fientes, la case "commune" et les "projets concernés" restent visibles alors que `commun` est forcé à `true` quoi qu'il arrive.
 - Test de bout en bout de `FarmAppSettings` (toggle web → effet réel sur QR généré / session déjà ouverte) non fait dans cette session.
 
+## Prochaine phase — refonte des rôles (PLAN, PAS ENCORE IMPLÉMENTÉ)
+
+Discuté le 2026-08-07, plan présenté et en attente de confirmation/correction de l'utilisateur avant tout début d'implémentation. Rien de cette section n'existe dans le code — c'est une note d'intention pour ne pas perdre le contexte.
+
+### Nouveau modèle de rôles
+Remplace PRODUCTEUR/FINANCIER par 5 rôles : **RESPONSABLE, COMPTABLE, VENTE, PRODUCTION, ADMIN** (SUPER_ADMIN inchangé). `roles` est une table (pas un enum Java) — migration à faible risque en base réelle (2 ADMIN, 1 PRODUCTEUR, 1 FINANCIER, 0 SUPER_ADMIN au moment du plan) :
+- `PRODUCTEUR` renommé en place → `PRODUCTION`.
+- `FINANCIER` renommé en place → `COMPTABLE` (garde son user lié), puis nouveaux rôles `RESPONSABLE`/`VENTE` créés et liés à ce même user (décision utilisateur : l'ex-FINANCIER garde tout son pouvoir actuel à la migration, l'admin retire ensuite ce qui ne convient pas via Modifier utilisateur).
+- Toujours le principe : un cumul de rôles garde l'accès complet (`isPureX` partout, jamais une restriction sur un rôle non-exclusif).
+
+### Projets — 3 champs responsables (sélections, plus de texte libre)
+- `responsable` (actuellement texte libre) → FK vers un user RESPONSABLE. Nouveau pouvoir : gère/clôture ses projets, valide/rejette comptabilité ET ventes liées à ses projets (admin ou lui, jamais un simple COMPTABLE/VENTE).
+- `responsableProduction` → reste, sourcé sur PRODUCTION (remplace PRODUCTEUR).
+- `responsableFinance` → reste, sourcé sur COMPTABLE (remplace FINANCIER) — sert au filtre admin "voir comme un comptable" (comme aujourd'hui), COMPTABLE lui-même reste farm-wide/non scopé par défaut (à confirmer : son message original ne dit jamais "lié à ses projets" pour comptable, contrairement à responsable/vente/production où c'est systématique).
+
+### Changement de comportement — validation des ventes
+Aujourd'hui `VenteOeufsImpl`/`VenteReformeImpl.createFromSource` met TOUJOURS `VALIDE`, quel que soit le créateur — rien à valider actuellement. Pour que "VENTE crée mais ne valide jamais, RESPONSABLE valide" ait un sens, une vente créée par un VENTE pur doit passer par `EN_ATTENTE` (comme une transaction manuelle aujourd'hui pour un non-admin), validée par ADMIN ou le RESPONSABLE du projet concerné. Vente créée par ADMIN/RESPONSABLE lui-même reste auto-validée.
+
+### Magasin de vente — nouvelle entité, vrai stock séparé (décision utilisateur confirmée)
+- `MagasinVente` (nom, description, farm-scoped) + `MagasinTransfert` (transfert explicite d'un stock **projet → magasin**, quantité/date/type/qui) — **remplace la répartition automatique proportionnelle à la vente** (`VenteOeufsImpl.repartirEtCreerTransactions`) par une répartition explicite au moment du transfert. C'est la décision d'architecture la plus significative du plan (pas juste confirmée mot pour mot par l'utilisateur, à revalider en priorité si le test révèle un malentendu).
+- `MagasinVente` ↔ Utilisateurs (VENTE) many-to-many : quel vendeur vend depuis quel(s) magasin(s).
+- `VenteOeufs`/`VenteReforme`/vente-fientes gagnent une référence `magasin` ; le plafond de stock passe de farm-wide à par-magasin.
+- Nouveaux champs de rapprochement : `montantTheorique` (quantité × prix, calcul auto) + `montantRapporte` (saisie : ce que le vendeur ramène réellement ce jour-là) + `SoldeVendeur` (solde cumulé créance/dette par vendeur, reporté d'une vente à l'autre, carte KPI) — libellés français proposés : "Montant théorique" / "Montant réellement rapporté" / "Solde du vendeur", à valider.
+
+### Web
+Nav/routes par rôle (`hasOnlyRole`/`isRestrictedTo`, pattern existant) ; Projets (3 selects) ; Comptabilité (RESPONSABLE = table complète scopée + valider/rejeter, COMPTABLE = farm-wide création seule, catégorie "Transport"→"Logistique") ; Ventes (VENTE scopé à ses magasins, RESPONSABLE scopé à ses projets pour validation, nouvelle saisie "Montant rapporté" + carte solde vendeur) ; Production (PRODUCTION scopé lecture/écriture comme PRODUCTEUR aujourd'hui, RESPONSABLE scopé lecture seule) ; Reporting scopé RESPONSABLE ; Paramètres (nouvelle section Magasins, CRUD + transferts).
+
+### Mobile
+- Nettoyage de l'affichage des rôles (2 badges + 2 dialogues dupliqués "Production/Finance/Administration" à remplacer par les 5 nouveaux libellés).
+- `FarmAppSettings` se simplifie : les 5 toggles fins FINANCIER mobile deviennent inutiles (COMPTABLE mobile = entrée/sortie fixe, VENTE mobile = 3 types vente fixe) → toggles par rôle mobile/web seulement (`productionMobile/Web`, `comptableMobile/Web`, `venteMobile/Web`). RESPONSABLE : pas d'accès mobile du tout (jamais mentionné pour mobile).
+- Bâtiment devient **obligatoire** (pas juste proposé) sur Achat aliment/Collecte œufs/Soins/Mortalité.
+- Magasin devient **obligatoire** sur Vente œufs/Vente réforme (nouveau spinner, même pattern que bâtiment).
+- Le mode hors-ligne existant ne doit pas casser (rappel explicite de l'utilisateur).
+
 ## Repères utiles pour une prochaine session
 
 - Pattern de restriction par rôle réutilisé partout : "un cumul de rôles garde l'accès complet, seul un rôle PUR est restreint" — `hasOnlyRole`/`isRestrictedTo` (web `src/lib/roles.ts`), `isOnlyRole`/`isPureFinancier`/`isPureProducteur`/`isPureRole` (back, dupliqué par service : `TransactionServiceImpl`, `NotificationServiceImpl`, `AppAccessRules`).
