@@ -21,6 +21,8 @@ public class MagasinTransfertDTO {
     private String magasinNom;
     private String projetUniqueId;
     private String projetCode;
+    private String batimentStockageUniqueId;
+    private String batimentStockageNom;
     private String type;
     private Integer quantite;
     private LocalDate date;
@@ -34,6 +36,8 @@ public class MagasinTransfertDTO {
                 .magasinNom(t.getMagasin() != null ? t.getMagasin().getNom() : null)
                 .projetUniqueId(t.getProjet() != null ? t.getProjet().getUniqueId() : null)
                 .projetCode(t.getProjet() != null ? t.getProjet().getCode() : null)
+                .batimentStockageUniqueId(t.getBatimentStockage() != null ? t.getBatimentStockage().getUniqueId() : null)
+                .batimentStockageNom(t.getBatimentStockage() != null ? t.getBatimentStockage().getNom() : null)
                 .type(t.getType() != null ? t.getType().name() : null)
                 .quantite(t.getQuantite())
                 .date(t.getDate())

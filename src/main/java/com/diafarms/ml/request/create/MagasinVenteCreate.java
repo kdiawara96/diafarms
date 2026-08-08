@@ -9,4 +9,7 @@ public class MagasinVenteCreate {
     private String nom;
     private String description; // optionnel
     private List<String> vendeurUniqueIds; // optionnel, VENTE role attendu (non vérifié strictement)
+    // Seuils d'alerte stock bas (optionnels, null = pas d'alerte pour ce type dans ce magasin).
+    private Integer seuilAlerteOeufs;
+    private Integer seuilAlerteReforme;
 }

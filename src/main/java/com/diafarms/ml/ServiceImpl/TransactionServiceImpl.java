@@ -23,7 +23,10 @@ import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.repository.SoldeVendeurRepo;
 import com.diafarms.ml.repository.TransactionRepo;
+import com.diafarms.ml.repository.VenteOeufsRepo;
+import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.TransactionCreate;
 import com.diafarms.ml.request.others.RejectTransactionRequest;
 import com.diafarms.ml.request.update.TransactionUpdate;
@@ -40,6 +43,9 @@ public class TransactionServiceImpl implements TransactionService {
     private final ProjetsRepo projetsRepo;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final VenteOeufsRepo venteOeufsRepo;
+    private final VenteReformeRepo venteReformeRepo;
+    private final SoldeVendeurRepo soldeVendeurRepo;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -48,6 +54,10 @@ public class TransactionServiceImpl implements TransactionService {
             e.printStackTrace();
             return null;
         }
+    }
+
+    private double nz(Double v) {
+        return v == null ? 0.0 : v;
     }
 
     private String generateRef() {
@@ -444,6 +454,7 @@ public class TransactionServiceImpl implements TransactionService {
                     .nbValide(0).nbAttente(0).nbRejete(0)
                     .totalEntreesValidees(0.0).totalSortiesValidees(0.0)
                     .totalVenteOeufs(0.0).totalVenteReforme(0.0)
+                    .totalMontantRecuVentes(0.0).totalDuParVendeurs(0.0)
                     .build();
         }
 
@@ -468,12 +479,24 @@ public class TransactionServiceImpl implements TransactionService {
             totalVenteReforme = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_REFORME, dateDebut, dateFin);
         }
 
+        // Ferme entière, jamais scopé par projet/comptable (voir TransactionStatsDTO) —
+        // le montant réellement rapporté et la dette vendeur sont des notions de
+        // vendeur/ferme, pas de projet : les décomposer par projet nécessiterait de
+        // répartir montantRapporte au prorata de chaque part de vente, une précision
+        // que ces deux chiffres (pensés comme complément global à "Total entrées",
+        // pas comme un rapport scopé) n'ont pas besoin d'avoir.
+        double montantRecuVentes = nz(venteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin))
+                + nz(venteReformeRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin));
+        double duParVendeurs = nz(soldeVendeurRepo.sumSoldePositifByFarmId(farmId));
+
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)
                 .nbAttente(nbAttente)
                 .nbRejete(nbRejete)
                 .totalEntreesValidees(totalEntrees != null ? totalEntrees : 0.0)
                 .totalSortiesValidees(totalSorties != null ? totalSorties : 0.0)
+                .totalMontantRecuVentes(montantRecuVentes)
+                .totalDuParVendeurs(duParVendeurs)
                 .totalVenteOeufs(totalVenteOeufs != null ? totalVenteOeufs : 0.0)
                 .totalVenteReforme(totalVenteReforme != null ? totalVenteReforme : 0.0)
                 .build();

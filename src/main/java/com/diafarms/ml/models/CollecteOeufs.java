@@ -50,9 +50,22 @@ public class CollecteOeufs {
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;
 
+    // Bâtiment d'élevage où la collecte a eu lieu (via OccupationBatiment du projet) —
+    // distinct de batimentStockage ci-dessous : ici on répond "où sont les poules",
+    // pas "où sont physiquement les œufs une fois ramassés".
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "batiment_id")
     private Batiment batiment;
+
+    // Bâtiment de STOCKAGE (Batiment.TypeBatiment.STOCKAGE) où les œufs sont
+    // physiquement déposés après collecte — c'est CE stock, par bâtiment, qui
+    // plafonne les transferts vers un magasin de vente (MagasinTransfert), pas le
+    // stock théorique du projet. Nullable pour compat des collectes antérieures à ce
+    // champ (leur contribution reste alors invisible aux transferts, voir
+    // MagasinTransfertServiceImpl.disponibleParProjetDansBatimentStockage).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "batiment_stockage_id")
+    private Batiment batimentStockage;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id")

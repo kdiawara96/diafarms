@@ -22,6 +22,8 @@ public class MagasinVenteDTO {
     private String uniqueId;
     private String nom;
     private String description;
+    private Integer seuilAlerteOeufs;
+    private Integer seuilAlerteReforme;
     private List<VendeurRefDTO> vendeurs;
 
     @Getter
@@ -41,6 +43,8 @@ public class MagasinVenteDTO {
                 .uniqueId(m.getUniqueId())
                 .nom(m.getNom())
                 .description(m.getDescription())
+                .seuilAlerteOeufs(m.getSeuilAlerteOeufs())
+                .seuilAlerteReforme(m.getSeuilAlerteReforme())
                 .vendeurs(m.getVendeurs() == null ? List.of() : m.getVendeurs().stream()
                         .map(MagasinVenteDTO::toVendeurRef)
                         .collect(Collectors.toList()))

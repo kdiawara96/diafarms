@@ -36,7 +36,7 @@ public class MagasinTransfertController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<ApiResponse<MagasinTransfertDTO>> create(@RequestBody MagasinTransfertCreate request) {
+    public ResponseEntity<ApiResponse<List<MagasinTransfertDTO>>> create(@RequestBody MagasinTransfertCreate request) {
         try {
             return ApiResponse.createResponse("Transfert enregistré avec succès", HttpStatus.CREATED, service.create(request), null);
         } catch (IllegalArgumentException e) {
@@ -46,11 +46,25 @@ public class MagasinTransfertController {
         }
     }
 
+    // REFORME : disponible pour UN PROJET précis (source directe).
     @GetMapping("/disponible")
     public ResponseEntity<ApiResponse<Integer>> disponible(@RequestParam String projetUniqueId, @RequestParam String type) {
         try {
             return ApiResponse.createResponse("Stock disponible à transférer récupéré", HttpStatus.OK,
                     service.disponibleATransfererDepuisProjet(projetUniqueId, type), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    // OEUFS : disponible pour UN BÂTIMENT DE STOCKAGE (tous projets contributeurs confondus).
+    @GetMapping("/disponible-batiment")
+    public ResponseEntity<ApiResponse<Integer>> disponibleBatiment(@RequestParam String batimentStockageUniqueId) {
+        try {
+            return ApiResponse.createResponse("Stock disponible à transférer récupéré", HttpStatus.OK,
+                    service.disponibleATransfererDepuisBatimentStockage(batimentStockageUniqueId), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

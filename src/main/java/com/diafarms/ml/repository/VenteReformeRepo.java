@@ -22,4 +22,12 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     @Query("SELECT COALESCE(SUM(v.nombreSujets), 0) FROM VenteReforme v " +
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
     Integer sumSujetsVendusByFarmId(@Param("farmId") Long farmId);
+
+    // Voir VenteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange (même raisonnement).
+    @Query("SELECT COALESCE(SUM(v.montantRapporte), 0) FROM VenteReforme v " +
+        "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
+        "AND (:dateDebut IS NULL OR v.date >= :dateDebut) AND (:dateFin IS NULL OR v.date <= :dateFin)")
+    Double sumMontantRapporteByFarmIdAndDateRange(@Param("farmId") Long farmId,
+                                                   @Param("dateDebut") java.time.LocalDate dateDebut,
+                                                   @Param("dateFin") java.time.LocalDate dateFin);
 }

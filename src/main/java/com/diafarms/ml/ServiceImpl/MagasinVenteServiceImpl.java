@@ -73,6 +73,8 @@ public class MagasinVenteServiceImpl implements MagasinVenteService {
         m.setUniqueId(java.util.UUID.randomUUID().toString());
         m.setNom(data.getNom());
         m.setDescription(data.getDescription());
+        m.setSeuilAlerteOeufs(data.getSeuilAlerteOeufs());
+        m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
         m.setFarm(currentUser.getFarm());
         m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
         m.setInitialisation(Initialisation.init());
@@ -91,6 +93,10 @@ public class MagasinVenteServiceImpl implements MagasinVenteService {
 
         if (data.getNom() != null && !data.getNom().isBlank()) m.setNom(data.getNom());
         if (data.getDescription() != null) m.setDescription(data.getDescription());
+        // Toujours écrasé (pas de "null = inchangé" ici) : c'est le seul moyen de
+        // pouvoir désactiver une alerte déjà configurée en renvoyant explicitement null.
+        m.setSeuilAlerteOeufs(data.getSeuilAlerteOeufs());
+        m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
         if (data.getVendeurUniqueIds() != null) m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
         if (m.getInitialisation() != null) m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 

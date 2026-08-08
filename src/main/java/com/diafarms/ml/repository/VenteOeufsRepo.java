@@ -22,4 +22,15 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
     @Query("SELECT COALESCE(SUM(v.quantiteOeufs), 0) FROM VenteOeufs v " +
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
     Integer sumQuantiteByFarmId(@Param("farmId") Long farmId);
+
+    // Montant réellement rapporté par les vendeurs (pas le théorique quantité×prix) —
+    // voir TransactionServiceImpl.getStats, sert à corriger "Total entrées" qui
+    // surestimait le cash réellement en caisse en sommant le montant théorique des
+    // ventes plutôt que ce qui a vraiment été rapporté.
+    @Query("SELECT COALESCE(SUM(v.montantRapporte), 0) FROM VenteOeufs v " +
+        "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
+        "AND (:dateDebut IS NULL OR v.date >= :dateDebut) AND (:dateFin IS NULL OR v.date <= :dateFin)")
+    Double sumMontantRapporteByFarmIdAndDateRange(@Param("farmId") Long farmId,
+                                                   @Param("dateDebut") java.time.LocalDate dateDebut,
+                                                   @Param("dateFin") java.time.LocalDate dateFin);
 }

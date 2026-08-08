@@ -53,4 +53,24 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
     Integer sumOeufsCassesByProjetId(@Param("projetId") Long projetId);
+
+    // Totaux PAR PROJET *dans un bâtiment de stockage précis* : servent à répartir
+    // proportionnellement un transfert vers un magasin entre les projets contributeurs
+    // DE CE BÂTIMENT (voir MagasinTransfertServiceImpl.disponibleParProjetDansBatimentStockage)
+    // — remplace le calcul farm-wide par projet ci-dessus pour les transferts d'œufs,
+    // maintenant que le stock physique est rattaché à un bâtiment, pas juste au projet.
+    @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.batimentStockage.id = :batimentStockageId AND c.initialisation.removed = false")
+    Integer sumOeufsCollectesByProjetIdAndBatimentStockageId(@Param("projetId") Long projetId, @Param("batimentStockageId") Long batimentStockageId);
+
+    @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.batimentStockage.id = :batimentStockageId AND c.initialisation.removed = false")
+    Integer sumOeufsCassesByProjetIdAndBatimentStockageId(@Param("projetId") Long projetId, @Param("batimentStockageId") Long batimentStockageId);
+
+    // Quels projets ont déjà déposé des œufs dans ce bâtiment de stockage — sert à
+    // construire la carte "disponible par projet" sans avoir à connaître les projets
+    // à l'avance.
+    @Query("SELECT DISTINCT c.projet.id FROM CollecteOeufs c " +
+        "WHERE c.batimentStockage.id = :batimentStockageId AND c.initialisation.removed = false")
+    java.util.List<Long> findDistinctProjetIdsByBatimentStockageId(@Param("batimentStockageId") Long batimentStockageId);
 }

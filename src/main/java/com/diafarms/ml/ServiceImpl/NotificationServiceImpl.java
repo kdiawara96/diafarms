@@ -14,9 +14,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.NotificationDTO;
+import com.diafarms.ml.DTO.StockMagasinDTO;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.AlertType;
 import com.diafarms.ml.enums.ThresholdKey;
+import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.models.MagasinVente;
 import com.diafarms.ml.models.NotificationRead;
 import com.diafarms.ml.models.ProjectAlertConfig;
 import com.diafarms.ml.models.Projets;
@@ -24,11 +27,14 @@ import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
+import com.diafarms.ml.repository.MagasinTransfertRepo;
+import com.diafarms.ml.repository.MagasinVenteRepo;
 import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.NotificationReadRepo;
 import com.diafarms.ml.repository.ProjectAlertConfigRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.TransactionRepo;
+import com.diafarms.ml.services.MagasinVenteService;
 import com.diafarms.ml.services.NotificationService;
 import com.diafarms.ml.services.WeatherService;
 
@@ -53,6 +59,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final ProjectAlertConfigRepo projectAlertConfigRepo;
     private final WeatherService weatherService;
     private final OtherService otherService;
+    private final MagasinVenteRepo magasinVenteRepo;
+    private final MagasinTransfertRepo magasinTransfertRepo;
+    private final MagasinVenteService magasinVenteService;
 
     // Un rôle est son SEUL rôle (pas de cumul) : un compte qui cumule les rôles garde
     // les notifications complètes, un autre rôle justifiant déjà l'accès non restreint
@@ -116,6 +125,16 @@ public class NotificationServiceImpl implements NotificationService {
                 addEcheanceNotification(result, p);
             }
 
+            // Stock bas dans un magasin de vente : concerne RESPONSABLE (ses projets) et
+            // ADMIN (tous), pas un PRODUCTION pur — la vente n'est pas son métier. Pas de
+            // notion de "responsable d'un magasin" (un magasin peut être alimenté par
+            // plusieurs projets, donc plusieurs responsables potentiels) : on notifie
+            // quiconque gère au moins un des projets qui contribuent ACTUELLEMENT au
+            // stock du magasin concerné.
+            if (!isPureProduction(currentUser)) {
+                addMagasinStockAlerts(result, farmId, projets);
+            }
+
             // La validation reste réservée à un ADMIN/SUPER_ADMIN ou au RESPONSABLE du
             // projet concerné (voir TransactionServiceImpl.valider/rejeter) : ce prompt
             // n'est donc pertinent ni pour un COMPTABLE/VENTE pur (déjà exclus ci-dessus)
@@ -171,6 +190,40 @@ public class NotificationServiceImpl implements NotificationService {
                 return result;
             })
             .orElse(List.of());
+    }
+
+    /** Un magasin peut être alimenté par plusieurs projets (transferts depuis
+     * plusieurs bâtiments de stockage) — pas de notion de "responsable du magasin".
+     * On notifie donc quiconque appelle cette méthode dès qu'AU MOINS UN de ses
+     * projets gérés contribue actuellement au stock d'un magasin sous son seuil. */
+    private void addMagasinStockAlerts(List<NotificationDTO> result, Long farmId, List<Projets> projetsGeres) {
+        if (projetsGeres.isEmpty()) return;
+        Set<Long> mesProjetIds = projetsGeres.stream().map(Projets::getId).collect(Collectors.toSet());
+
+        for (MagasinVente m : magasinVenteRepo.findAllActiveByFarm(farmId)) {
+            checkMagasinStockAlert(result, m, TypeStockMagasin.OEUFS, m.getSeuilAlerteOeufs(), mesProjetIds, "œuf(s)");
+            checkMagasinStockAlert(result, m, TypeStockMagasin.REFORME, m.getSeuilAlerteReforme(), mesProjetIds, "sujet(s) réformé(s)");
+        }
+    }
+
+    private void checkMagasinStockAlert(List<NotificationDTO> result, MagasinVente m, TypeStockMagasin type,
+                                         Integer seuil, Set<Long> mesProjetIds, String unite) {
+        if (seuil == null) return; // alerte désactivée pour ce type dans ce magasin
+
+        List<Long> contributeurs = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(m.getId(), type);
+        if (contributeurs.stream().noneMatch(mesProjetIds::contains)) return;
+
+        StockMagasinDTO stock = magasinVenteService.getStock(m.getUniqueId());
+        int disponible = type == TypeStockMagasin.OEUFS ? stock.getOeufsDisponible() : stock.getReformeDisponible();
+        if (disponible >= seuil) return;
+
+        result.add(NotificationDTO.builder()
+            .key("stock-magasin-" + type.name().toLowerCase() + "-" + m.getUniqueId())
+            .type("STOCK_MAGASIN")
+            .level(disponible <= 0 ? "CRITIQUE" : "WARNING")
+            .message("Stock bas — " + m.getNom() + " (" + disponible + " " + unite + " restant(s))")
+            .actionPath("/magasins")
+            .build());
     }
 
     private void addStockNotification(List<NotificationDTO> result, Projets p) {

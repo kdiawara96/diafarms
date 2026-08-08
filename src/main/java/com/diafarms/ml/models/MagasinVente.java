@@ -39,6 +39,17 @@ public class MagasinVente {
     @Column(name = "description", length = 500)
     private String description;
 
+    // Seuils d'alerte stock bas (nullable = alerte désactivée pour ce type dans ce
+    // magasin) — configurés par l'admin/responsable à la création/modification du
+    // magasin. Voir NotificationServiceImpl.addMagasinStockAlerts : notifie les
+    // RESPONSABLE des projets qui contribuent actuellement au stock de CE magasin dès
+    // que le stock passe sous le seuil.
+    @Column(name = "seuil_alerte_oeufs")
+    private Integer seuilAlerteOeufs;
+
+    @Column(name = "seuil_alerte_reforme")
+    private Integer seuilAlerteReforme;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
