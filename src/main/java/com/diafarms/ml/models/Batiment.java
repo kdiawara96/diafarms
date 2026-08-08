@@ -51,6 +51,14 @@ public class Batiment {
     @Column(name = "superficie_m2")
     private Double superficieM2;
 
+    // Seuil d'alerte stock bas, en ALVÉOLES (pas en œufs — plus lisible pour un usage
+    // quotidien) — n'a de sens que pour un bâtiment de type STOCKAGE, jamais imposé au
+    // niveau base (même logique que capacite/superficieM2 côté POULAILLER, voir
+    // CreateBatimentDialog côté web pour le masquage conditionnel). Null = alerte
+    // désactivée. Voir NotificationServiceImpl.addBatimentStockageAlerts.
+    @Column(name = "seuil_alerte_alveoles")
+    private Integer seuilAlerteAlveoles;
+
     @Embedded
     private Initialisation initialisation;
 

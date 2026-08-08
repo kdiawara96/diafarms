@@ -28,6 +28,7 @@ public class BatimentsDTO {
 	private LocalDateTime createdAt;
 	private LocalDate dateDerniereMaintenance;
 	private Double superficieM2;
+	private Integer seuilAlerteAlveoles;
 
 	public static BatimentsDTO toDTO(Batiment batiment) {
 		if (batiment == null) return null;
@@ -41,12 +42,13 @@ public class BatimentsDTO {
 				.statut(batiment.getStatut() != null ? batiment.getStatut().name() : null)
 				.description(batiment.getDescription())
 				.createdAt(
-					batiment.getInitialisation() != null 
+					batiment.getInitialisation() != null
 						? batiment.getInitialisation().getCreatedAt()
 						: null
 				)
 				.dateDerniereMaintenance(batiment.getDateDerniereMaintenance())
 				.superficieM2(batiment.getSuperficieM2())
+				.seuilAlerteAlveoles(batiment.getSeuilAlerteAlveoles())
 				.build();
 	}
 
@@ -60,6 +62,7 @@ public class BatimentsDTO {
 				.capacite(batiment.getCapacite())
 				.type(batiment.getType() != null ? batiment.getType().name() : null)
 				.superficieM2(batiment.getSuperficieM2())
+				.seuilAlerteAlveoles(batiment.getSeuilAlerteAlveoles())
 				.build();
 	}
 

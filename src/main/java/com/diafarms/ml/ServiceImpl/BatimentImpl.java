@@ -116,6 +116,7 @@ public class BatimentImpl implements BatimentServices {
         existingBatiment.setDescription(batiment.getDescription());
         existingBatiment.setDateDerniereMaintenance(batiment.getDateDerniereMaintenance());
         existingBatiment.setSuperficieM2(batiment.getSuperficieM2());
+        existingBatiment.setSeuilAlerteAlveoles(batiment.getSeuilAlerteAlveoles());
         
         existingBatiment.setInitialisation(Initialisation.updateDate(existingBatiment.getInitialisation()));
 
