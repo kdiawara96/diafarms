@@ -106,6 +106,17 @@ Nav/routes par rôle (`hasOnlyRole`/`isRestrictedTo`, pattern existant) ; Projet
 - Magasin devient **obligatoire** sur Vente œufs/Vente réforme (nouveau spinner, même pattern que bâtiment).
 - Le mode hors-ligne existant ne doit pas casser (rappel explicite de l'utilisateur).
 
+### Mise à jour — web adapté (2026-08-08)
+
+Le web est maintenant cohérent avec le nouveau modèle de rôles (commit `facf43f`, diafarms_back `97d1a6c`) : nav/routes/dashboards pour les 5 rôles, Projets avec 3 vraies sélections (Responsable/Production/Comptable) au lieu du texte libre, Comptabilité réécrite (tout le monde voit la table, COMPTABLE crée sans valider, RESPONSABLE valide sans créer, scopé à ses projets), Ventes (VENTE ne valide jamais), Production (RESPONSABLE lecture seule scopée), Paramètres (bascules simplifiées par rôle/plateforme). **C'est maintenant testable de bout en bout pour RESPONSABLE/COMPTABLE/VENTE/PRODUCTION** (contrairement à la phase précédente où seul le backend était prêt).
+
+Corrigé au passage : `FarmAppSettingsDTO` côté web (interface TS dans `api.ts`) n'avait pas suivi le renommage du DTO backend — un vrai bug de désynchronisation, pas juste du cosmétique.
+
+Ce qui n'est PAS encore fait (voir plan détaillé plus haut) :
+- **Magasin de vente** (entité + transferts + stock par magasin) — le plus gros morceau restant, complexité financière réelle (calcul du stock "non encore transféré" vs "alloué à un magasin" vs "vendu"), à concevoir avec soin avant d'implémenter.
+- Rapprochement montant théorique/rapporté + solde vendeur.
+- Mobile : affichage des rôles simplifié, bâtiment/magasin obligatoires sur les formulaires concernés.
+
 ## Repères utiles pour une prochaine session
 
 - Pattern de restriction par rôle réutilisé partout : "un cumul de rôles garde l'accès complet, seul un rôle PUR est restreint" — `hasOnlyRole`/`isRestrictedTo` (web `src/lib/roles.ts`), `isOnlyRole`/`isPureFinancier`/`isPureProducteur`/`isPureRole` (back, dupliqué par service : `TransactionServiceImpl`, `NotificationServiceImpl`, `AppAccessRules`).
