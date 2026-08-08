@@ -42,6 +42,11 @@ public interface TransactionService {
     /** Met à jour le montant de la transaction liée à une vente modifiée. */
     void updateMontantBySource(String sourceUniqueId, Double montant);
 
+    /** Met à jour la description de la transaction liée à une vente modifiée — utilisé
+     * quand seul le montant rapporté change (pas la quantité/le montant théorique) :
+     * pas de nouvelle répartition, juste rafraîchir le texte de traçabilité de l'écart. */
+    void updateDescriptionBySource(String sourceUniqueId, String description);
+
     TransactionDTO update(String uniqueId, TransactionUpdate data);
 
     String deleteOrRecover(String uniqueId);

@@ -20,13 +20,13 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
 
    List<Projets> findByUniqueIdIn(List<String> uniqueIds);
 
-   @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId " +
+   @Query("SELECT p FROM Projets p LEFT JOIN p.responsable r WHERE p.farm.id = :farmId " +
         "AND p.initialisation.removed = false " +
         "AND (:isArchive IS NULL OR p.initialisation.archive = :isArchive) " +
         "AND (:search IS NULL OR LOWER(p.titre) LIKE :search " +
         "OR LOWER(p.uniqueId) LIKE :search " +
         "OR LOWER(p.code) LIKE :search " +
-        "OR LOWER(p.responsable) LIKE :search " +
+        "OR LOWER(r.fullName) LIKE :search " +
         "OR LOWER(p.fournisseurs_poussins) LIKE :search)")
     Page<Projets> searchProjets(@Param("farmId") Long farmId, 
                                 @Param("isArchive") Boolean isArchive, 

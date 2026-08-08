@@ -265,6 +265,16 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
+    public void updateDescriptionBySource(String sourceUniqueId, String description) {
+        transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
+            t.setDescription(description);
+            t.getInitialisation().setUpdatedAt(LocalDateTime.now());
+            transactionRepo.save(t);
+        });
+    }
+
+    @Override
+    @Transactional
     public TransactionDTO update(String uniqueId, TransactionUpdate data) {
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));

@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
@@ -97,6 +98,10 @@ public class VenteReformeImpl implements VenteReformeService {
         List<RepartitionUtil.Part> parts = RepartitionUtil.repartir(nombreSujets, montant, disponible);
         List<VenteReformeRepartition> lignes = new java.util.ArrayList<>();
 
+        // Traçabilité de l'écart directement dans la ligne — voir le commentaire
+        // équivalent dans VenteOeufsImpl.repartirEtCreerTransactions.
+        String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
+
         for (RepartitionUtil.Part part : parts) {
             Projets projet = projetsParId.get(part.projetId);
 
@@ -110,11 +115,24 @@ public class VenteReformeImpl implements VenteReformeService {
 
             transactionService.createFromSource(
                     projet, farm, part.montant, "Vente réforme", saved.getDate(),
-                    "Vente réforme — " + part.quantite + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")",
+                    "Vente réforme — " + part.quantite + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart,
                     SourceTransaction.VENTE_REFORME, r.getUniqueId(), creePar
             );
         }
         return lignes;
+    }
+
+    /** " — Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
+     * encore de montant rapporté saisi ou si égal au théorique — même helper que
+     * VenteOeufsImpl (dupliqué, pas de base commune entre les deux services), même
+     * convention de signe que SoldeVendeurServiceImpl.ajusterSolde. */
+    private String suffixeEcartRapporte(Double montantTheorique, Double montantRapporte) {
+        if (montantTheorique == null || montantRapporte == null || montantRapporte.equals(montantTheorique)) {
+            return "";
+        }
+        double ecart = montantTheorique - montantRapporte;
+        return String.format(Locale.FRANCE, " — Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
+                montantRapporte, montantTheorique, ecart > 0 ? "manque" : "surplus", Math.abs(ecart));
     }
 
     @Override
@@ -244,6 +262,15 @@ public class VenteReformeImpl implements VenteReformeService {
             lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getNombreSujets(), saved.getMontant(), saved.getCreePar() != null ? saved.getCreePar() : currentUser);
         } else {
             lignesActuelles = repartitionRepo.findByVenteReforme_UniqueId(saved.getUniqueId());
+            // Pas de redistribution, mais l'écart rapporté a pu changer — voir le
+            // commentaire équivalent dans VenteOeufsImpl.update().
+            if (ecartChange) {
+                String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
+                for (VenteReformeRepartition ligne : lignesActuelles) {
+                    transactionService.updateDescriptionBySource(ligne.getUniqueId(),
+                            "Vente réforme — " + ligne.getNombreSujetsAttribue() + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart);
+                }
+            }
         }
 
         if (currentUser != null) {

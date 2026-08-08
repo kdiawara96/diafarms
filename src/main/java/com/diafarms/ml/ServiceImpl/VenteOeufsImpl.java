@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
@@ -106,6 +107,13 @@ public class VenteOeufsImpl implements VenteOeufsService {
         List<RepartitionUtil.Part> parts = RepartitionUtil.repartir(quantite, montant, disponible);
         List<VenteOeufsRepartition> lignes = new java.util.ArrayList<>();
 
+        // Traçabilité de l'écart directement dans la ligne (même texte identique sur
+        // chaque part de cette vente, car montant/montantRapporte sont ceux de LA VENTE
+        // ENTIÈRE, pas de cette part précise) — sans ça, un "il reste 2500 à payer" sur
+        // le solde vendeur ne permettait de retrouver AUCUNE ligne précise dans la table
+        // des transactions. Voir aussi la carte Solde Vendeur (agrégée) sur Ventes.tsx.
+        String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
+
         for (RepartitionUtil.Part part : parts) {
             Projets projet = projetsParId.get(part.projetId);
 
@@ -119,11 +127,24 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
             transactionService.createFromSource(
                     projet, farm, part.montant, "Vente œufs", saved.getDate(),
-                    "Vente de " + part.quantite + " œufs (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")",
+                    "Vente de " + part.quantite + " œufs (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart,
                     SourceTransaction.VENTE_OEUFS, r.getUniqueId(), creePar
             );
         }
         return lignes;
+    }
+
+    /** " — Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
+     * encore de montant rapporté saisi ou si égal au théorique (rien à signaler). Même
+     * convention de signe que SoldeVendeurServiceImpl.ajusterSolde : écart = théorique -
+     * rapporté, positif = le vendeur doit de l'argent à la ferme. */
+    private String suffixeEcartRapporte(Double montantTheorique, Double montantRapporte) {
+        if (montantTheorique == null || montantRapporte == null || montantRapporte.equals(montantTheorique)) {
+            return "";
+        }
+        double ecart = montantTheorique - montantRapporte;
+        return String.format(Locale.FRANCE, " — Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
+                montantRapporte, montantTheorique, ecart > 0 ? "manque" : "surplus", Math.abs(ecart));
     }
 
     @Override
@@ -262,6 +283,16 @@ public class VenteOeufsImpl implements VenteOeufsService {
             lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getQuantiteOeufs(), saved.getMontant(), saved.getCreePar() != null ? saved.getCreePar() : currentUser);
         } else {
             lignesActuelles = repartitionRepo.findByVenteOeufs_UniqueId(saved.getUniqueId());
+            // Pas de redistribution (quantité/montant théorique inchangés), mais l'écart
+            // rapporté a pu changer : on rafraîchit juste le texte de traçabilité de
+            // chaque ligne existante, sans toucher réf/montant/statut de la transaction.
+            if (ecartChange) {
+                String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
+                for (VenteOeufsRepartition ligne : lignesActuelles) {
+                    transactionService.updateDescriptionBySource(ligne.getUniqueId(),
+                            "Vente de " + ligne.getQuantiteAttribuee() + " œufs (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart);
+                }
+            }
         }
 
         if (currentUser != null) {
