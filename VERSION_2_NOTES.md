@@ -117,6 +117,18 @@ Ce qui n'est PAS encore fait (voir plan détaillé plus haut) :
 - Rapprochement montant théorique/rapporté + solde vendeur.
 - Mobile : affichage des rôles simplifié, bâtiment/magasin obligatoires sur les formulaires concernés.
 
+### Mise à jour — refonte des rôles terminée sur les 3 dépôts (2026-08-08)
+
+**Backend** (`97d1a6c`, `04f0b15`) : migration des rôles en base faite (PRODUCTEUR→PRODUCTION, FINANCIER→COMPTABLE + nouveaux RESPONSABLE/VENTE liés aux mêmes users) ; `Projets` a ses 3 champs responsables en FK réelles ; `TransactionServiceImpl`/`NotificationServiceImpl` réécrits pour le nouveau modèle (RESPONSABLE valide/rejette transactions ET ventes de ses projets, scoping stats/liste/notifications) ; entités `MagasinVente`/`MagasinTransfert` + endpoints CRUD/stock ; `SoldeVendeur` (ledger delta appliqué à create/update/delete-toggle, basé sur le créateur d'origine).
+
+**Décision d'architecture** (confirmée par l'utilisateur) : stock **transféré explicitement** projet→magasin (`MagasinTransfert`, cap = stock du projet non encore transféré) plutôt que réparti automatiquement à la vente comme avant — une vente ne fait plus que consommer le stock déjà présent dans SON magasin, la répartition entre projets contributeurs se fait au moment du transfert (réutilise `RepartitionUtil` inchangé, juste re-sourcé sur les transferts au lieu des ventes).
+
+**Web** (`facf43f`, `ff2c5ac`) : nav/routes/dashboards 5 rôles, page `/magasins` standalone (ADMIN+RESPONSABLE, hors Paramètres car RESPONSABLE n'y a pas accès), dialogues Vente œufs/réforme avec magasin obligatoire + champ "Montant rapporté" + carte info, KPI Solde Vendeur sur `Ventes.tsx`, import Excel mis à jour (colonne Magasin).
+
+**Mobile** (`2b3087b`) : `User.isFinance()` devient `isComptable() || isVente()` (deux rôles distincts, chacun un badge/libellé séparé) ; `FarmAppSettingsResponse` réaligné sur les 7 champs backend (régression silencieuse via Gson corrigée — les anciens noms de champs ne matchaient plus le JSON depuis le renommage backend, donc tous les boutons Finance étaient masqués à tort) ; magasin de vente obligatoire sur Vente œufs/réforme (nouveau spinner, stock plafonné par magasin via `/magasins/{id}/stock`, remplace l'ancien stock farm-wide) ; bâtiment obligatoire sur Collecte œufs/Soins/Mortalité/Achat aliment (fait dans une passe antérieure de cette même phase). Vérifié uniquement par lecture de code + comptage d'accolades/parenthèses — **aucun appareil ni build Gradle disponible dans cette session**, donc rien de tout ça n'a été testé visuellement sur mobile.
+
+RESPONSABLE reste sans aucune présence mobile (jamais mentionné pour ce rôle dans la demande initiale) — cohérent avec `AppAccessRules` côté back qui n'a que `responsableWebEnabled`, pas de pendant mobile.
+
 ## Repères utiles pour une prochaine session
 
 - Pattern de restriction par rôle réutilisé partout : "un cumul de rôles garde l'accès complet, seul un rôle PUR est restreint" — `hasOnlyRole`/`isRestrictedTo` (web `src/lib/roles.ts`), `isOnlyRole`/`isPureFinancier`/`isPureProducteur`/`isPureRole` (back, dupliqué par service : `TransactionServiceImpl`, `NotificationServiceImpl`, `AppAccessRules`).
