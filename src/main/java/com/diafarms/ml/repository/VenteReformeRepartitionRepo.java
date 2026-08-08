@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
 import com.diafarms.ml.models.VenteReformeRepartition;
 
 @Repository
@@ -16,6 +17,16 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
     Optional<VenteReformeRepartition> findByUniqueId(String uniqueId);
 
     List<VenteReformeRepartition> findByVenteReforme_UniqueId(String venteReformeUniqueId);
+
+    // Voir VenteOeufsRepartitionRepo.findReelParProjet (même raisonnement).
+    @Query("SELECT new com.diafarms.ml.DTO.VenteRepartitionReelDTO(r.projet.uniqueId, r.projet.code, " +
+        "r.montantAttribue, r.venteReforme.montant, r.venteReforme.montantRapporte) " +
+        "FROM VenteReformeRepartition r " +
+        "WHERE r.projet.farm.id = :farmId AND r.venteReforme.initialisation.removed = false " +
+        "AND (:dateDebut IS NULL OR r.venteReforme.date >= :dateDebut) AND (:dateFin IS NULL OR r.venteReforme.date <= :dateFin)")
+    List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
+                                                      @Param("dateDebut") java.time.LocalDate dateDebut,
+                                                      @Param("dateFin") java.time.LocalDate dateFin);
 
     // Déjà vendu POUR CE PROJET — voir VenteOeufsRepartitionRepo.sumQuantiteByProjetId.
     @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +

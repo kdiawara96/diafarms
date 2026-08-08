@@ -11,8 +11,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.diafarms.ml.DTO.ProjetVenteReelDTO;
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.TransactionStatsDTO;
+import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
@@ -25,7 +27,9 @@ import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.SoldeVendeurRepo;
 import com.diafarms.ml.repository.TransactionRepo;
+import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
+import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.TransactionCreate;
 import com.diafarms.ml.request.others.RejectTransactionRequest;
@@ -46,6 +50,8 @@ public class TransactionServiceImpl implements TransactionService {
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
     private final SoldeVendeurRepo soldeVendeurRepo;
+    private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
+    private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -481,10 +487,10 @@ public class TransactionServiceImpl implements TransactionService {
 
         // Ferme entière, jamais scopé par projet/comptable (voir TransactionStatsDTO) —
         // le montant réellement rapporté et la dette vendeur sont des notions de
-        // vendeur/ferme, pas de projet : les décomposer par projet nécessiterait de
-        // répartir montantRapporte au prorata de chaque part de vente, une précision
-        // que ces deux chiffres (pensés comme complément global à "Total entrées",
-        // pas comme un rapport scopé) n'ont pas besoin d'avoir.
+        // vendeur/ferme, pas de projet. La décomposition PAR PROJET existe quand même
+        // séparément (voir getVentesReelParProjet ci-dessous, consommée par
+        // Reporting.tsx) : ces deux chiffres-ci restent volontairement un simple
+        // complément global à "Total entrées", pas un rapport scopé.
         double montantRecuVentes = nz(venteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin))
                 + nz(venteReformeRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin));
         double duParVendeurs = nz(soldeVendeurRepo.sumSoldePositifByFarmId(farmId));
@@ -500,5 +506,43 @@ public class TransactionServiceImpl implements TransactionService {
                 .totalVenteOeufs(totalVenteOeufs != null ? totalVenteOeufs : 0.0)
                 .totalVenteReforme(totalVenteReforme != null ? totalVenteReforme : 0.0)
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProjetVenteReelDTO> getVentesReelParProjet(LocalDate dateDebut, LocalDate dateFin) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;
+        if (farmId == null) return List.of();
+
+        List<VenteRepartitionReelDTO> lignes = new java.util.ArrayList<>();
+        lignes.addAll(venteOeufsRepartitionRepo.findReelParProjet(farmId, dateDebut, dateFin));
+        lignes.addAll(venteReformeRepartitionRepo.findReelParProjet(farmId, dateDebut, dateFin));
+
+        java.util.Map<String, ProjetVenteReelDTO> parProjet = new java.util.LinkedHashMap<>();
+        for (VenteRepartitionReelDTO ligne : lignes) {
+            // Aucun écart déclaré sur cette vente (montantRapporte jamais saisi) : pas
+            // de dette connue, la part théorique du projet compte pour son plein
+            // montant — même convention que sumMontantRapporteByFarmIdAndDateRange.
+            double ratio = (ligne.getVenteMontantRapporte() != null && ligne.getVenteMontant() != null && ligne.getVenteMontant() != 0)
+                    ? ligne.getVenteMontantRapporte() / ligne.getVenteMontant()
+                    : 1.0;
+            double theorique = nz(ligne.getMontantAttribue());
+            double reel = theorique * ratio;
+
+            ProjetVenteReelDTO r = parProjet.get(ligne.getProjetUniqueId());
+            if (r == null) {
+                r = ProjetVenteReelDTO.builder()
+                        .projetUniqueId(ligne.getProjetUniqueId())
+                        .projetCode(ligne.getProjetCode())
+                        .montantTheorique(0.0)
+                        .montantReel(0.0)
+                        .build();
+                parProjet.put(ligne.getProjetUniqueId(), r);
+            }
+            r.setMontantTheorique(r.getMontantTheorique() + theorique);
+            r.setMontantReel(r.getMontantReel() + reel);
+        }
+        return new java.util.ArrayList<>(parProjet.values());
     }
 }

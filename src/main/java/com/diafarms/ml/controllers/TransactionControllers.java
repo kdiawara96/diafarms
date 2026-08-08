@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.diafarms.ml.DTO.ProjetVenteReelDTO;
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.TransactionStatsDTO;
 import com.diafarms.ml.enums.StatutTransaction;
@@ -77,6 +78,20 @@ public class TransactionControllers {
                     service.getStats(financierUniqueId, dateDebutParam, dateFinParam), null);
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors du calcul des statistiques", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @GetMapping("/ventes-reel-par-projet")
+    public ResponseEntity<ApiResponse<List<ProjetVenteReelDTO>>> ventesReelParProjet(
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        try {
+            LocalDate dateDebutParam = (dateDebut != null && !dateDebut.isBlank()) ? LocalDate.parse(dateDebut) : null;
+            LocalDate dateFinParam = (dateFin != null && !dateFin.isBlank()) ? LocalDate.parse(dateFin) : null;
+            return ApiResponse.createResponse("Ventes réelles par projet récupérées", HttpStatus.OK,
+                    service.getVentesReelParProjet(dateDebutParam, dateFinParam), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur lors du calcul", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
     }
 

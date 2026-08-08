@@ -8,12 +8,24 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
 import com.diafarms.ml.models.VenteOeufsRepartition;
 
 @Repository
 public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepartition, Long> {
 
     Optional<VenteOeufsRepartition> findByUniqueId(String uniqueId);
+
+    // Voir VenteRepartitionReelDTO — sert à TransactionServiceImpl.getVentesReelParProjet
+    // à corriger le théorique par projet au prorata réel/théorique de chaque vente.
+    @Query("SELECT new com.diafarms.ml.DTO.VenteRepartitionReelDTO(r.projet.uniqueId, r.projet.code, " +
+        "r.montantAttribue, r.venteOeufs.montant, r.venteOeufs.montantRapporte) " +
+        "FROM VenteOeufsRepartition r " +
+        "WHERE r.projet.farm.id = :farmId AND r.venteOeufs.initialisation.removed = false " +
+        "AND (:dateDebut IS NULL OR r.venteOeufs.date >= :dateDebut) AND (:dateFin IS NULL OR r.venteOeufs.date <= :dateFin)")
+    List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
+                                                      @Param("dateDebut") java.time.LocalDate dateDebut,
+                                                      @Param("dateFin") java.time.LocalDate dateFin);
 
     List<VenteOeufsRepartition> findByVenteOeufs_UniqueId(String venteOeufsUniqueId);
 

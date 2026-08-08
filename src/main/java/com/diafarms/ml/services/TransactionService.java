@@ -1,7 +1,9 @@
 package com.diafarms.ml.services;
 
 import java.time.LocalDate;
+import java.util.List;
 
+import com.diafarms.ml.DTO.ProjetVenteReelDTO;
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.TransactionStatsDTO;
 import com.diafarms.ml.enums.SourceTransaction;
@@ -68,4 +70,12 @@ public interface TransactionService {
                                             LocalDate dateDebut, LocalDate dateFin);
 
     TransactionStatsDTO getStats(String financierUniqueId, LocalDate dateDebut, LocalDate dateFin);
+
+    /** Montant théorique/réel des ventes (œufs + réforme) PAR PROJET sur la période —
+     * "Entrées (théorique)" par projet existe déjà via list()/le web (somme directe
+     * des Transactions), mais aucune vue par projet du réel n'existait avant : voir
+     * TransactionServiceImpl pour le détail du calcul au prorata. Ferme entière, pas
+     * de scope RESPONSABLE/COMPTABLE ici — c'est Reporting.tsx qui filtre côté client
+     * aux projets pertinents pour l'utilisateur courant. */
+    List<ProjetVenteReelDTO> getVentesReelParProjet(LocalDate dateDebut, LocalDate dateFin);
 }
