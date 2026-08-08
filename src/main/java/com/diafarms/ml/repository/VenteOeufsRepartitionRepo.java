@@ -18,10 +18,17 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
 
     // Voir VenteRepartitionReelDTO — sert à TransactionServiceImpl.getVentesReelParProjet
     // à corriger le théorique par projet au prorata réel/théorique de chaque vente.
+    // Jointure explicite sur Transaction (via sourceUniqueId = r.uniqueId, voir
+    // VenteOeufsImpl.repartirEtCreerTransactions) filtrée VALIDE : sans ça, une vente
+    // créée par un VENTE pur (EN_ATTENTE tant qu'un ADMIN/RESPONSABLE ne l'a pas
+    // validée) était comptée ici mais PAS dans les Transactions "valide" que le web
+    // utilise pour le théorique de référence — le réel calculé dépassait alors le
+    // théorique affiché, un résultat qui n'a pas de sens.
     @Query("SELECT new com.diafarms.ml.DTO.VenteRepartitionReelDTO(r.projet.uniqueId, r.projet.code, " +
         "r.montantAttribue, r.venteOeufs.montant, r.venteOeufs.montantRapporte) " +
-        "FROM VenteOeufsRepartition r " +
-        "WHERE r.projet.farm.id = :farmId AND r.venteOeufs.initialisation.removed = false " +
+        "FROM VenteOeufsRepartition r, Transaction t " +
+        "WHERE t.sourceUniqueId = r.uniqueId AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+        "AND r.projet.farm.id = :farmId AND r.venteOeufs.initialisation.removed = false " +
         "AND (:dateDebut IS NULL OR r.venteOeufs.date >= :dateDebut) AND (:dateFin IS NULL OR r.venteOeufs.date <= :dateFin)")
     List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
                                                       @Param("dateDebut") java.time.LocalDate dateDebut,

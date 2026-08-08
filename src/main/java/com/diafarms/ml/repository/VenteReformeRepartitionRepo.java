@@ -18,11 +18,13 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
 
     List<VenteReformeRepartition> findByVenteReforme_UniqueId(String venteReformeUniqueId);
 
-    // Voir VenteOeufsRepartitionRepo.findReelParProjet (même raisonnement).
+    // Voir VenteOeufsRepartitionRepo.findReelParProjet (même raisonnement, y compris
+    // la jointure Transaction VALIDE).
     @Query("SELECT new com.diafarms.ml.DTO.VenteRepartitionReelDTO(r.projet.uniqueId, r.projet.code, " +
         "r.montantAttribue, r.venteReforme.montant, r.venteReforme.montantRapporte) " +
-        "FROM VenteReformeRepartition r " +
-        "WHERE r.projet.farm.id = :farmId AND r.venteReforme.initialisation.removed = false " +
+        "FROM VenteReformeRepartition r, Transaction t " +
+        "WHERE t.sourceUniqueId = r.uniqueId AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+        "AND r.projet.farm.id = :farmId AND r.venteReforme.initialisation.removed = false " +
         "AND (:dateDebut IS NULL OR r.venteReforme.date >= :dateDebut) AND (:dateFin IS NULL OR r.venteReforme.date <= :dateFin)")
     List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
                                                       @Param("dateDebut") java.time.LocalDate dateDebut,

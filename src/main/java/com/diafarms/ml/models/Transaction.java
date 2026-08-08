@@ -100,8 +100,11 @@ public class Transaction {
     // classique) ou générée automatiquement par une vente (VenteOeufs/VenteReforme,
     // via TransactionService.createFromSource) — remplace le repérage fragile par
     // regex sur `description` ("Vente réforme - lot de N sujets") utilisé côté front
-    // avant cette entité. sourceUniqueId pointe vers VenteOeufs.uniqueId ou
-    // VenteReforme.uniqueId selon sourceType, jamais les deux.
+    // avant cette entité. sourceUniqueId pointe vers VenteOeufsRepartition.uniqueId ou
+    // VenteReformeRepartition.uniqueId selon sourceType (jamais VenteOeufs/VenteReforme
+    // directement) — une vente farm-wide devient une Transaction PAR PROJET
+    // contributeur, sourceUniqueId identifie donc la LIGNE de répartition précise, pas
+    // la vente entière (voir VenteOeufsImpl.repartirEtCreerTransactions).
     // columnDefinition avec DEFAULT explicite : indispensable pour que ddl-auto=update
     // puisse ajouter cette colonne NOT NULL sur la table `transactions` existante (déjà
     // peuplée) — sans DEFAULT, Postgres refuse l'ALTER TABLE ADD COLUMN ... NOT NULL.
