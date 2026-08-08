@@ -129,6 +129,21 @@ Ce qui n'est PAS encore fait (voir plan détaillé plus haut) :
 
 RESPONSABLE reste sans aucune présence mobile (jamais mentionné pour ce rôle dans la demande initiale) — cohérent avec `AppAccessRules` côté back qui n'a que `responsableWebEnabled`, pas de pendant mobile.
 
+### Mise à jour — relecture finale + vraie vérification web (2026-08-08)
+
+En reprenant le texte de la demande initiale point par point avant de donner le feu vert au test, deux choses trouvées et corrigées :
+
+1. **Scoping manquant sur Reporting** (`226c5e2`, web) : les transactions y étaient déjà scopées côté serveur pour un RESPONSABLE, mais la production (œufs/aliment/mortalité) restait farm-wide — `Reporting.tsx` appelait `getSaisiesProductionAPI` sans filtre. Corrigé avec le même filtre client que `Production.tsx` (fetch large puis restriction aux projets renvoyés par `/projets/select`, déjà scopé serveur pour ce rôle).
+
+2. **`tsc --noEmit` mentait depuis le début de cette phase** (`2d3dca2`, web) : la commande utilisée pour "vérifier" le web ciblait `tsconfig.json` (racine, `"files": []`, config solution avec `references`) qui ne type-check quasiment rien sans `--build` — sortie vide à tort interprétée comme "aucune erreur". La bonne commande est `npx tsc -p tsconfig.app.json --noEmit` (ou `tsc -b tsconfig.json`). En la lançant pour de vrai, ~10 erreurs réelles et déjà commitées sont apparues :
+   - `Production.tsx`/`Ventes.tsx` : les 8 dialogues d'import Excel (Collecte œufs, Aliment achat/conso, Soins, Mortalité, Réforme, Vente œufs, Vente réforme) avaient un bug de rétrécissement de type dans `resolveProjet`/`resolveBatiment`/`resolveMagasin` — `return p;`/`return b;`/`return m;` sur la branche erreur ne s'excluait pas correctement de l'union de retour inférée des `parseXxxRow`. Corrigé en rendant le type de retour explicitement discriminé sur `error` (présent des deux côtés) et en reconstruisant un `{ error }` frais à chaque site d'appel plutôt que de renvoyer la variable telle quelle.
+   - `mockData.ts` : 3 projets de démo + `defaultProjetInit()` utilisaient encore `responsable: string`, absent du type depuis la migration vers les FK.
+   - `QrCodeDialog.tsx` (dialogue mort, jamais importé nulle part, mais toujours compilé) : `user.nom` au lieu de `user.fullName`.
+
+   **Leçon retenue** (voir mémoire `tsc_diafarms_web_wrong_config` côté assistant) : dans ce dépôt, toujours vérifier avec `npx tsc -p tsconfig.app.json --noEmit`, jamais la forme nue `tsc --noEmit`. `npm run build` (`vite build`) ne type-check pas non plus par défaut (esbuild transpile sans vérifier) — ne pas s'y fier comme filet de sécurité.
+
+Après ces deux corrections, backend/web/mobile sont propres (git status vide sur les 3 dépôts) et `tsc -p tsconfig.app.json --noEmit` passe réellement clean côté web. Le mobile reste non compilé faute d'appareil/Gradle disponible cette session (voir plus haut) — c'est le seul des 3 dépôts encore non vérifié par un vrai compilateur.
+
 ## Repères utiles pour une prochaine session
 
 - Pattern de restriction par rôle réutilisé partout : "un cumul de rôles garde l'accès complet, seul un rôle PUR est restreint" — `hasOnlyRole`/`isRestrictedTo` (web `src/lib/roles.ts`), `isOnlyRole`/`isPureFinancier`/`isPureProducteur`/`isPureRole` (back, dupliqué par service : `TransactionServiceImpl`, `NotificationServiceImpl`, `AppAccessRules`).
