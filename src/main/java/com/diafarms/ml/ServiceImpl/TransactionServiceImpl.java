@@ -185,18 +185,16 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(data.getDescription());
         t.setMontant(data.getMontant());
         t.setCategorie(data.getCategorie());
-        // Une saisie faite par un ADMIN (côté web, en pratique — le mobile ne propose
-        // aucun écran de saisie à un compte ADMIN seul, voir HomeActivity.setupVisibilityByRole)
-        // est déjà validée : ce n'est qu'une saisie terrain (Producteur/Financier, mobile)
-        // qui doit d'abord passer par la validation manuelle habituelle.
-        boolean estAdmin = isAdmin(currentUser);
-        t.setStatut(estAdmin ? StatutTransaction.VALIDE : StatutTransaction.EN_ATTENTE);
-        if (estAdmin) {
-            // Même trace que la validation manuelle (voir valider()) : sans ça, "Dernière
-            // décision par" resterait vide pour une transaction pourtant déjà validée.
-            t.setValidateur(currentUser);
-            t.setDateValidation(LocalDateTime.now());
-        }
+        // Toute transaction est validée dès la création, quel que soit le créateur —
+        // seul un rejet a posteriori (voir rejeter()) peut encore la faire basculer.
+        // Avant : seul un ADMIN était auto-validé, les autres restaient EN_ATTENTE ;
+        // changé sur demande explicite (le contrôle a priori n'apportait rien, le
+        // rejet suffit comme filet de sécurité).
+        t.setStatut(StatutTransaction.VALIDE);
+        // Même trace que la validation manuelle (voir valider()) : sans ça, "Dernière
+        // décision par" resterait vide pour une transaction pourtant déjà validée.
+        t.setValidateur(currentUser);
+        t.setDateValidation(LocalDateTime.now());
         t.setCreePar(currentUser);
         t.setInitialisation(Initialisation.init());
 
@@ -237,18 +235,13 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(description);
         t.setMontant(montant);
         t.setCategorie(categorie);
-        // Une vente créée par ADMIN ou par le RESPONSABLE de CE projet est déjà digne de
-        // confiance (même principe que create() : une saisie de la personne qui a
-        // autorité dessus n'a pas besoin d'être validée séparément) — auto-validée. Une
-        // vente créée par un VENTE pur (ou tout autre non-responsable de ce projet) doit
-        // en revanche être validée par le RESPONSABLE ou un ADMIN avant de compter dans
-        // "Total entrées", voir valider()/rejeter() ci-dessous.
-        boolean autoValide = isAdmin(creePar) || isResponsableDuProjet(creePar, projet);
-        t.setStatut(autoValide ? StatutTransaction.VALIDE : StatutTransaction.EN_ATTENTE);
-        if (autoValide) {
-            t.setValidateur(creePar);
-            t.setDateValidation(LocalDateTime.now());
-        }
+        // Toute vente est validée dès la création, quel que soit son créateur — voir
+        // le même changement dans create() ci-dessus. Un RESPONSABLE/ADMIN garde la
+        // main pour rejeter une vente a posteriori (voir rejeter()), mais n'a plus à
+        // "accepter" une vente d'un vendeur pur avant qu'elle compte réellement.
+        t.setStatut(StatutTransaction.VALIDE);
+        t.setValidateur(creePar);
+        t.setDateValidation(LocalDateTime.now());
         t.setProjet(projet);
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
