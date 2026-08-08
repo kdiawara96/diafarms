@@ -54,14 +54,13 @@ public class FarmAppSettingsServiceImpl implements FarmAppSettingsService {
         }
 
         FarmAppSettings settings = findOrCreate(currentUser.getFarm());
-        settings.setProducteurMobileEnabled(data.isProducteurMobileEnabled());
-        settings.setProducteurWebEnabled(data.isProducteurWebEnabled());
-        settings.setFinancierWebEnabled(data.isFinancierWebEnabled());
-        settings.setFinancierMobileVenteOeufs(data.isFinancierMobileVenteOeufs());
-        settings.setFinancierMobileVenteReforme(data.isFinancierMobileVenteReforme());
-        settings.setFinancierMobileVenteFientes(data.isFinancierMobileVenteFientes());
-        settings.setFinancierMobileEntree(data.isFinancierMobileEntree());
-        settings.setFinancierMobileSortie(data.isFinancierMobileSortie());
+        settings.setProductionMobileEnabled(data.isProductionMobileEnabled());
+        settings.setProductionWebEnabled(data.isProductionWebEnabled());
+        settings.setComptableMobileEnabled(data.isComptableMobileEnabled());
+        settings.setComptableWebEnabled(data.isComptableWebEnabled());
+        settings.setVenteMobileEnabled(data.isVenteMobileEnabled());
+        settings.setVenteWebEnabled(data.isVenteWebEnabled());
+        settings.setResponsableWebEnabled(data.isResponsableWebEnabled());
 
         return FarmAppSettingsDTO.fromEntity(repo.save(settings));
     }

@@ -14,28 +14,26 @@ import lombok.Setter;
 @NoArgsConstructor
 @Builder
 public class FarmAppSettingsDTO {
-    private boolean producteurMobileEnabled;
-    private boolean producteurWebEnabled;
-    private boolean financierWebEnabled;
-    private boolean financierMobileVenteOeufs;
-    private boolean financierMobileVenteReforme;
-    private boolean financierMobileVenteFientes;
-    private boolean financierMobileEntree;
-    private boolean financierMobileSortie;
+    private boolean productionMobileEnabled;
+    private boolean productionWebEnabled;
+    private boolean comptableMobileEnabled;
+    private boolean comptableWebEnabled;
+    private boolean venteMobileEnabled;
+    private boolean venteWebEnabled;
+    private boolean responsableWebEnabled;
 
     public static FarmAppSettingsDTO fromEntity(FarmAppSettings s) {
         if (s == null) {
             return FarmAppSettingsDTO.builder().build(); // tout à false = comportement par défaut, sans accès
         }
         return FarmAppSettingsDTO.builder()
-                .producteurMobileEnabled(Boolean.TRUE.equals(s.getProducteurMobileEnabled()))
-                .producteurWebEnabled(Boolean.TRUE.equals(s.getProducteurWebEnabled()))
-                .financierWebEnabled(Boolean.TRUE.equals(s.getFinancierWebEnabled()))
-                .financierMobileVenteOeufs(Boolean.TRUE.equals(s.getFinancierMobileVenteOeufs()))
-                .financierMobileVenteReforme(Boolean.TRUE.equals(s.getFinancierMobileVenteReforme()))
-                .financierMobileVenteFientes(Boolean.TRUE.equals(s.getFinancierMobileVenteFientes()))
-                .financierMobileEntree(Boolean.TRUE.equals(s.getFinancierMobileEntree()))
-                .financierMobileSortie(Boolean.TRUE.equals(s.getFinancierMobileSortie()))
+                .productionMobileEnabled(Boolean.TRUE.equals(s.getProductionMobileEnabled()))
+                .productionWebEnabled(Boolean.TRUE.equals(s.getProductionWebEnabled()))
+                .comptableMobileEnabled(Boolean.TRUE.equals(s.getComptableMobileEnabled()))
+                .comptableWebEnabled(Boolean.TRUE.equals(s.getComptableWebEnabled()))
+                .venteMobileEnabled(Boolean.TRUE.equals(s.getVenteMobileEnabled()))
+                .venteWebEnabled(Boolean.TRUE.equals(s.getVenteWebEnabled()))
+                .responsableWebEnabled(Boolean.TRUE.equals(s.getResponsableWebEnabled()))
                 .build();
     }
 }

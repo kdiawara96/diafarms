@@ -8,10 +8,12 @@ import com.diafarms.ml.models.FarmAppSettings;
 // (génération d'un QR) et UserStatusJwtValidator (revalidation à chaque requête pour
 // un token issu d'un QR) — un seul endroit pour ne jamais désynchroniser ces trois
 // points d'application. Un ADMIN/SUPER_ADMIN n'est jamais concerné par ces
-// restrictions ; un compte qui cumule plusieurs rôles (ex: PRODUCTEUR + FINANCIER)
+// restrictions ; un compte qui cumule plusieurs rôles (ex: PRODUCTION + COMPTABLE)
 // garde l'accès complet, même règle "hasOnlyRole" qu'ailleurs dans l'app (voir
 // src/lib/roles.ts côté web) — un rôle supplémentaire ne doit jamais RETIRER un
-// accès déjà acquis par un autre rôle.
+// accès déjà acquis par un autre rôle. RESPONSABLE n'a pas de présence mobile du
+// tout (pas de bascule dédiée, voir FarmAppSettings) : un RESPONSABLE pur ne peut
+// jamais utiliser le mobile, quoi que configure l'admin.
 public final class AppAccessRules {
 
     private AppAccessRules() {
@@ -27,25 +29,19 @@ public final class AppAccessRules {
 
     public static boolean canAccessWeb(FarmAppSettings settings, Collection<String> roles) {
         if (isAdmin(roles)) return true;
-        if (isOnlyRole(roles, "PRODUCTEUR")) return settings != null && Boolean.TRUE.equals(settings.getProducteurWebEnabled());
-        if (isOnlyRole(roles, "FINANCIER")) return settings != null && Boolean.TRUE.equals(settings.getFinancierWebEnabled());
+        if (isOnlyRole(roles, "PRODUCTION")) return settings != null && Boolean.TRUE.equals(settings.getProductionWebEnabled());
+        if (isOnlyRole(roles, "COMPTABLE")) return settings != null && Boolean.TRUE.equals(settings.getComptableWebEnabled());
+        if (isOnlyRole(roles, "VENTE")) return settings != null && Boolean.TRUE.equals(settings.getVenteWebEnabled());
+        if (isOnlyRole(roles, "RESPONSABLE")) return settings != null && Boolean.TRUE.equals(settings.getResponsableWebEnabled());
         return true; // cumul de rôles, ou rôle non concerné par cette restriction (ex: SUPER_ADMIN déjà couvert ci-dessus)
     }
 
     public static boolean canAccessMobile(FarmAppSettings settings, Collection<String> roles) {
         if (isAdmin(roles)) return true;
-        if (isOnlyRole(roles, "PRODUCTEUR")) return settings != null && Boolean.TRUE.equals(settings.getProducteurMobileEnabled());
-        if (isOnlyRole(roles, "FINANCIER")) return settings != null && financierHasAnyMobileAction(settings);
+        if (isOnlyRole(roles, "PRODUCTION")) return settings != null && Boolean.TRUE.equals(settings.getProductionMobileEnabled());
+        if (isOnlyRole(roles, "COMPTABLE")) return settings != null && Boolean.TRUE.equals(settings.getComptableMobileEnabled());
+        if (isOnlyRole(roles, "VENTE")) return settings != null && Boolean.TRUE.equals(settings.getVenteMobileEnabled());
+        if (isOnlyRole(roles, "RESPONSABLE")) return false; // jamais de mobile pour ce rôle, voir commentaire de classe
         return true;
-    }
-
-    public static boolean financierHasAnyMobileAction(FarmAppSettings s) {
-        return s != null && (
-                Boolean.TRUE.equals(s.getFinancierMobileVenteOeufs())
-                || Boolean.TRUE.equals(s.getFinancierMobileVenteReforme())
-                || Boolean.TRUE.equals(s.getFinancierMobileVenteFientes())
-                || Boolean.TRUE.equals(s.getFinancierMobileEntree())
-                || Boolean.TRUE.equals(s.getFinancierMobileSortie())
-        );
     }
 }

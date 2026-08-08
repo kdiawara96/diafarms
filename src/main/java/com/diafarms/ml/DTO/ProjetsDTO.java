@@ -25,7 +25,16 @@ public class ProjetsDTO {
      private String uniqueId;
      private String code;
      private String titre;
-     private String responsable;
+     // Remplace l'ancien champ "responsable" en texte libre : maintenant une vraie
+     // sélection d'utilisateur RESPONSABLE, exposée en id (pour le formulaire
+     // d'édition) + nom (pour l'affichage), même pattern que responsableProduction/
+     // responsableFinance ci-dessous.
+     private Long responsableId;
+     private String responsableNom;
+     private Long responsableProductionId;
+     private String responsableProductionNom;
+     private Long responsableFinanceId;
+     private String responsableFinanceNom;
      private String fournisseursPoussins;
      private LocalDate debut;
      private LocalDate finPrevue;
@@ -90,7 +99,12 @@ public class ProjetsDTO {
                 .uniqueId(data.getUniqueId())
                 .code(data.getCode())
                 .titre(data.getTitre())
-                .responsable(data.getResponsable())
+                .responsableId(data.getResponsable() != null ? data.getResponsable().getId() : null)
+                .responsableNom(data.getResponsable() != null ? data.getResponsable().getFullName() : null)
+                .responsableProductionId(data.getResponsableProduction() != null ? data.getResponsableProduction().getId() : null)
+                .responsableProductionNom(data.getResponsableProduction() != null ? data.getResponsableProduction().getFullName() : null)
+                .responsableFinanceId(data.getResponsableFinance() != null ? data.getResponsableFinance().getId() : null)
+                .responsableFinanceNom(data.getResponsableFinance() != null ? data.getResponsableFinance().getFullName() : null)
                 .fournisseursPoussins(data.getFournisseurs_poussins())
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
@@ -141,7 +155,12 @@ public class ProjetsDTO {
                 .uniqueId(data.getUniqueId())
                 .code(data.getCode())
                 .titre(data.getTitre())
-                .responsable(data.getResponsable())
+                .responsableId(data.getResponsable() != null ? data.getResponsable().getId() : null)
+                .responsableNom(data.getResponsable() != null ? data.getResponsable().getFullName() : null)
+                .responsableProductionId(data.getResponsableProduction() != null ? data.getResponsableProduction().getId() : null)
+                .responsableProductionNom(data.getResponsableProduction() != null ? data.getResponsableProduction().getFullName() : null)
+                .responsableFinanceId(data.getResponsableFinance() != null ? data.getResponsableFinance().getId() : null)
+                .responsableFinanceNom(data.getResponsableFinance() != null ? data.getResponsableFinance().getFullName() : null)
                 .fournisseursPoussins(data.getFournisseurs_poussins())
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())

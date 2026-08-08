@@ -65,15 +65,15 @@ public class TransactionServiceImpl implements TransactionService {
 
     /**
      * Restriction du RAPPORT (/transactions/stats, qui alimente les cartes KPI et le
-     * "Rapport général" de Comptabilité) : null = pas de restriction (vue ferme entière,
-     * réservé à un ADMIN/SUPER_ADMIN qui n'a pas choisi de financier précis) ; liste
-     * (éventuellement vide) = restreint aux transactions des projets où l'utilisateur
+     * "Rapport général" de Comptabilité) : null = pas de restriction (vue ferme entière) ;
+     * liste (éventuellement vide) = restreint aux transactions des projets où l'utilisateur
      * ciblé est responsableFinance.
      *
-     * Un utilisateur non-admin (FINANCIER) est TOUJOURS restreint à son propre périmètre,
-     * quel que soit financierUniqueId reçu du client — jamais celui d'un autre financier,
-     * sinon il suffirait de changer ce paramètre pour voir le rapport d'un collègue. Seul
-     * un ADMIN/SUPER_ADMIN peut se placer dans la vue d'un financier choisi ("voir comme").
+     * Un COMPTABLE (pur ou cumulé) reste farm-wide, non scopé par cet axe — voir la classe
+     * (COMPTABLE n'est jamais restreint par projet, contrairement à l'ancien FINANCIER).
+     * Seul un RESPONSABLE pur est auto-restreint à SES projets (champ Projets.responsable),
+     * pour son propre tableau de bord. Un ADMIN/SUPER_ADMIN peut se placer dans la vue d'un
+     * comptable choisi ("voir comme", financierUniqueId conservé tel quel pour compat).
      */
     private List<Long> resolveProjetIdsScope(Utilisateurs currentUser, Long farmId, String financierUniqueId) {
         if (currentUser == null || farmId == null) {
@@ -85,45 +85,72 @@ public class TransactionServiceImpl implements TransactionService {
             }
             return projetsRepo.findProjetIdsAssignedAsFinanceToUser(farmId, financierUniqueId);
         }
-        return projetsRepo.findProjetIdsAssignedAsFinanceToUser(farmId, currentUser.getUniqueId());
+        if (isPureResponsable(currentUser)) {
+            return projetsRepo.findProjetIdsAssignedAsResponsableToUser(farmId, currentUser.getUniqueId());
+        }
+        return null;
     }
 
     /**
-     * Restriction de la LISTE (/transactions/list) : contrairement au rapport ci-dessus,
-     * la liste n'est JAMAIS auto-restreinte pour un non-admin — elle reste utilisée telle
-     * quelle par la page Ventes (acte Finance à l'échelle de la ferme entière par
-     * conception, voir VenteOeufsImpl/VenteReformeImpl) et par le Dashboard admin. Seul un
-     * ADMIN/SUPER_ADMIN qui fournit explicitement financierUniqueId se place dans la vue
-     * scopée d'un financier (utilisé par le filtre "voir comme" de Comptabilité).
+     * Restriction de la LISTE (/transactions/list) : un RESPONSABLE pur est auto-restreint
+     * à ses propres projets (sa table Comptabilité scopée, avec pouvoir de valider/rejeter
+     * dessus). Pour tout le monde d'autre (COMPTABLE farm-wide, cumul de rôles, Dashboard
+     * admin, page Ventes) la liste n'est PAS auto-restreinte — seul un ADMIN/SUPER_ADMIN
+     * qui fournit explicitement financierUniqueId se place dans la vue scopée d'un
+     * comptable choisi (filtre "voir comme" de Comptabilité).
      */
     private List<Long> resolveProjetIdsScopeForList(Utilisateurs currentUser, Long farmId, String financierUniqueId) {
+        if (isPureResponsable(currentUser) && farmId != null) {
+            return projetsRepo.findProjetIdsAssignedAsResponsableToUser(farmId, currentUser.getUniqueId());
+        }
         if (!isAdmin(currentUser) || farmId == null || financierUniqueId == null || financierUniqueId.isBlank()) {
             return null;
         }
         return projetsRepo.findProjetIdsAssignedAsFinanceToUser(farmId, financierUniqueId);
     }
 
-    // FINANCIER est son SEUL rôle (pas de cumul, ex: PRODUCTEUR + FINANCIER) : un
+    // Un rôle est son SEUL rôle (pas de cumul, ex: PRODUCTION + COMPTABLE) : un
     // compte qui cumule les rôles garde l'accès complet, un autre rôle justifiant
     // déjà l'accès non restreint (même règle que hasOnlyRole côté front, voir
     // src/lib/roles.ts).
-    private boolean isPureFinancier(Utilisateurs u) {
+    private boolean isPureRole(Utilisateurs u, String role) {
         return u != null && u.getRoles() != null && !u.getRoles().isEmpty()
-                && u.getRoles().stream().allMatch(r -> "FINANCIER".equalsIgnoreCase(r.getRole()));
+                && u.getRoles().stream().allMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
+    private boolean isPureComptable(Utilisateurs u) {
+        return isPureRole(u, "COMPTABLE");
+    }
+
+    private boolean isPureVente(Utilisateurs u) {
+        return isPureRole(u, "VENTE");
+    }
+
+    private boolean isPureResponsable(Utilisateurs u) {
+        return isPureRole(u, "RESPONSABLE");
+    }
+
+    // Un RESPONSABLE a autorité sur les transactions/ventes rattachées à SES projets
+    // (champ Projets.responsable, distinct de responsableProduction/responsableFinance
+    // qui ne donnent aucun pouvoir de validation) — jamais sur une transaction commune
+    // (pas de projet précis) ni sur un autre projet que le sien.
+    private boolean isResponsableDuProjet(Utilisateurs u, Projets projet) {
+        return u != null && projet != null && projet.getResponsable() != null
+                && projet.getResponsable().getId().equals(u.getId());
     }
 
     /**
-     * Restriction par CRÉATEUR de la LISTE (page Ventes) : un FINANCIER pur ne voit
-     * que ses propres ventes, quel que soit vendeurUniqueId reçu du client — jamais
+     * Restriction par CRÉATEUR de la LISTE (page Ventes) : un COMPTABLE ou VENTE pur ne
+     * voit que ses propres ventes, quel que soit vendeurUniqueId reçu du client — jamais
      * celui d'un collègue. Un ADMIN/SUPER_ADMIN peut choisir n'importe quel vendeur
-     * (ou aucun = tout le monde). Un PRODUCTEUR (ou un cumul de rôles) n'est pas
-     * restreint pour l'instant.
+     * (ou aucun = tout le monde). Un RESPONSABLE/PRODUCTION (ou un cumul de rôles) n'est
+     * pas restreint par cet axe (le RESPONSABLE voit tout pour pouvoir valider/rejeter).
      */
     private String resolveVendeurScopeForList(Utilisateurs currentUser, String vendeurUniqueId) {
         if (isAdmin(currentUser)) {
             return (vendeurUniqueId == null || vendeurUniqueId.isBlank()) ? null : vendeurUniqueId;
         }
-        if (isPureFinancier(currentUser)) {
+        if (isPureComptable(currentUser) || isPureVente(currentUser)) {
             return currentUser.getUniqueId();
         }
         return null;
@@ -194,15 +221,18 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(description);
         t.setMontant(montant);
         t.setCategorie(categorie);
-        // Contrairement à une transaction manuelle (create() ci-dessus), une transaction
-        // générée depuis une vente d'œufs/réforme (voir VenteOeufsImpl/VenteReformeImpl)
-        // n'est pas une simple déclaration à vérifier : elle est bornée par le stock réel
-        // déjà validé (impossible de survendre, voir repartirEtCreerTransactions) — elle
-        // n'a donc pas besoin d'une validation manuelle séparée pour compter dans
-        // "Total entrées". Avant ce correctif, une vente restait invisible en
-        // comptabilité tant que quelqu'un ne validait pas sa transaction à la main.
-        t.setStatut(StatutTransaction.VALIDE);
-        t.setDateValidation(LocalDateTime.now());
+        // Une vente créée par ADMIN ou par le RESPONSABLE de CE projet est déjà digne de
+        // confiance (même principe que create() : une saisie de la personne qui a
+        // autorité dessus n'a pas besoin d'être validée séparément) — auto-validée. Une
+        // vente créée par un VENTE pur (ou tout autre non-responsable de ce projet) doit
+        // en revanche être validée par le RESPONSABLE ou un ADMIN avant de compter dans
+        // "Total entrées", voir valider()/rejeter() ci-dessous.
+        boolean autoValide = isAdmin(creePar) || isResponsableDuProjet(creePar, projet);
+        t.setStatut(autoValide ? StatutTransaction.VALIDE : StatutTransaction.EN_ATTENTE);
+        if (autoValide) {
+            t.setValidateur(creePar);
+            t.setDateValidation(LocalDateTime.now());
+        }
         t.setProjet(projet);
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
@@ -296,12 +326,17 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional
     public TransactionDTO valider(String uniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        if (!isAdmin(currentUser)) {
-            throw new IllegalArgumentException("Seul un administrateur peut valider une transaction.");
-        }
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+
+        // Un RESPONSABLE peut valider une transaction rattachée à SON projet (voir
+        // isResponsableDuProjet) ; une transaction commune (pas de projet précis) reste
+        // réservée à un ADMIN, faute de responsable unique et non-ambigu à qui confier ce
+        // pouvoir.
+        if (!isAdmin(currentUser) && !isResponsableDuProjet(currentUser, t.getProjet())) {
+            throw new IllegalArgumentException("Seul un administrateur ou le responsable de ce projet peut valider cette transaction.");
+        }
 
         t.setStatut(StatutTransaction.VALIDE);
         t.setCommentaireRejet(null);
@@ -321,15 +356,16 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional
     public TransactionDTO rejeter(String uniqueId, RejectTransactionRequest data) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        if (!isAdmin(currentUser)) {
-            throw new IllegalArgumentException("Seul un administrateur peut rejeter une transaction.");
-        }
         if (data.getCommentaire() == null || data.getCommentaire().isBlank()) {
             throw new IllegalArgumentException("Un commentaire est obligatoire pour rejeter une transaction.");
         }
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+
+        if (!isAdmin(currentUser) && !isResponsableDuProjet(currentUser, t.getProjet())) {
+            throw new IllegalArgumentException("Seul un administrateur ou le responsable de ce projet peut rejeter cette transaction.");
+        }
 
         t.setStatut(StatutTransaction.REJETE);
         t.setCommentaireRejet(data.getCommentaire());

@@ -66,11 +66,13 @@ public class MlApplication implements CommandLineRunner {
         // 1️⃣ CREATION DU ROLE ADMIN S’IL N’EXISTE PAS
         // =====================================================
         String defaultRole = "ADMIN";
-        String roleProducteur = "PRODUCTEUR";
-        String roleFinancier = "FINANCIER";
         String roleSUPER_ADMIN = "SUPER_ADMIN";
+        String roleResponsable = "RESPONSABLE";
+        String roleComptable = "COMPTABLE";
+        String roleVente = "VENTE";
+        String roleProduction = "PRODUCTION";
 
-        String[] rolesToCheck = {defaultRole, roleProducteur, roleFinancier, roleSUPER_ADMIN};
+        String[] rolesToCheck = {defaultRole, roleSUPER_ADMIN, roleResponsable, roleComptable, roleVente, roleProduction};
 
         for (String roleName : rolesToCheck) {
             Roles role = rolesRepo.findByRole(roleName);

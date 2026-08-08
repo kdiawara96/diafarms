@@ -47,7 +47,8 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     List<Projets> findAllActiveByFarm(@Param("farmId") Long farmId);
 
     @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
-           "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId)")
+           "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId " +
+           "OR p.responsable.uniqueId = :userUniqueId)")
     List<Projets> findAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 
     // Variante triée/limitée de findAssignedToUser, pour la modale "Profil & Accès Mobile
@@ -67,4 +68,11 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     @Query("SELECT p.id FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
            "AND p.responsableFinance.uniqueId = :userUniqueId")
     List<Long> findProjetIdsAssignedAsFinanceToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
+
+    // Périmètre RESPONSABLE (gère/clôture, valide/rejette comptabilité+ventes) —
+    // uniquement les projets où l'utilisateur est LE responsable (champ dédié, pas
+    // responsableProduction/responsableFinance), voir TransactionServiceImpl.
+    @Query("SELECT p.id FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
+           "AND p.responsable.uniqueId = :userUniqueId")
+    List<Long> findProjetIdsAssignedAsResponsableToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 }

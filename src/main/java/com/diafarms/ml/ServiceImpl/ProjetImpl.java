@@ -269,13 +269,20 @@ public class ProjetImpl implements ProjetServices {
                     .orElseThrow(() -> new RuntimeException("Responsable finance non trouvé avec l'id : " + data.getResponsableFinanceId()));
         }
 
+        Utilisateurs responsable = null;
+        Long responsableId = data.getResponsableId();
+        if (responsableId != null) {
+            responsable = utilisateursRepo.findById(responsableId)
+                    .orElseThrow(() -> new RuntimeException("Responsable non trouvé avec l'id : " + data.getResponsableId()));
+        }
+
         // 4. Créer le projet
         Projets projet = new Projets();
 
         projet.setUniqueId(generateUID());
         projet.setCode(generateCode());
         projet.setTitre(data.getTitre());
-        projet.setResponsable(data.getNomResponsable());
+        projet.setResponsable(responsable);
         projet.setDebut(parseDate(data.getDateDebut()));
         projet.setFinPrevue(parseDate(data.getDateFinPrevue()));
         projet.setNbSujets(data.getNbSujets());
@@ -625,8 +632,20 @@ public class ProjetImpl implements ProjetServices {
         if (data.getTitre() != null) {
             projet.setTitre(data.getTitre());
         }
-        if (data.getNomResponsable() != null) {
-            projet.setResponsable(data.getNomResponsable());
+        if (data.getResponsableId() != null) {
+            Utilisateurs responsable = utilisateursRepo.findById(data.getResponsableId())
+                    .orElseThrow(() -> new RuntimeException("Responsable non trouvé avec l'id : " + data.getResponsableId()));
+            projet.setResponsable(responsable);
+        }
+        if (data.getResponsableProductionId() != null) {
+            Utilisateurs responsableProduction = utilisateursRepo.findById(data.getResponsableProductionId())
+                    .orElseThrow(() -> new RuntimeException("Responsable production non trouvé avec l'id : " + data.getResponsableProductionId()));
+            projet.setResponsableProduction(responsableProduction);
+        }
+        if (data.getResponsableFinanceId() != null) {
+            Utilisateurs responsableFinance = utilisateursRepo.findById(data.getResponsableFinanceId())
+                    .orElseThrow(() -> new RuntimeException("Responsable finance non trouvé avec l'id : " + data.getResponsableFinanceId()));
+            projet.setResponsableFinance(responsableFinance);
         }
         if (data.getDateDebut() != null) {
             projet.setDebut(parseDate(data.getDateDebut()));
@@ -697,6 +716,12 @@ public class ProjetImpl implements ProjetServices {
 
         boolean isAdmin = currentUser.getRoles() != null && currentUser.getRoles().stream()
                 .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+        // COMPTABLE reste farm-wide (comme sur Comptabilité) même dans ce sélecteur —
+        // contrairement à RESPONSABLE/VENTE/PRODUCTION qui ne voient que leurs projets
+        // assignés, un COMPTABLE doit pouvoir rattacher une transaction manuelle à
+        // n'importe quel projet de la ferme.
+        boolean isPureComptable = currentUser.getRoles() != null && !currentUser.getRoles().isEmpty()
+                && currentUser.getRoles().stream().allMatch(r -> "COMPTABLE".equalsIgnoreCase(r.getRole()));
 
         List<Projets> projets;
         if (isAdmin && currentUser.getFarm() == null) {
@@ -705,7 +730,7 @@ public class ProjetImpl implements ProjetServices {
             projets = projetsRepo.findByInitialisation_RemovedFalse();
         } else if (currentUser.getFarm() == null) {
             projets = List.of();
-        } else if (isAdmin) {
+        } else if (isAdmin || isPureComptable) {
             projets = projetsRepo.findAllActiveByFarm(currentUser.getFarm().getId());
         } else {
             projets = projetsRepo.findAssignedToUser(currentUser.getFarm().getId(), currentUser.getUniqueId());
@@ -737,10 +762,10 @@ public class ProjetImpl implements ProjetServices {
         return projets.stream().map(p -> {
             List<String> roles = new java.util.ArrayList<>();
             if (p.getResponsableProduction() != null && userUniqueId.equals(p.getResponsableProduction().getUniqueId())) {
-                roles.add("PRODUCTEUR");
+                roles.add("PRODUCTION");
             }
             if (p.getResponsableFinance() != null && userUniqueId.equals(p.getResponsableFinance().getUniqueId())) {
-                roles.add("FINANCIER");
+                roles.add("COMPTABLE");
             }
             return ProjetAssigneDTO.builder()
                     .uniqueId(p.getUniqueId())

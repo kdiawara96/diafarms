@@ -35,9 +35,6 @@ public class Projets {
     @Column(name = "titre", nullable = false, length = 100)
     private String titre;
 
-    @Column(name = "responsable", length = 100)
-    private String responsable;
-
     @Column(name = "fournisseurs_poussins", length = 100)
     private String fournisseurs_poussins;
 
@@ -76,10 +73,20 @@ public class Projets {
     @JoinColumn(name = "farm_id")
     private Farm farm;
 
+    // Gère/clôture ce projet, valide/rejette les transactions et ventes qui lui sont
+    // liées (voir TransactionServiceImpl) — remplace l'ancien champ "responsable" en
+    // texte libre, désormais une vraie sélection parmi les utilisateurs RESPONSABLE.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "responsable_user_id")
+    private Utilisateurs responsable;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "production_user_id")
     private Utilisateurs responsableProduction;
 
+    // Sourcé sur le rôle COMPTABLE (remplace FINANCIER) — sert au filtre admin
+    // "voir comme un comptable" sur Comptabilité (TransactionServiceImpl
+    // .resolveProjetIdsScope*), le rôle COMPTABLE lui-même restant farm-wide.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "finance_user_id")
     private Utilisateurs responsableFinance;

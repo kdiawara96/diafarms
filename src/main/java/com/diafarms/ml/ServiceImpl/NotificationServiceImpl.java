@@ -54,16 +54,24 @@ public class NotificationServiceImpl implements NotificationService {
     private final WeatherService weatherService;
     private final OtherService otherService;
 
-    // FINANCIER (ou PRODUCTEUR) est son SEUL rôle (pas de cumul) : un compte qui
-    // cumule les rôles garde les notifications complètes, un autre rôle justifiant
-    // déjà l'accès non restreint (même règle qu'ailleurs, voir
-    // TransactionServiceImpl.isPureFinancier / src/lib/roles.ts côté front).
-    private boolean isPureFinancier(Utilisateurs u) {
-        return isPureRole(u, "FINANCIER");
+    // Un rôle est son SEUL rôle (pas de cumul) : un compte qui cumule les rôles garde
+    // les notifications complètes, un autre rôle justifiant déjà l'accès non restreint
+    // (même règle qu'ailleurs, voir TransactionServiceImpl.isPureRole / src/lib/roles.ts
+    // côté front).
+    private boolean isPureComptable(Utilisateurs u) {
+        return isPureRole(u, "COMPTABLE");
     }
 
-    private boolean isPureProducteur(Utilisateurs u) {
-        return isPureRole(u, "PRODUCTEUR");
+    private boolean isPureVente(Utilisateurs u) {
+        return isPureRole(u, "VENTE");
+    }
+
+    private boolean isPureProduction(Utilisateurs u) {
+        return isPureRole(u, "PRODUCTION");
+    }
+
+    private boolean isPureResponsable(Utilisateurs u) {
+        return isPureRole(u, "RESPONSABLE");
     }
 
     private boolean isPureRole(Utilisateurs u, String role) {
@@ -80,20 +88,27 @@ public class NotificationServiceImpl implements NotificationService {
 
         List<NotificationDTO> result = new ArrayList<>();
 
-        // Stock/mortalité/météo/échéance (Production) et "N transactions en attente"
-        // (invite à valider, action réservée à un ADMIN) n'ont aucun sens pour un
-        // FINANCIER pur : il n'a accès ni à Production/Projets, ni à la validation.
-        // Voir plus bas addRejetNotification, qui LUI reste montrée (ça, ça le
-        // concerne : une de ses ventes vient d'être rejetée).
+        // Stock/mortalité/météo/échéance (Production) n'ont aucun sens pour un
+        // COMPTABLE ou VENTE pur : ni l'un ni l'autre n'a accès à Production/Projets.
+        // Voir plus bas addRejetNotification, qui LEUR reste montrée (ça, ça les
+        // concerne : une de leurs transactions/ventes vient d'être rejetée).
         //
-        // Un PRODUCTEUR pur, à l'inverse, DOIT voir ces notifications (c'est son
-        // métier) mais uniquement pour SES projets assignés (responsableProduction),
-        // jamais ceux des autres producteurs — même logique de périmètre que
-        // Comptabilité pour un FINANCIER, voir TransactionServiceImpl.
-        if (!isPureFinancier(currentUser)) {
-            List<Projets> projets = isPureProducteur(currentUser)
-                    ? projetsRepo.findAssignedToUser(farmId, currentUser.getUniqueId())
-                    : projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent();
+        // Un PRODUCTION pur DOIT voir ces notifications (c'est son métier) mais
+        // uniquement pour SES projets assignés (responsableProduction). Un RESPONSABLE
+        // pur les voit aussi, scopées à SES projets (champ Projets.responsable) — il
+        // supervise, comme le producteur, mais sur son propre périmètre de gestion.
+        boolean sansNotifsProduction = isPureComptable(currentUser) || isPureVente(currentUser);
+        if (!sansNotifsProduction) {
+            List<Projets> projets;
+            if (isPureProduction(currentUser)) {
+                projets = projetsRepo.findAssignedToUser(farmId, currentUser.getUniqueId());
+            } else if (isPureResponsable(currentUser)) {
+                projets = projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent().stream()
+                        .filter(p -> p.getResponsable() != null && currentUser.getUniqueId().equals(p.getResponsable().getUniqueId()))
+                        .toList();
+            } else {
+                projets = projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent();
+            }
             for (Projets p : projets) {
                 addStockNotification(result, p);
                 addMortaliteNotification(result, p);
@@ -101,10 +116,24 @@ public class NotificationServiceImpl implements NotificationService {
                 addEcheanceNotification(result, p);
             }
 
-            // La validation reste réservée à un ADMIN/SUPER_ADMIN (voir
-            // TransactionServiceImpl.valider/rejeter) : ce prompt n'est donc pertinent
-            // ni pour un FINANCIER pur (déjà exclu ci-dessus) ni pour un PRODUCTEUR pur.
-            if (!isPureProducteur(currentUser)) {
+            // La validation reste réservée à un ADMIN/SUPER_ADMIN ou au RESPONSABLE du
+            // projet concerné (voir TransactionServiceImpl.valider/rejeter) : ce prompt
+            // n'est donc pertinent ni pour un COMPTABLE/VENTE pur (déjà exclus ci-dessus)
+            // ni pour un PRODUCTION pur (jamais de pouvoir de validation).
+            if (isPureResponsable(currentUser)) {
+                List<Long> projetIds = projets.stream().map(Projets::getId).toList();
+                long nbAttente = projetIds.isEmpty() ? 0
+                        : transactionRepo.countByProjetIdsAndStatut(projetIds, StatutTransaction.EN_ATTENTE, null, null);
+                if (nbAttente > 0) {
+                    result.add(NotificationDTO.builder()
+                        .key("transactions-attente")
+                        .type("TRANSACTION")
+                        .level("WARNING")
+                        .message(nbAttente + " transaction(s) en attente de validation")
+                        .actionPath("/comptabilite")
+                        .build());
+                }
+            } else if (!isPureProduction(currentUser)) {
                 long nbAttente = transactionRepo.countByFarmIdAndStatut(farmId, StatutTransaction.EN_ATTENTE);
                 if (nbAttente > 0) {
                     result.add(NotificationDTO.builder()

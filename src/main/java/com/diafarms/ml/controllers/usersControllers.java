@@ -89,7 +89,27 @@ public class usersControllers {
     public ResponseEntity<ApiResponse<List<UtilisateursDTO>>> selectFinanciers() {
         try {
             List<UtilisateursDTO> result = services.selectFinanciers();
-            return ApiResponse.createResponse("Liste des financiers récupérée", HttpStatus.OK, result, null);
+            return ApiResponse.createResponse("Liste des comptables récupérée", HttpStatus.OK, result, null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @GetMapping("/select/responsables")
+    public ResponseEntity<ApiResponse<List<UtilisateursDTO>>> selectResponsables() {
+        try {
+            List<UtilisateursDTO> result = services.selectResponsables();
+            return ApiResponse.createResponse("Liste des responsables récupérée", HttpStatus.OK, result, null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @GetMapping("/select/ventes")
+    public ResponseEntity<ApiResponse<List<UtilisateursDTO>>> selectVentes() {
+        try {
+            List<UtilisateursDTO> result = services.selectVentes();
+            return ApiResponse.createResponse("Liste des vendeurs récupérée", HttpStatus.OK, result, null);
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

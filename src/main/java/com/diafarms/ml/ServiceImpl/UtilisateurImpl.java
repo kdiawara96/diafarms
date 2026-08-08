@@ -275,6 +275,42 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public List<UtilisateursDTO> selectResponsables() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        Long farmId = null;
+        if (currentUser != null && currentUser.getFarm() != null) {
+            farmId = currentUser.getFarm().getId();
+        }
+
+        return utilisateursRepo.findResponsablesByFarmId(farmId).stream()
+                .map(UtilisateursDTO::fromSelect)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UtilisateursDTO> selectVentes() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        Long farmId = null;
+        if (currentUser != null && currentUser.getFarm() != null) {
+            farmId = currentUser.getFarm().getId();
+        }
+
+        return utilisateursRepo.findVendeursByFarmId(farmId).stream()
+                .map(UtilisateursDTO::fromSelect)
+                .collect(Collectors.toList());
+    }
+
     // 1. Récupérer tous les utilisateurs
     @Override
     @Transactional(readOnly = true)

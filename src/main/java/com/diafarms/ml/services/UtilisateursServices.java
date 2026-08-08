@@ -33,6 +33,8 @@ public interface UtilisateursServices {
     List<UtilisateursDTO> select();
     List<UtilisateursDTO> selectProducteurs();
     List<UtilisateursDTO> selectFinanciers();
+    List<UtilisateursDTO> selectResponsables();
+    List<UtilisateursDTO> selectVentes();
     List<UtilisateursDTO> getAllUtilisateurs();
     PaginatedResponse<UtilisateursDTO> getAllUtilisateurs(String searchTerm, int page, int size);
 

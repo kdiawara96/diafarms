@@ -66,13 +66,20 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND u.initialisation.removed = false")
     List<Utilisateurs> findAllByFarmIdAndNotRemoved(@Param("farmId") Long farmId);
 
-    // 2. Par farm + rôle PRODUCTEUR
-    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'PRODUCTEUR'")
+    // 2. Par farm + rôle PRODUCTION (anciennement PRODUCTEUR)
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'PRODUCTION'")
     List<Utilisateurs> findProducteursByFarmId(@Param("farmId") Long farmId);
 
-    // 3. Par farm + rôle FINANCIER
-    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'FINANCIER'")
+    // 3. Par farm + rôle COMPTABLE (anciennement FINANCIER)
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'COMPTABLE'")
     List<Utilisateurs> findFinanciersByFarmId(@Param("farmId") Long farmId);
 
+    // 4. Par farm + rôle RESPONSABLE
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'RESPONSABLE'")
+    List<Utilisateurs> findResponsablesByFarmId(@Param("farmId") Long farmId);
+
+    // 5. Par farm + rôle VENTE
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND u.initialisation.removed = false AND r.role = 'VENTE'")
+    List<Utilisateurs> findVendeursByFarmId(@Param("farmId") Long farmId);
 
 }

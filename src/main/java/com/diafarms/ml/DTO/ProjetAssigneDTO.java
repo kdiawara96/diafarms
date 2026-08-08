@@ -31,5 +31,5 @@ public class ProjetAssigneDTO {
     private LocalDateTime createdAt;
 
     private boolean active; // !initialisation.archive
-    private List<String> roles; // "PRODUCTEUR" et/ou "FINANCIER"
+    private List<String> roles; // "PRODUCTION" et/ou "COMPTABLE" (et/ou "RESPONSABLE", voir ProjetImpl)
 }
