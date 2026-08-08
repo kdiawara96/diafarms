@@ -23,11 +23,17 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
     Integer sumQuantiteByFarmId(@Param("farmId") Long farmId);
 
-    // Montant réellement rapporté par les vendeurs (pas le théorique quantité×prix) —
-    // voir TransactionServiceImpl.getStats, sert à corriger "Total entrées" qui
-    // surestimait le cash réellement en caisse en sommant le montant théorique des
-    // ventes plutôt que ce qui a vraiment été rapporté.
-    @Query("SELECT COALESCE(SUM(v.montantRapporte), 0) FROM VenteOeufs v " +
+    // Montant réellement rapporté par les vendeurs — voir TransactionServiceImpl.
+    // getStats, sert à corriger "Total entrées" qui surestimait le cash réellement en
+    // caisse en sommant le montant théorique des ventes plutôt que ce qui a vraiment
+    // été rapporté. montantRapporte est OPTIONNEL à la saisie (renseigné seulement
+    // quand le vendeur signale un écart, voir CreateVenteOeufsDialog côté web) : une
+    // vente sans montantRapporte n'a PAS de dette connue, donc elle compte pour son
+    // montant théorique complet (COALESCE(montantRapporte, montant)) — un simple
+    // SUM(montantRapporte) ignorait silencieusement (SQL) toutes les ventes où ce
+    // champ n'a jamais été rempli, écrasant "Montant reçu" bien en dessous de la
+    // réalité au lieu de ne compter que les vraies dettes en cours.
+    @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteOeufs v " +
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
         "AND (:dateDebut IS NULL OR v.date >= :dateDebut) AND (:dateFin IS NULL OR v.date <= :dateFin)")
     Double sumMontantRapporteByFarmIdAndDateRange(@Param("farmId") Long farmId,
