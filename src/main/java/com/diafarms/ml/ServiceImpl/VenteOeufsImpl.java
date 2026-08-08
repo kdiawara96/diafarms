@@ -18,13 +18,17 @@ import com.diafarms.ml.DTO.VenteOeufsDTO;
 import com.diafarms.ml.DTO.VenteOeufsRepartitionDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
+import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.models.Farm;
+import com.diafarms.ml.models.MagasinVente;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteOeufsRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
+import com.diafarms.ml.repository.MagasinTransfertRepo;
+import com.diafarms.ml.repository.MagasinVenteRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
@@ -36,12 +40,12 @@ import com.diafarms.ml.services.VenteOeufsService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente d'œufs (Finance) : acte commercial à l'échelle de la ferme entière, plafonné
-// par le total collecté (CollecteOeufs, Production) de TOUTE LA FERME moins déjà
-// vendu. PAS rattachée à un seul projet : répartie automatiquement au prorata du
-// stock disponible de chaque projet contributeur (RepartitionUtil), pour que le
-// chiffre d'affaires par projet (computeChiffreAffairesReel) reste exact — chaque
-// part génère sa propre Transaction "entrée", attribuée directement à SON projet.
+// Vente d'œufs (Finance) : vendue DEPUIS un magasin précis (voir MagasinVente), qui a
+// lui-même reçu son stock par des transferts explicites depuis un ou plusieurs projets
+// (voir MagasinTransfert) — remplace l'ancienne répartition automatique farm-wide à la
+// vente. La répartition entre projets contributeurs (pour le chiffre d'affaires par
+// projet) se calcule maintenant à partir des transferts reçus par CE magasin, pas du
+// stock collecté de toute la ferme.
 @Service
 @RequiredArgsConstructor
 public class VenteOeufsImpl implements VenteOeufsService {
@@ -50,6 +54,9 @@ public class VenteOeufsImpl implements VenteOeufsService {
     private final VenteOeufsRepartitionRepo repartitionRepo;
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final ProjetsRepo projetsRepo;
+    private final MagasinVenteRepo magasinVenteRepo;
+    private final MagasinTransfertRepo magasinTransfertRepo;
+    private final SoldeVendeurServiceImpl soldeVendeurService;
     private final LogsServices logs;
     private final OtherService otherService;
     private final TransactionService transactionService;
@@ -67,37 +74,34 @@ public class VenteOeufsImpl implements VenteOeufsService {
         return v == null ? 0 : v;
     }
 
-    private int stockFermeRestant(Long farmId) {
-        int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
-        int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));
-        int totalVendu = nz(venteOeufsRepo.sumQuantiteByFarmId(farmId));
-        return (totalCollecte - totalCasse) - totalVendu;
+    private double nz(Double v) {
+        return v == null ? 0.0 : v;
     }
 
-    /** Stock d'œufs vendables restant, projet par projet, pour tous les projets actifs
-     * de la ferme — sert de poids pour la répartition proportionnelle d'une vente. */
-    private Map<Long, Integer> disponibleParProjet(List<Projets> projets) {
+    /** Stock d'œufs vendables restant DANS ce magasin, projet par projet (ceux qui y
+     * ont transféré du stock) — sert de poids pour la répartition proportionnelle
+     * d'une vente entre les projets contributeurs de CE magasin précis. */
+    private Map<Long, Integer> disponibleParProjetDansMagasin(MagasinVente magasin) {
         Map<Long, Integer> disponible = new LinkedHashMap<>();
-        for (Projets p : projets) {
-            int collecte = nz(collecteOeufsRepo.sumOeufsCollectesByProjetId(p.getId()));
-            int casse = nz(collecteOeufsRepo.sumOeufsCassesByProjetId(p.getId()));
-            int vendu = nz(repartitionRepo.sumQuantiteByProjetId(p.getId()));
-            int restant = (collecte - casse) - vendu;
-            if (restant > 0) disponible.put(p.getId(), restant);
+        List<Long> projetIds = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(magasin.getId(), TypeStockMagasin.OEUFS);
+        for (Long projetId : projetIds) {
+            int transfere = nz(magasinTransfertRepo.sumQuantiteByMagasinAndProjetAndType(magasin.getId(), projetId, TypeStockMagasin.OEUFS));
+            int vendu = nz(repartitionRepo.sumQuantiteByProjetIdAndMagasinId(projetId, magasin.getId()));
+            int restant = transfere - vendu;
+            if (restant > 0) disponible.put(projetId, restant);
         }
         return disponible;
     }
 
-    /** Répartit la vente entre les projets contributeurs, sauvegarde les lignes de
-     * VenteOeufsRepartition et génère une Transaction par projet — factorisé pour
-     * être appelé identiquement par create() et update(). Retourne les lignes créées
-     * (plutôt que de compter sur saved.getRepartitions(), lazy et potentiellement pas
-     * à jour dans le même contexte de persistance/transaction). */
+    /** Répartit la vente entre les projets contributeurs DE CE MAGASIN, sauvegarde les
+     * lignes de VenteOeufsRepartition et génère une Transaction par projet — factorisé
+     * pour être appelé identiquement par create() et update(). */
     private List<VenteOeufsRepartition> repartirEtCreerTransactions(VenteOeufs saved, Farm farm, int quantite, double montant, Utilisateurs creePar) {
-        List<Projets> projetsActifs = projetsRepo.findAllActiveByFarm(farm.getId());
-        Map<Long, Integer> disponible = disponibleParProjet(projetsActifs);
-        Map<Long, Projets> projetsParId = projetsActifs.stream()
-                .collect(java.util.stream.Collectors.toMap(Projets::getId, p -> p));
+        Map<Long, Integer> disponible = disponibleParProjetDansMagasin(saved.getMagasin());
+        Map<Long, Projets> projetsParId = new LinkedHashMap<>();
+        for (Long projetId : disponible.keySet()) {
+            projetsRepo.findById(projetId).ifPresent(p -> projetsParId.put(projetId, p));
+        }
 
         List<RepartitionUtil.Part> parts = RepartitionUtil.repartir(quantite, montant, disponible);
         List<VenteOeufsRepartition> lignes = new java.util.ArrayList<>();
@@ -115,7 +119,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
             transactionService.createFromSource(
                     projet, farm, part.montant, "Vente œufs", saved.getDate(),
-                    "Vente de " + part.quantite + " œufs (part de " + saved.getQuantiteOeufs() + " vendus)",
+                    "Vente de " + part.quantite + " œufs (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")",
                     SourceTransaction.VENTE_OEUFS, r.getUniqueId(), creePar
             );
         }
@@ -137,30 +141,43 @@ public class VenteOeufsImpl implements VenteOeufsService {
         if (data.getMontant() == null || data.getMontant() <= 0) {
             throw new IllegalArgumentException("Le montant de la vente doit être positif.");
         }
+        if (data.getMagasinUniqueId() == null || data.getMagasinUniqueId().isBlank()) {
+            throw new IllegalArgumentException("Le magasin de vente est obligatoire.");
+        }
 
-        int restant = stockFermeRestant(farm.getId());
+        MagasinVente magasin = magasinVenteRepo.findByUniqueId(data.getMagasinUniqueId())
+                .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + data.getMagasinUniqueId()));
+
+        int restant = disponibleParProjetDansMagasin(magasin).values().stream().mapToInt(Integer::intValue).sum();
         if (data.getQuantiteOeufs() > restant) {
             throw new IllegalArgumentException(
-                "Stock d'œufs insuffisant pour la ferme (" + restant + " œuf(s) restants)."
+                "Stock d'œufs insuffisant dans ce magasin (" + restant + " œuf(s) restants)."
             );
         }
 
         VenteOeufs v = new VenteOeufs();
         v.setUniqueId(java.util.UUID.randomUUID().toString());
         v.setFarm(farm);
+        v.setMagasin(magasin);
+        v.setCreePar(currentUser);
         v.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
         v.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         v.setQuantiteOeufs(data.getQuantiteOeufs());
         v.setPrixUnitaire(data.getPrixUnitaire());
         v.setMontant(data.getMontant());
+        v.setMontantRapporte(data.getMontantRapporte());
         v.setInitialisation(Initialisation.init());
 
         VenteOeufs saved = venteOeufsRepo.save(v);
 
         List<VenteOeufsRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getQuantiteOeufs(), data.getMontant(), currentUser);
 
+        if (data.getMontantRapporte() != null) {
+            soldeVendeurService.ajusterSolde(currentUser, farm, data.getMontant() - data.getMontantRapporte());
+        }
+
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs",
-                "Vente de " + saved.getQuantiteOeufs() + " œufs (" + saved.getMontant() + " FCFA), répartie entre les projets contributeurs");
+                "Vente de " + saved.getQuantiteOeufs() + " œufs (" + saved.getMontant() + " FCFA) depuis " + magasin.getNom() + ", répartie entre les projets contributeurs");
 
         VenteOeufsDTO dto = VenteOeufsDTO.fromEntity(saved);
         dto.setRepartitions(lignes.stream().map(VenteOeufsRepartitionDTO::fromEntity).toList());
@@ -174,6 +191,11 @@ public class VenteOeufsImpl implements VenteOeufsService {
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
+        // Capturé AVANT toute mutation : sert à annuler l'ancien écart du solde vendeur
+        // plus bas, avant d'appliquer le nouveau (voir bloc solde après les mutations).
+        Double ancienMontant = v.getMontant();
+        Double ancienMontantRapporte = v.getMontantRapporte();
+
         if (data.getDate() != null) v.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
@@ -184,15 +206,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
             if (data.getQuantiteOeufs() <= 0) {
                 throw new IllegalArgumentException("La quantité d'œufs vendus doit être positive.");
             }
-            Long farmId = v.getFarm().getId();
-            int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
-            int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));
-            int totalVendu = nz(venteOeufsRepo.sumQuantiteByFarmId(farmId));
-            int ancienneQuantite = nz(v.getQuantiteOeufs());
-            int nouveauTotalVendu = totalVendu - ancienneQuantite + data.getQuantiteOeufs();
-            if (nouveauTotalVendu > (totalCollecte - totalCasse)) {
+            if (v.getMagasin() == null) {
+                throw new IllegalArgumentException("Cette vente n'est rattachée à aucun magasin (ancienne vente farm-wide) : quantité non modifiable.");
+            }
+            Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin());
+            int restantHorsCetteVente = disponible.values().stream().mapToInt(Integer::intValue).sum() + nz(v.getQuantiteOeufs());
+            if (data.getQuantiteOeufs() > restantHorsCetteVente) {
                 throw new IllegalArgumentException(
-                    "Stock d'œufs insuffisant pour la ferme (" + ((totalCollecte - totalCasse) - (totalVendu - ancienneQuantite)) + " œuf(s) restants)."
+                    "Stock d'œufs insuffisant dans ce magasin (" + restantHorsCetteVente + " œuf(s) restants)."
                 );
             }
             v.setQuantiteOeufs(data.getQuantiteOeufs());
@@ -203,6 +224,24 @@ public class VenteOeufsImpl implements VenteOeufsService {
             }
             v.setMontant(data.getMontant());
         }
+
+        if (data.getMontantRapporte() != null) {
+            v.setMontantRapporte(data.getMontantRapporte());
+        }
+
+        // Solde vendeur : annule l'ancien écart puis applique le nouveau, seulement si
+        // le montant théorique ou le montant rapporté a changé — le vendeur de
+        // référence reste celui qui a créé la vente (v.creePar), pas celui qui modifie.
+        boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;
+        if (ecartChange && v.getCreePar() != null) {
+            if (ancienMontantRapporte != null) {
+                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
+            }
+            if (v.getMontantRapporte() != null) {
+                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
+            }
+        }
+
         if (v.getInitialisation() != null) {
             v.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }
@@ -220,7 +259,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
                 transactionService.toggleRemovedBySource(ancienne.getUniqueId());
             }
             repartitionRepo.deleteAll(anciennes);
-            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getQuantiteOeufs(), saved.getMontant(), currentUser);
+            lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getQuantiteOeufs(), saved.getMontant(), saved.getCreePar() != null ? saved.getCreePar() : currentUser);
         } else {
             lignesActuelles = repartitionRepo.findByVenteOeufs_UniqueId(saved.getUniqueId());
         }
@@ -246,6 +285,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         for (VenteOeufsRepartition r : repartitionRepo.findByVenteOeufs_UniqueId(uniqueId)) {
             transactionService.toggleRemovedBySource(r.getUniqueId());
+        }
+
+        // Supprimer une vente annule aussi son impact sur le solde du vendeur (et la
+        // restauration le réapplique) — sinon une dette resterait comptée pour une
+        // vente qui n'existe plus.
+        if (v.getCreePar() != null && v.getMontantRapporte() != null) {
+            double ecart = nz(v.getMontant()) - v.getMontantRapporte();
+            soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -289,6 +336,9 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
         Long farmId = currentUser.getFarm().getId();
 
+        // Reste un indicateur farm-wide global (utile en reporting admin) : collecté -
+        // cassé - vendu, tous magasins confondus — distinct du stock par magasin
+        // (voir MagasinVenteService.getStock), qui seul plafonne une vente précise.
         int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
         int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));
         int totalVendu = nz(venteOeufsRepo.sumQuantiteByFarmId(farmId));

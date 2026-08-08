@@ -23,4 +23,18 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
     @Query("SELECT COALESCE(SUM(r.quantiteAttribuee), 0) FROM VenteOeufsRepartition r " +
         "WHERE r.projet.id = :projetId AND r.venteOeufs.initialisation.removed = false")
     Integer sumQuantiteByProjetId(@Param("projetId") Long projetId);
+
+    // Déjà vendu POUR CE PROJET, DEPUIS CE MAGASIN précis — voir
+    // VenteOeufsImpl.disponibleParProjetDansMagasin (stock magasin-scopé, remplace
+    // l'ancien calcul farm-wide de sumQuantiteByProjetId ci-dessus pour une vente).
+    @Query("SELECT COALESCE(SUM(r.quantiteAttribuee), 0) FROM VenteOeufsRepartition r " +
+        "WHERE r.projet.id = :projetId AND r.venteOeufs.magasin.id = :magasinId " +
+        "AND r.venteOeufs.initialisation.removed = false")
+    Integer sumQuantiteByProjetIdAndMagasinId(@Param("projetId") Long projetId, @Param("magasinId") Long magasinId);
+
+    // Total vendu DEPUIS ce magasin, tous projets contributeurs confondus — pour
+    // l'aperçu global de stock du magasin (StockMagasinDTO).
+    @Query("SELECT COALESCE(SUM(r.quantiteAttribuee), 0) FROM VenteOeufsRepartition r " +
+        "WHERE r.venteOeufs.magasin.id = :magasinId AND r.venteOeufs.initialisation.removed = false")
+    Integer sumQuantiteByMagasinId(@Param("magasinId") Long magasinId);
 }

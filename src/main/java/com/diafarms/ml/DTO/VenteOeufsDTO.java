@@ -23,9 +23,13 @@ public class VenteOeufsDTO {
     private String uniqueId;
     private LocalDate date;
     private LocalTime heure;
+    private String magasinUniqueId;
+    private String magasinNom;
     private Integer quantiteOeufs;
     private Double prixUnitaire;
     private Double montant;
+    private Double montantRapporte;
+    private String creeParNom;
     private LocalDateTime createdAt;
     // Part de chaque projet contributeur dans cette vente (voir VenteOeufsRepartition) —
     // permet d'afficher qui a apporté quoi, la vraie donnée reste les Transactions
@@ -39,9 +43,13 @@ public class VenteOeufsDTO {
                 .uniqueId(v.getUniqueId())
                 .date(v.getDate())
                 .heure(v.getHeure())
+                .magasinUniqueId(v.getMagasin() != null ? v.getMagasin().getUniqueId() : null)
+                .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
                 .quantiteOeufs(v.getQuantiteOeufs())
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
+                .montantRapporte(v.getMontantRapporte())
+                .creeParNom(v.getCreePar() != null ? v.getCreePar().getFullName() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
                 .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()
                         .map(VenteOeufsRepartitionDTO::fromEntity)

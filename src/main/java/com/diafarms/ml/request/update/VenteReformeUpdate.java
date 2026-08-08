@@ -9,4 +9,5 @@ public class VenteReformeUpdate {
     private Integer nombreSujets;
     private Double prixUnitaire;
     private Double montant;
+    private Double montantRapporte;
 }

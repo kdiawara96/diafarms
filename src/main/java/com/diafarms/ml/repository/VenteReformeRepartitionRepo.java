@@ -21,4 +21,17 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
     @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
         "WHERE r.projet.id = :projetId AND r.venteReforme.initialisation.removed = false")
     Integer sumSujetsByProjetId(@Param("projetId") Long projetId);
+
+    // Déjà vendu POUR CE PROJET, DEPUIS CE MAGASIN précis — voir
+    // VenteReformeImpl.disponibleParProjetDansMagasin.
+    @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
+        "WHERE r.projet.id = :projetId AND r.venteReforme.magasin.id = :magasinId " +
+        "AND r.venteReforme.initialisation.removed = false")
+    Integer sumSujetsByProjetIdAndMagasinId(@Param("projetId") Long projetId, @Param("magasinId") Long magasinId);
+
+    // Total vendu DEPUIS ce magasin, tous projets contributeurs confondus — pour
+    // l'aperçu global de stock du magasin (StockMagasinDTO).
+    @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
+        "WHERE r.venteReforme.magasin.id = :magasinId AND r.venteReforme.initialisation.removed = false")
+    Integer sumSujetsByMagasinId(@Param("magasinId") Long magasinId);
 }

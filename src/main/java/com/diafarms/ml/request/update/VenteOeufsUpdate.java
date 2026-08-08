@@ -9,4 +9,5 @@ public class VenteOeufsUpdate {
     private Integer quantiteOeufs;
     private Double prixUnitaire;
     private Double montant;
+    private Double montantRapporte;
 }

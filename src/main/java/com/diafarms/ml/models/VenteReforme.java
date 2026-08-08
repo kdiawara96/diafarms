@@ -54,12 +54,27 @@ public class VenteReforme {
     @Column(name = "prix_unitaire")
     private Double prixUnitaire;
 
+    // Montant théorique — voir VenteOeufs.montant/montantRapporte pour le détail du
+    // rapprochement avec ce que le vendeur a réellement rapporté.
     @Column(nullable = false)
     private Double montant;
+
+    @Column(name = "montant_rapporte")
+    private Double montantRapporte;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
+
+    // Nullable pour compat avec les ventes créées avant l'introduction des magasins —
+    // voir VenteOeufs.magasin pour le détail, même principe.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "magasin_id")
+    private MagasinVente magasin;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cree_par_id")
+    private Utilisateurs creePar;
 
     @OneToMany(mappedBy = "venteReforme", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteReformeRepartition> repartitions;

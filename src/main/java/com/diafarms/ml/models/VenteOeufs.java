@@ -57,12 +57,35 @@ public class VenteOeufs {
     @Column(name = "prix_unitaire")
     private Double prixUnitaire;
 
+    // Montant théorique (quantité × prix, ou saisi librement) — voir montantRapporte
+    // ci-dessous pour le montant réellement encaissé par le vendeur ce jour-là.
     @Column(nullable = false)
     private Double montant;
+
+    // Ce que le vendeur a réellement rapporté ce jour-là — peut différer de `montant`
+    // (dette si inférieur, remboursement d'une dette précédente si supérieur). Nullable :
+    // une vente créée par un ADMIN/RESPONSABLE (pas un vendeur terrain) n'a pas
+    // toujours cette distinction. Voir SoldeVendeur pour le solde cumulé qui en découle.
+    @Column(name = "montant_rapporte")
+    private Double montantRapporte;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
+
+    // Nullable pour compat avec les ventes créées avant l'introduction des magasins
+    // (stock farm-wide à l'époque) — obligatoire pour toute nouvelle vente, voir
+    // VenteOeufsImpl.create(). Le plafond de stock et la répartition entre projets
+    // se calculent désormais à l'intérieur de CE magasin, pas farm-wide.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "magasin_id")
+    private MagasinVente magasin;
+
+    // Vendeur — sert à imputer l'écart théorique/rapporté à SON solde (SoldeVendeur),
+    // et au filtre "mes ventes" (comme Transaction.creePar sur la Transaction générée).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cree_par_id")
+    private Utilisateurs creePar;
 
     @OneToMany(mappedBy = "venteOeufs", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteOeufsRepartition> repartitions;
