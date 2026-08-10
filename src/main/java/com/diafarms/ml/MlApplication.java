@@ -59,7 +59,7 @@ public class MlApplication implements CommandLineRunner {
 		SpringApplication.run(MlApplication.class, args);
 	}
 	
-	 @Override
+	@Override
     public void run(String... args) {
         PasswordEncoder passwordEncoder = passwordEncoder();
         // =====================================================

@@ -13,6 +13,10 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 
+// Poulailler (bâtiment d'élevage) — le stockage/la vente d'œufs vivent désormais dans
+// Magasin (type STOCKAGE/VENTE), Batiment ne sert plus qu'à l'élevage : où sont les
+// poules, via OccupationBatiment (voir CollecteOeufs.batiment, distinct de
+// CollecteOeufs.magasinStockage qui répond "où sont les œufs").
 @Entity
 @Table(name = "batiments")
 @AllArgsConstructor
@@ -26,17 +30,13 @@ public class Batiment {
     private Long id;
 
     @Column(name = "unique_id", nullable = false, unique = true, length = 50)
-    private String uniqueId;  
+    private String uniqueId;
 
     @Column(name = "nom", nullable = false, length = 100)
     private String nom;
 
     @Column(name = "capacite", nullable = false)
     private Integer capacite;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "type", nullable = false, length = 20)
-    private TypeBatiment type;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "statut", nullable = false, length = 20)
@@ -51,14 +51,6 @@ public class Batiment {
     @Column(name = "superficie_m2")
     private Double superficieM2;
 
-    // Seuil d'alerte stock bas, en ALVÉOLES (pas en œufs — plus lisible pour un usage
-    // quotidien) — n'a de sens que pour un bâtiment de type STOCKAGE, jamais imposé au
-    // niveau base (même logique que capacite/superficieM2 côté POULAILLER, voir
-    // CreateBatimentDialog côté web pour le masquage conditionnel). Null = alerte
-    // désactivée. Voir NotificationServiceImpl.addBatimentStockageAlerts.
-    @Column(name = "seuil_alerte_alveoles")
-    private Integer seuilAlerteAlveoles;
-
     @Embedded
     private Initialisation initialisation;
 
@@ -68,24 +60,6 @@ public class Batiment {
 
     @OneToMany(mappedBy = "batiment", fetch = FetchType.LAZY)
     private List<OccupationBatiment> historiqueOccupations = new ArrayList<>();
-
-
-    // Enumération pour le type de bâtiment
-    public enum TypeBatiment {
-        POULAILLER("poulailler"),
-        STOCKAGE("stockage"),
-        AUTRE("autre");
-
-        private final String value;
-
-        TypeBatiment(String value) {
-            this.value = value;
-        }
-
-        public String getValue() {
-            return value;
-        }
-    }
 
     // Enumération pour le statut du bâtiment
     public enum StatutBatiment {

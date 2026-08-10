@@ -28,8 +28,8 @@ public class CollecteOeufsDTO {
     private String projetUniqueId;
     private String batimentNom;
     private String batimentUniqueId;
-    private String batimentStockageNom;
-    private String batimentStockageUniqueId;
+    private String magasinStockageNom;
+    private String magasinStockageUniqueId;
     private LocalDateTime createdAt;
 
     public static CollecteOeufsDTO fromEntity(CollecteOeufs c) {
@@ -45,8 +45,8 @@ public class CollecteOeufsDTO {
                 .projetUniqueId(c.getProjet() != null ? c.getProjet().getUniqueId() : null)
                 .batimentNom(c.getBatiment() != null ? c.getBatiment().getNom() : null)
                 .batimentUniqueId(c.getBatiment() != null ? c.getBatiment().getUniqueId() : null)
-                .batimentStockageNom(c.getBatimentStockage() != null ? c.getBatimentStockage().getNom() : null)
-                .batimentStockageUniqueId(c.getBatimentStockage() != null ? c.getBatimentStockage().getUniqueId() : null)
+                .magasinStockageNom(c.getMagasinStockage() != null ? c.getMagasinStockage().getNom() : null)
+                .magasinStockageUniqueId(c.getMagasinStockage() != null ? c.getMagasinStockage().getUniqueId() : null)
                 .createdAt(c.getInitialisation() != null ? c.getInitialisation().getCreatedAt() : null)
                 .build();
     }

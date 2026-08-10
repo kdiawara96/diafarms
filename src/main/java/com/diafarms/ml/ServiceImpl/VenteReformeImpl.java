@@ -21,14 +21,14 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.models.Farm;
-import com.diafarms.ml.models.MagasinVente;
+import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.models.VenteReformeRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
-import com.diafarms.ml.repository.MagasinVenteRepo;
+import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.ReformeRepo;
 import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
@@ -52,7 +52,7 @@ public class VenteReformeImpl implements VenteReformeService {
     private final VenteReformeRepartitionRepo repartitionRepo;
     private final ReformeRepo reformeRepo;
     private final ProjetsRepo projetsRepo;
-    private final MagasinVenteRepo magasinVenteRepo;
+    private final MagasinRepo magasinRepo;
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final SoldeVendeurServiceImpl soldeVendeurService;
     private final LogsServices logs;
@@ -76,7 +76,7 @@ public class VenteReformeImpl implements VenteReformeService {
         return v == null ? 0.0 : v;
     }
 
-    private Map<Long, Integer> disponibleParProjetDansMagasin(MagasinVente magasin) {
+    private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin) {
         Map<Long, Integer> disponible = new LinkedHashMap<>();
         List<Long> projetIds = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(magasin.getId(), TypeStockMagasin.REFORME);
         for (Long projetId : projetIds) {
@@ -154,8 +154,11 @@ public class VenteReformeImpl implements VenteReformeService {
             throw new IllegalArgumentException("Le magasin de vente est obligatoire.");
         }
 
-        MagasinVente magasin = magasinVenteRepo.findByUniqueId(data.getMagasinUniqueId())
+        Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + data.getMagasinUniqueId()));
+        if (magasin.getType() != Magasin.TypeMagasin.VENTE) {
+            throw new IllegalArgumentException("On ne peut vendre que depuis un magasin de type VENTE.");
+        }
 
         int restant = disponibleParProjetDansMagasin(magasin).values().stream().mapToInt(Integer::intValue).sum();
         if (data.getNombreSujets() > restant) {

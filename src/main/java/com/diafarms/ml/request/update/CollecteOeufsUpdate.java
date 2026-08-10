@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class CollecteOeufsUpdate {
     private String batimentUniqueId; // optionnel
-    private String batimentStockageUniqueId; // optionnel (null = pas modifié)
+    private String magasinStockageUniqueId; // optionnel (null = pas modifié)
     private String date;
     private String heure;
     private Integer oeufsCollectes;

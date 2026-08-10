@@ -3,7 +3,7 @@ package com.diafarms.ml.DTO;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.diafarms.ml.models.MagasinVente;
+import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Utilisateurs;
 
 import lombok.AllArgsConstructor;
@@ -17,13 +17,15 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class MagasinVenteDTO {
+public class MagasinDTO {
     private Long id;
     private String uniqueId;
     private String nom;
+    private String type;
     private String description;
     private Integer seuilAlerteOeufs;
     private Integer seuilAlerteReforme;
+    private Integer seuilAlerteAlveoles;
     private List<VendeurRefDTO> vendeurs;
 
     @Getter
@@ -36,17 +38,19 @@ public class MagasinVenteDTO {
         private String fullName;
     }
 
-    public static MagasinVenteDTO fromEntity(MagasinVente m) {
+    public static MagasinDTO fromEntity(Magasin m) {
         if (m == null) return null;
-        return MagasinVenteDTO.builder()
+        return MagasinDTO.builder()
                 .id(m.getId())
                 .uniqueId(m.getUniqueId())
                 .nom(m.getNom())
+                .type(m.getType() != null ? m.getType().name() : null)
                 .description(m.getDescription())
                 .seuilAlerteOeufs(m.getSeuilAlerteOeufs())
                 .seuilAlerteReforme(m.getSeuilAlerteReforme())
+                .seuilAlerteAlveoles(m.getSeuilAlerteAlveoles())
                 .vendeurs(m.getVendeurs() == null ? List.of() : m.getVendeurs().stream()
-                        .map(MagasinVenteDTO::toVendeurRef)
+                        .map(MagasinDTO::toVendeurRef)
                         .collect(Collectors.toList()))
                 .build();
     }

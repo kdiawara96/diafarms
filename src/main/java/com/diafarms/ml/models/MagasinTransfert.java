@@ -34,25 +34,25 @@ public class MagasinTransfert {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_id", nullable = false)
-    private MagasinVente magasin;
+    private Magasin magasin;
 
     // Toujours renseigné (OEUFS comme REFORME) : c'est ce qui porte l'attribution du
     // chiffre d'affaires à un projet précis en aval (VenteOeufsImpl/VenteReformeImpl).
     // Pour OEUFS, calculé automatiquement (répartition proportionnelle entre les
-    // projets contributeurs DE batimentStockage ci-dessous, voir
-    // MagasinTransfertServiceImpl.create) — l'utilisateur choisit un bâtiment, pas un
-    // projet ; pour REFORME, toujours choisi directement par l'utilisateur (pas de
-    // notion de bâtiment de stockage pour les sujets réformés).
+    // projets contributeurs DE magasinStockage ci-dessous, voir
+    // MagasinTransfertServiceImpl.create) — l'utilisateur choisit un magasin de
+    // stockage, pas un projet ; pour REFORME, toujours choisi directement par
+    // l'utilisateur (pas de notion de magasin de stockage pour les sujets réformés).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;
 
-    // Bâtiment de stockage SOURCE — renseigné uniquement pour un transfert OEUFS (null
-    // pour REFORME). Voir CollecteOeufs.batimentStockage : c'est de là que les œufs
-    // partent physiquement vers le magasin.
+    // Magasin de stockage SOURCE (Magasin.TypeMagasin.STOCKAGE) — renseigné uniquement
+    // pour un transfert OEUFS (null pour REFORME). Voir CollecteOeufs.magasinStockage :
+    // c'est de là que les œufs partent physiquement vers le magasin de vente ci-dessus.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "batiment_stockage_id")
-    private Batiment batimentStockage;
+    @JoinColumn(name = "magasin_stockage_id")
+    private Magasin magasinStockage;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, length = 20)

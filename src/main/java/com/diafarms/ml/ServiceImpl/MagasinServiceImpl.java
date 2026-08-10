@@ -5,27 +5,28 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.diafarms.ml.DTO.MagasinVenteDTO;
+import com.diafarms.ml.DTO.MagasinDTO;
 import com.diafarms.ml.DTO.StockMagasinDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.TypeStockMagasin;
-import com.diafarms.ml.models.MagasinVente;
+import com.diafarms.ml.models.Magasin;
+import com.diafarms.ml.models.Magasin.TypeMagasin;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
-import com.diafarms.ml.repository.MagasinVenteRepo;
+import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
 import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
-import com.diafarms.ml.request.create.MagasinVenteCreate;
-import com.diafarms.ml.services.MagasinVenteService;
+import com.diafarms.ml.request.create.MagasinCreate;
+import com.diafarms.ml.services.MagasinService;
 
 import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
-public class MagasinVenteServiceImpl implements MagasinVenteService {
+public class MagasinServiceImpl implements MagasinService {
 
-    private final MagasinVenteRepo magasinVenteRepo;
+    private final MagasinRepo magasinRepo;
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
@@ -60,47 +61,62 @@ public class MagasinVenteServiceImpl implements MagasinVenteService {
         return v == null ? 0 : v;
     }
 
+    private TypeMagasin parseType(String type) {
+        if (type == null || type.isBlank()) return TypeMagasin.VENTE;
+        try {
+            return TypeMagasin.valueOf(type.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Type de magasin invalide (attendu VENTE ou STOCKAGE) : " + type);
+        }
+    }
+
     @Override
     @Transactional
-    public MagasinVenteDTO create(MagasinVenteCreate data) {
+    public MagasinDTO create(MagasinCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
         if (data.getNom() == null || data.getNom().isBlank()) {
             throw new IllegalArgumentException("Le nom du magasin est obligatoire.");
         }
 
-        MagasinVente m = new MagasinVente();
+        TypeMagasin type = parseType(data.getType());
+
+        Magasin m = new Magasin();
         m.setUniqueId(java.util.UUID.randomUUID().toString());
         m.setNom(data.getNom());
+        m.setType(type);
         m.setDescription(data.getDescription());
         m.setSeuilAlerteOeufs(data.getSeuilAlerteOeufs());
         m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
+        m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
         m.setFarm(currentUser.getFarm());
         m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
         m.setInitialisation(Initialisation.init());
 
-        return MagasinVenteDTO.fromEntity(magasinVenteRepo.save(m));
+        return MagasinDTO.fromEntity(magasinRepo.save(m));
     }
 
     @Override
     @Transactional
-    public MagasinVenteDTO update(String uniqueId, MagasinVenteCreate data) {
+    public MagasinDTO update(String uniqueId, MagasinCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
 
-        MagasinVente m = magasinVenteRepo.findByUniqueId(uniqueId)
+        Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
 
         if (data.getNom() != null && !data.getNom().isBlank()) m.setNom(data.getNom());
+        if (data.getType() != null && !data.getType().isBlank()) m.setType(parseType(data.getType()));
         if (data.getDescription() != null) m.setDescription(data.getDescription());
         // Toujours écrasé (pas de "null = inchangé" ici) : c'est le seul moyen de
         // pouvoir désactiver une alerte déjà configurée en renvoyant explicitement null.
         m.setSeuilAlerteOeufs(data.getSeuilAlerteOeufs());
         m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
+        m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
         if (data.getVendeurUniqueIds() != null) m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
         if (m.getInitialisation() != null) m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 
-        return MagasinVenteDTO.fromEntity(magasinVenteRepo.save(m));
+        return MagasinDTO.fromEntity(magasinRepo.save(m));
     }
 
     private List<Utilisateurs> resolveVendeurs(List<String> uniqueIds) {
@@ -117,35 +133,49 @@ public class MagasinVenteServiceImpl implements MagasinVenteService {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
 
-        MagasinVente m = magasinVenteRepo.findByUniqueId(uniqueId)
+        Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
 
         m.getInitialisation().setRemoved(!m.getInitialisation().getRemoved());
-        magasinVenteRepo.save(m);
+        magasinRepo.save(m);
         boolean removed = m.getInitialisation().getRemoved();
         return removed ? "Magasin supprimé." : "Magasin récupéré.";
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<MagasinVenteDTO> list() {
+    public List<MagasinDTO> list(String type) {
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser == null || currentUser.getFarm() == null) return List.of();
+
+        // Un magasin de STOCKAGE n'a pas de notion de vendeur assigné (voir
+        // CollecteOeufs.magasinStockage, alimenté par collecte, pas par vente) : le
+        // filtrage "VENTE pur ne voit que ses magasins" ne s'applique qu'au type VENTE.
+        TypeMagasin typeFiltre = (type == null || type.isBlank()) ? null : parseType(type);
 
         boolean isPureVente = currentUser.getRoles() != null && !currentUser.getRoles().isEmpty()
                 && currentUser.getRoles().stream().allMatch(r -> "VENTE".equalsIgnoreCase(r.getRole()));
 
-        List<MagasinVente> magasins = isPureVente
-                ? magasinVenteRepo.findAssignedToVendeur(currentUser.getFarm().getId(), currentUser.getUniqueId())
-                : magasinVenteRepo.findAllActiveByFarm(currentUser.getFarm().getId());
+        List<Magasin> magasins;
+        if (typeFiltre != null) {
+            magasins = magasinRepo.findAllActiveByFarmAndType(currentUser.getFarm().getId(), typeFiltre);
+            if (typeFiltre == TypeMagasin.VENTE && isPureVente) {
+                List<Magasin> assignes = magasinRepo.findAssignedToVendeur(currentUser.getFarm().getId(), currentUser.getUniqueId());
+                magasins = magasins.stream().filter(assignes::contains).toList();
+            }
+        } else {
+            magasins = isPureVente
+                    ? magasinRepo.findAssignedToVendeur(currentUser.getFarm().getId(), currentUser.getUniqueId())
+                    : magasinRepo.findAllActiveByFarm(currentUser.getFarm().getId());
+        }
 
-        return magasins.stream().map(MagasinVenteDTO::fromEntity).toList();
+        return magasins.stream().map(MagasinDTO::fromEntity).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public StockMagasinDTO getStock(String uniqueId) {
-        MagasinVente m = magasinVenteRepo.findByUniqueId(uniqueId)
+        Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
 
         int oeufsRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.OEUFS));

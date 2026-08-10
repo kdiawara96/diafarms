@@ -111,13 +111,11 @@ public class BatimentImpl implements BatimentServices {
         // 3. Mise à jour des champs
         existingBatiment.setNom(nouveauNom.trim());
         existingBatiment.setCapacite(batiment.getCapacite());
-        existingBatiment.setType(batiment.getType());
         existingBatiment.setStatut(batiment.getStatut());
         existingBatiment.setDescription(batiment.getDescription());
         existingBatiment.setDateDerniereMaintenance(batiment.getDateDerniereMaintenance());
         existingBatiment.setSuperficieM2(batiment.getSuperficieM2());
-        existingBatiment.setSeuilAlerteAlveoles(batiment.getSeuilAlerteAlveoles());
-        
+
         existingBatiment.setInitialisation(Initialisation.updateDate(existingBatiment.getInitialisation()));
 
         // 4. Logs

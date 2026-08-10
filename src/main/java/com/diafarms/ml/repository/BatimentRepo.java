@@ -38,11 +38,6 @@ public interface BatimentRepo extends JpaRepository<Batiment, Long> {
     @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId AND b.initialisation.removed = false")
     List<Batiment> findActiveByFarmId(@Param("farmId") Long farmId);
 
-    // Bâtiments de STOCKAGE uniquement — voir NotificationServiceImpl.addBatimentStockageAlerts.
-    @Query("SELECT b FROM Batiment b WHERE b.farm.id = :farmId AND b.type = com.diafarms.ml.models.Batiment.TypeBatiment.STOCKAGE " +
-        "AND b.initialisation.removed = false")
-    List<Batiment> findStockageActiveByFarmId(@Param("farmId") Long farmId);
-
     @Query("""
         SELECT b
         FROM Batiment b

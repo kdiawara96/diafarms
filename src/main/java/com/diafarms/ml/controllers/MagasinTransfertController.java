@@ -59,12 +59,13 @@ public class MagasinTransfertController {
         }
     }
 
-    // OEUFS : disponible pour UN BÂTIMENT DE STOCKAGE (tous projets contributeurs confondus).
+    // OEUFS : disponible pour UN MAGASIN DE STOCKAGE (tous projets contributeurs confondus).
+    // Route conservée pour compat des clients existants (mobile), le paramètre a changé de sens.
     @GetMapping("/disponible-batiment")
-    public ResponseEntity<ApiResponse<Integer>> disponibleBatiment(@RequestParam String batimentStockageUniqueId) {
+    public ResponseEntity<ApiResponse<Integer>> disponibleBatiment(@RequestParam String magasinStockageUniqueId) {
         try {
             return ApiResponse.createResponse("Stock disponible à transférer récupéré", HttpStatus.OK,
-                    service.disponibleATransfererDepuisBatimentStockage(batimentStockageUniqueId), null);
+                    service.disponibleATransfererDepuisMagasinStockage(magasinStockageUniqueId), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

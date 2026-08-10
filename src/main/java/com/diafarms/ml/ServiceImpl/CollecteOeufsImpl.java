@@ -15,11 +15,13 @@ import com.diafarms.ml.DTO.CollecteOeufsDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.CollecteOeufs;
+import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
+import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.ReformeRepo;
@@ -37,6 +39,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final ProjetsRepo projetsRepo;
     private final BatimentRepo batimentRepo;
+    private final MagasinRepo magasinRepo;
     private final MortaliteRepo mortaliteRepo;
     private final ReformeRepo reformeRepo;
     private final LogsServices logs;
@@ -83,16 +86,16 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
             );
         }
 
-        // Bâtiment de STOCKAGE obligatoire (pas le bâtiment d'élevage, optionnel
-        // lui) : c'est ce qui plafonne les transferts vers un magasin de vente plus
-        // tard (MagasinTransfertServiceImpl), impossible de savoir où sont les œufs
-        // sans ça.
-        if (data.getBatimentStockageUniqueId() == null || data.getBatimentStockageUniqueId().isBlank()) {
-            throw new IllegalArgumentException("Le bâtiment de stockage est obligatoire.");
+        // Magasin de STOCKAGE obligatoire (pas le bâtiment/poulailler d'élevage,
+        // optionnel lui) : c'est ce qui plafonne les transferts vers un magasin de
+        // vente plus tard (MagasinTransfertServiceImpl), impossible de savoir où sont
+        // les œufs sans ça.
+        if (data.getMagasinStockageUniqueId() == null || data.getMagasinStockageUniqueId().isBlank()) {
+            throw new IllegalArgumentException("Le magasin de stockage est obligatoire.");
         }
-        Batiment batimentStockage = batimentRepo.findByUniqueId(data.getBatimentStockageUniqueId());
-        if (batimentStockage == null || batimentStockage.getType() != Batiment.TypeBatiment.STOCKAGE) {
-            throw new IllegalArgumentException("Bâtiment de stockage invalide : " + data.getBatimentStockageUniqueId());
+        Magasin magasinStockage = magasinRepo.findByUniqueId(data.getMagasinStockageUniqueId()).orElse(null);
+        if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE) {
+            throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
         }
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -104,7 +107,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         c.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         c.setOeufsCollectes(data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0);
         c.setOeufsCasses(data.getOeufsCasses() != null ? data.getOeufsCasses() : 0);
-        c.setBatimentStockage(batimentStockage);
+        c.setMagasinStockage(magasinStockage);
         c.setInitialisation(Initialisation.init());
 
         if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
@@ -146,15 +149,15 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         if (data.getBatimentUniqueId() != null) {
             c.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
         }
-        if (data.getBatimentStockageUniqueId() != null) {
-            if (data.getBatimentStockageUniqueId().isBlank()) {
-                throw new IllegalArgumentException("Le bâtiment de stockage est obligatoire.");
+        if (data.getMagasinStockageUniqueId() != null) {
+            if (data.getMagasinStockageUniqueId().isBlank()) {
+                throw new IllegalArgumentException("Le magasin de stockage est obligatoire.");
             }
-            Batiment batimentStockage = batimentRepo.findByUniqueId(data.getBatimentStockageUniqueId());
-            if (batimentStockage == null || batimentStockage.getType() != Batiment.TypeBatiment.STOCKAGE) {
-                throw new IllegalArgumentException("Bâtiment de stockage invalide : " + data.getBatimentStockageUniqueId());
+            Magasin magasinStockage = magasinRepo.findByUniqueId(data.getMagasinStockageUniqueId()).orElse(null);
+            if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE) {
+                throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
             }
-            c.setBatimentStockage(batimentStockage);
+            c.setMagasinStockage(magasinStockage);
         }
         if (c.getInitialisation() != null) {
             c.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());

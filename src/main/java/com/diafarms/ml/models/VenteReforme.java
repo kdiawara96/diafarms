@@ -70,7 +70,7 @@ public class VenteReforme {
     // voir VenteOeufs.magasin pour le détail, même principe.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_id")
-    private MagasinVente magasin;
+    private Magasin magasin;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cree_par_id")

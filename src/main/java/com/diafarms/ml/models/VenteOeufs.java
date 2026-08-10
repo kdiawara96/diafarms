@@ -79,7 +79,7 @@ public class VenteOeufs {
     // se calculent désormais à l'intérieur de CE magasin, pas farm-wide.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_id")
-    private MagasinVente magasin;
+    private Magasin magasin;
 
     // Vendeur — sert à imputer l'écart théorique/rapporté à SON solde (SoldeVendeur),
     // et au filtre "mes ventes" (comme Transaction.creePar sur la Transaction générée).

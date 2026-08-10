@@ -5,11 +5,13 @@ import java.util.List;
 import lombok.Data;
 
 @Data
-public class MagasinVenteCreate {
+public class MagasinCreate {
     private String nom;
+    private String type; // "VENTE" ou "STOCKAGE", défaut VENTE si absent
     private String description; // optionnel
-    private List<String> vendeurUniqueIds; // optionnel, VENTE role attendu (non vérifié strictement)
+    private List<String> vendeurUniqueIds; // optionnel, VENTE role attendu (non vérifié strictement) — pertinent seulement pour type=VENTE
     // Seuils d'alerte stock bas (optionnels, null = pas d'alerte pour ce type dans ce magasin).
     private Integer seuilAlerteOeufs;
     private Integer seuilAlerteReforme;
+    private Integer seuilAlerteAlveoles; // pertinent seulement pour type=STOCKAGE
 }

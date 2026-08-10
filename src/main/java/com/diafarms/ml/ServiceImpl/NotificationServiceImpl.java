@@ -19,26 +19,24 @@ import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.AlertType;
 import com.diafarms.ml.enums.ThresholdKey;
 import com.diafarms.ml.enums.TypeStockMagasin;
-import com.diafarms.ml.models.Batiment;
-import com.diafarms.ml.models.MagasinVente;
+import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.NotificationRead;
 import com.diafarms.ml.models.ProjectAlertConfig;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.AlimentationRepo;
-import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
-import com.diafarms.ml.repository.MagasinVenteRepo;
+import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.NotificationReadRepo;
 import com.diafarms.ml.repository.ProjectAlertConfigRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.TransactionRepo;
 import com.diafarms.ml.services.MagasinTransfertService;
-import com.diafarms.ml.services.MagasinVenteService;
+import com.diafarms.ml.services.MagasinService;
 import com.diafarms.ml.services.NotificationService;
 import com.diafarms.ml.services.WeatherService;
 
@@ -64,11 +62,10 @@ public class NotificationServiceImpl implements NotificationService {
     private final ProjectAlertConfigRepo projectAlertConfigRepo;
     private final WeatherService weatherService;
     private final OtherService otherService;
-    private final MagasinVenteRepo magasinVenteRepo;
+    private final MagasinRepo magasinRepo;
     private final MagasinTransfertRepo magasinTransfertRepo;
-    private final MagasinVenteService magasinVenteService;
+    private final MagasinService magasinService;
     private final MagasinTransfertService magasinTransfertService;
-    private final BatimentRepo batimentRepo;
     private final CollecteOeufsRepo collecteOeufsRepo;
 
     // Un rôle est son SEUL rôle (pas de cumul) : un compte qui cumule les rôles garde
@@ -141,11 +138,11 @@ public class NotificationServiceImpl implements NotificationService {
             // stock du magasin concerné.
             if (!isPureProduction(currentUser)) {
                 addMagasinStockAlerts(result, farmId, projets);
-                // Stock bas dans un bâtiment de STOCKAGE (avant même d'atteindre un
+                // Stock bas dans un magasin de STOCKAGE (avant même d'atteindre un
                 // magasin de vente — alerte plus précoce), même périmètre que
                 // l'alerte magasin ci-dessus : RESPONSABLE/ADMIN, pas PRODUCTION
                 // (qui collecte mais ne décide ni des transferts ni des ventes).
-                addBatimentStockageAlerts(result, farmId, projets);
+                addMagasinStockageAlerts(result, farmId, projets);
             }
 
             // La validation reste réservée à un ADMIN/SUPER_ADMIN ou au RESPONSABLE du
@@ -213,20 +210,20 @@ public class NotificationServiceImpl implements NotificationService {
         if (projetsGeres.isEmpty()) return;
         Set<Long> mesProjetIds = projetsGeres.stream().map(Projets::getId).collect(Collectors.toSet());
 
-        for (MagasinVente m : magasinVenteRepo.findAllActiveByFarm(farmId)) {
+        for (Magasin m : magasinRepo.findAllActiveByFarmAndType(farmId, Magasin.TypeMagasin.VENTE)) {
             checkMagasinStockAlert(result, m, TypeStockMagasin.OEUFS, m.getSeuilAlerteOeufs(), mesProjetIds, "œuf(s)");
             checkMagasinStockAlert(result, m, TypeStockMagasin.REFORME, m.getSeuilAlerteReforme(), mesProjetIds, "sujet(s) réformé(s)");
         }
     }
 
-    private void checkMagasinStockAlert(List<NotificationDTO> result, MagasinVente m, TypeStockMagasin type,
+    private void checkMagasinStockAlert(List<NotificationDTO> result, Magasin m, TypeStockMagasin type,
                                          Integer seuil, Set<Long> mesProjetIds, String unite) {
         if (seuil == null) return; // alerte désactivée pour ce type dans ce magasin
 
         List<Long> contributeurs = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(m.getId(), type);
         if (contributeurs.stream().noneMatch(mesProjetIds::contains)) return;
 
-        StockMagasinDTO stock = magasinVenteService.getStock(m.getUniqueId());
+        StockMagasinDTO stock = magasinService.getStock(m.getUniqueId());
         int disponible = type == TypeStockMagasin.OEUFS ? stock.getOeufsDisponible() : stock.getReformeDisponible();
         if (disponible >= seuil) return;
 
@@ -240,32 +237,32 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /** Même raisonnement que addMagasinStockAlerts, un cran plus tôt dans la chaîne :
-     * un bâtiment de stockage n'a pas non plus "un" responsable (plusieurs projets
+     * un magasin de stockage n'a pas non plus "un" responsable (plusieurs projets
      * peuvent y avoir déposé des œufs) — on notifie quiconque gère au moins un des
      * projets qui y contribuent actuellement. Seuil en ALVÉOLES (voir
-     * Batiment.seuilAlerteAlveoles), converti en œufs pour comparer au disponible réel. */
-    private void addBatimentStockageAlerts(List<NotificationDTO> result, Long farmId, List<Projets> projetsGeres) {
+     * Magasin.seuilAlerteAlveoles), converti en œufs pour comparer au disponible réel. */
+    private void addMagasinStockageAlerts(List<NotificationDTO> result, Long farmId, List<Projets> projetsGeres) {
         if (projetsGeres.isEmpty()) return;
         Set<Long> mesProjetIds = projetsGeres.stream().map(Projets::getId).collect(Collectors.toSet());
 
-        for (Batiment b : batimentRepo.findStockageActiveByFarmId(farmId)) {
-            if (b.getSeuilAlerteAlveoles() == null) continue; // alerte désactivée
+        for (Magasin m : magasinRepo.findAllActiveByFarmAndType(farmId, Magasin.TypeMagasin.STOCKAGE)) {
+            if (m.getSeuilAlerteAlveoles() == null) continue; // alerte désactivée
 
-            List<Long> contributeurs = collecteOeufsRepo.findDistinctProjetIdsByBatimentStockageId(b.getId());
+            List<Long> contributeurs = collecteOeufsRepo.findDistinctProjetIdsByMagasinStockageId(m.getId());
             if (contributeurs.stream().noneMatch(mesProjetIds::contains)) continue;
 
-            int disponible = magasinTransfertService.disponibleATransfererDepuisBatimentStockage(b.getUniqueId());
-            int seuilEnOeufs = b.getSeuilAlerteAlveoles() * OEUFS_PAR_ALVEOLE;
+            int disponible = magasinTransfertService.disponibleATransfererDepuisMagasinStockage(m.getUniqueId());
+            int seuilEnOeufs = m.getSeuilAlerteAlveoles() * OEUFS_PAR_ALVEOLE;
             if (disponible >= seuilEnOeufs) continue;
 
             long alveoles = disponible / OEUFS_PAR_ALVEOLE;
             int reste = disponible % OEUFS_PAR_ALVEOLE;
             result.add(NotificationDTO.builder()
-                .key("stock-batiment-stockage-" + b.getUniqueId())
-                .type("STOCK_BATIMENT_STOCKAGE")
+                .key("stock-magasin-stockage-" + m.getUniqueId())
+                .type("STOCK_MAGASIN_STOCKAGE")
                 .level(disponible <= 0 ? "CRITIQUE" : "WARNING")
-                .message("Stock bas — " + b.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))")
-                .actionPath("/parametres")
+                .message("Stock bas — " + m.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))")
+                .actionPath("/magasins")
                 .build());
         }
     }

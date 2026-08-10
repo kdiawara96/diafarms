@@ -57,15 +57,15 @@ public class CollecteOeufs {
     @JoinColumn(name = "batiment_id")
     private Batiment batiment;
 
-    // Bâtiment de STOCKAGE (Batiment.TypeBatiment.STOCKAGE) où les œufs sont
-    // physiquement déposés après collecte — c'est CE stock, par bâtiment, qui
+    // Magasin de STOCKAGE (Magasin.TypeMagasin.STOCKAGE) où les œufs sont
+    // physiquement déposés après collecte — c'est CE stock, par magasin, qui
     // plafonne les transferts vers un magasin de vente (MagasinTransfert), pas le
     // stock théorique du projet. Nullable pour compat des collectes antérieures à ce
     // champ (leur contribution reste alors invisible aux transferts, voir
-    // MagasinTransfertServiceImpl.disponibleParProjetDansBatimentStockage).
+    // MagasinTransfertServiceImpl.disponibleParProjetDansMagasinStockage).
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "batiment_stockage_id")
-    private Batiment batimentStockage;
+    @JoinColumn(name = "magasin_stockage_id")
+    private Magasin magasinStockage;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id")

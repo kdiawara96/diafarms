@@ -21,7 +21,7 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.models.Farm;
-import com.diafarms.ml.models.MagasinVente;
+import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
@@ -29,7 +29,7 @@ import com.diafarms.ml.models.VenteOeufsRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
-import com.diafarms.ml.repository.MagasinVenteRepo;
+import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
@@ -41,7 +41,7 @@ import com.diafarms.ml.services.VenteOeufsService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente d'œufs (Finance) : vendue DEPUIS un magasin précis (voir MagasinVente), qui a
+// Vente d'œufs (Finance) : vendue DEPUIS un magasin précis (voir Magasin), qui a
 // lui-même reçu son stock par des transferts explicites depuis un ou plusieurs projets
 // (voir MagasinTransfert) — remplace l'ancienne répartition automatique farm-wide à la
 // vente. La répartition entre projets contributeurs (pour le chiffre d'affaires par
@@ -55,7 +55,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
     private final VenteOeufsRepartitionRepo repartitionRepo;
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final ProjetsRepo projetsRepo;
-    private final MagasinVenteRepo magasinVenteRepo;
+    private final MagasinRepo magasinRepo;
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final SoldeVendeurServiceImpl soldeVendeurService;
     private final LogsServices logs;
@@ -82,7 +82,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
     /** Stock d'œufs vendables restant DANS ce magasin, projet par projet (ceux qui y
      * ont transféré du stock) — sert de poids pour la répartition proportionnelle
      * d'une vente entre les projets contributeurs de CE magasin précis. */
-    private Map<Long, Integer> disponibleParProjetDansMagasin(MagasinVente magasin) {
+    private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin) {
         Map<Long, Integer> disponible = new LinkedHashMap<>();
         List<Long> projetIds = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(magasin.getId(), TypeStockMagasin.OEUFS);
         for (Long projetId : projetIds) {
@@ -166,8 +166,11 @@ public class VenteOeufsImpl implements VenteOeufsService {
             throw new IllegalArgumentException("Le magasin de vente est obligatoire.");
         }
 
-        MagasinVente magasin = magasinVenteRepo.findByUniqueId(data.getMagasinUniqueId())
+        Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + data.getMagasinUniqueId()));
+        if (magasin.getType() != Magasin.TypeMagasin.VENTE) {
+            throw new IllegalArgumentException("On ne peut vendre que depuis un magasin de type VENTE.");
+        }
 
         int restant = disponibleParProjetDansMagasin(magasin).values().stream().mapToInt(Integer::intValue).sum();
         if (data.getQuantiteOeufs() > restant) {
@@ -369,7 +372,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         // Reste un indicateur farm-wide global (utile en reporting admin) : collecté -
         // cassé - vendu, tous magasins confondus — distinct du stock par magasin
-        // (voir MagasinVenteService.getStock), qui seul plafonne une vente précise.
+        // (voir MagasinService.getStock), qui seul plafonne une vente précise.
         int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
         int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));
         int totalVendu = nz(venteOeufsRepo.sumQuantiteByFarmId(farmId));
