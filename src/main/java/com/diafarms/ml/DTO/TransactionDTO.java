@@ -31,6 +31,13 @@ public class TransactionDTO {
     private List<ProjetsSelect> projetsConcernes; // uniquement pertinent quand "Commun"
     private String description;
     private Double montant;
+    // Montant réellement encaissé pour cette transaction (vente à crédit partielle ou
+    // totale : montant reste la valeur théorique des œufs/réforme sortis, montantReel
+    // reflète ce que le vendeur a effectivement rapporté — voir VenteOeufs/VenteReforme
+    // .montantRapporte et TransactionServiceImpl.enrichMontantReel). Égal à montant par
+    // défaut (aucun écart connu) ; seul .list() calcule la vraie valeur pour les
+    // transactions issues d'une vente, via un ratio par ligne de répartition.
+    private Double montantReel;
     private String categorie;
     private StatutTransaction statut;
     private String commentaireRejet;
@@ -58,6 +65,7 @@ public class TransactionDTO {
                         : List.of())
                 .description(t.getDescription())
                 .montant(t.getMontant())
+                .montantReel(t.getMontant()) // corrigé ensuite par enrichMontantReel si pertinent
                 .categorie(t.getCategorie())
                 .statut(t.getStatut())
                 .commentaireRejet(t.getCommentaireRejet())

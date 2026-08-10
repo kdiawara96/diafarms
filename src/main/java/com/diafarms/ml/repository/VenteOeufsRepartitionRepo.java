@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.diafarms.ml.DTO.RepartitionRatioDTO;
 import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
 import com.diafarms.ml.models.VenteOeufsRepartition;
 
@@ -15,6 +16,12 @@ import com.diafarms.ml.models.VenteOeufsRepartition;
 public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepartition, Long> {
 
     Optional<VenteOeufsRepartition> findByUniqueId(String uniqueId);
+
+    // Voir RepartitionRatioDTO / TransactionServiceImpl.enrichMontantReel — recherche
+    // groupée (pas une par transaction) pour une liste paginée de transactions.
+    @Query("SELECT new com.diafarms.ml.DTO.RepartitionRatioDTO(r.uniqueId, r.venteOeufs.montant, r.venteOeufs.montantRapporte) " +
+        "FROM VenteOeufsRepartition r WHERE r.uniqueId IN :uniqueIds")
+    List<RepartitionRatioDTO> findRatiosByUniqueIds(@Param("uniqueIds") List<String> uniqueIds);
 
     // Voir VenteRepartitionReelDTO — sert à TransactionServiceImpl.getVentesReelParProjet
     // à corriger le théorique par projet au prorata réel/théorique de chaque vente.

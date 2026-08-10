@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.diafarms.ml.DTO.RepartitionRatioDTO;
 import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
 import com.diafarms.ml.models.VenteReformeRepartition;
 
@@ -15,6 +16,11 @@ import com.diafarms.ml.models.VenteReformeRepartition;
 public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeRepartition, Long> {
 
     Optional<VenteReformeRepartition> findByUniqueId(String uniqueId);
+
+    // Voir VenteOeufsRepartitionRepo.findRatiosByUniqueIds (même raisonnement).
+    @Query("SELECT new com.diafarms.ml.DTO.RepartitionRatioDTO(r.uniqueId, r.venteReforme.montant, r.venteReforme.montantRapporte) " +
+        "FROM VenteReformeRepartition r WHERE r.uniqueId IN :uniqueIds")
+    List<RepartitionRatioDTO> findRatiosByUniqueIds(@Param("uniqueIds") List<String> uniqueIds);
 
     List<VenteReformeRepartition> findByVenteReforme_UniqueId(String venteReformeUniqueId);
 

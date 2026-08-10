@@ -2,7 +2,9 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.ProjetVenteReelDTO;
+import com.diafarms.ml.DTO.RepartitionRatioDTO;
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.TransactionStatsDTO;
 import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
@@ -430,6 +433,7 @@ public class TransactionServiceImpl implements TransactionService {
         List<TransactionDTO> dtoList = transactionsPage.getContent().stream()
                 .map(TransactionDTO::fromEntity)
                 .toList();
+        enrichMontantReel(dtoList);
 
         return new PaginatedResponse<>(
                 dtoList,
@@ -438,6 +442,52 @@ public class TransactionServiceImpl implements TransactionService {
                 transactionsPage.getTotalElements(),
                 transactionsPage.getSize()
         );
+    }
+
+    /** Corrige montantReel (initialisé = montant par TransactionDTO.fromEntity) pour
+     * les transactions issues d'une vente à crédit partielle/totale (voir
+     * VenteOeufs/VenteReforme.montantRapporte) — montant reste la valeur théorique
+     * (quantité × prix), montantReel ce que le vendeur a effectivement rapporté ce
+     * jour-là. sourceUniqueId pointe vers la LIGNE de répartition précise (voir
+     * Transaction.sourceUniqueId), donc le ratio réel/théorique de LA VENTE ENTIÈRE
+     * s'applique tel quel à la part (montant) déjà attribuée à ce projet — même
+     * hypothèse proportionnelle que getVentesReelParProjet. Recherche groupée (2
+     * requêtes max, pas une par transaction) pour rester utilisable sur une liste
+     * paginée. */
+    private void enrichMontantReel(List<TransactionDTO> dtoList) {
+        List<String> oeufsIds = dtoList.stream()
+                .filter(d -> d.getSourceType() == SourceTransaction.VENTE_OEUFS && d.getSourceUniqueId() != null)
+                .map(TransactionDTO::getSourceUniqueId).distinct().toList();
+        List<String> reformeIds = dtoList.stream()
+                .filter(d -> d.getSourceType() == SourceTransaction.VENTE_REFORME && d.getSourceUniqueId() != null)
+                .map(TransactionDTO::getSourceUniqueId).distinct().toList();
+
+        if (oeufsIds.isEmpty() && reformeIds.isEmpty()) return;
+
+        Map<String, Double> ratioParRepartition = new HashMap<>();
+        if (!oeufsIds.isEmpty()) {
+            for (RepartitionRatioDTO r : venteOeufsRepartitionRepo.findRatiosByUniqueIds(oeufsIds)) {
+                ratioParRepartition.put(r.getRepartitionUniqueId(), ratio(r));
+            }
+        }
+        if (!reformeIds.isEmpty()) {
+            for (RepartitionRatioDTO r : venteReformeRepartitionRepo.findRatiosByUniqueIds(reformeIds)) {
+                ratioParRepartition.put(r.getRepartitionUniqueId(), ratio(r));
+            }
+        }
+
+        for (TransactionDTO d : dtoList) {
+            Double ratio = ratioParRepartition.get(d.getSourceUniqueId());
+            if (ratio != null && d.getMontant() != null) {
+                d.setMontantReel(d.getMontant() * ratio);
+            }
+        }
+    }
+
+    private double ratio(RepartitionRatioDTO r) {
+        if (r.getVenteMontant() == null || r.getVenteMontant() == 0) return 1.0;
+        double rapporte = r.getVenteMontantRapporte() != null ? r.getVenteMontantRapporte() : r.getVenteMontant();
+        return rapporte / r.getVenteMontant();
     }
 
     @Override
