@@ -149,4 +149,69 @@ Après ces deux corrections, backend/web/mobile sont propres (git status vide su
 - Pattern de restriction par rôle réutilisé partout : "un cumul de rôles garde l'accès complet, seul un rôle PUR est restreint" — `hasOnlyRole`/`isRestrictedTo` (web `src/lib/roles.ts`), `isOnlyRole`/`isPureFinancier`/`isPureProducteur`/`isPureRole` (back, dupliqué par service : `TransactionServiceImpl`, `NotificationServiceImpl`, `AppAccessRules`).
 - `./mvnw compile` peut afficher "Nothing to compile" de façon trompeuse si une compilation précédente dans le même tour a déjà tout recompilé — vérifier avec `stat -c '%y'` source vs `.class` en cas de doute.
 - Le backend tourne en général avec **spring-boot-devtools** actif → recompiler (`./mvnw compile`) suffit à recharger le contexte dans le même process, pas besoin de relancer le JVM à la main pour la plupart des changements.
+
+### Mise à jour — Bâtiment redevient poulailler-only, Magasin unifie vente+stockage (2026-08-10)
+
+Demande utilisateur : le concept de `Batiment` ne doit plus couvrir que l'élevage
+(poulailler) ; le "bâtiment de stockage" (introduit dans une phase précédente) est
+fusionné dans la même table que `MagasinVente` plutôt que d'avoir une 3e table — un
+seul concept `Magasin` avec `type` (`VENTE`/`STOCKAGE`). Logique métier inchangée :
+collecte → magasin de stockage → transfert → magasin de vente → vente.
+
+**Backend** (3 commits) :
+- `MagasinVente` → renommé `Magasin` (classe Java + repo/service/DTO/controller, table
+  reste `magasins_vente` en base pour éviter un rename risqué) ; ajout `type`
+  (`Magasin.TypeMagasin`, colonne `type` avec CHECK constraint) et `seuilAlerteAlveoles`
+  (déplacé depuis `Batiment`, pertinent seulement pour STOCKAGE). `MagasinRepo.list(type)`
+  filtre optionnellement, `/magasins/list?type=STOCKAGE|VENTE`.
+- `Batiment` perd `type`/`TypeBatiment` (POULAILLER/STOCKAGE/AUTRE) et
+  `seuilAlerteAlveoles` — redevient poulailler-only, `BatimentRepo.findStockageActiveByFarmId`
+  supprimé.
+- `CollecteOeufs.batimentStockage` (FK Batiment) → `magasinStockage` (FK Magasin,
+  colonne `magasin_stockage_id`) ; `MagasinTransfert.batimentStockage` → `magasinStockage`
+  même principe. `MagasinTransfertServiceImpl`/`NotificationServiceImpl`
+  (`addBatimentStockageAlerts` → `addMagasinStockageAlerts`) réécrits sur Magasin.
+  Garde-fous ajoutés : une vente/un transfert vers un magasin exige `type=VENTE`, une
+  collecte/un transfert depuis un magasin de stockage exige `type=STOCKAGE`.
+- **Migration SQL manuelle** (colonnes déjà ajoutées par ddl-auto=update, migration de
+  données faite à la main via psql, en transaction, vérifiée avant commit) : la seule
+  vraie donnée `STOCKAGE` existante ("Mag Stockage A", batiments.id=3, créée lors du
+  test de la phase précédente) migrée vers `magasins_vente` (nouveau id=2, type=STOCKAGE),
+  les 2 `collectes_oeufs` qui la référençaient repointées sur `magasin_stockage_id`,
+  l'ancien `batiments.id=3` soft-supprimé (`removed=true`, pas de hard delete — FK
+  `collectes_oeufs.batiment_stockage_id`/`magasin_transferts.batiment_stockage_id`
+  laissées orphelines mais intactes plutôt que droppées, aucune ligne de donnée perdue).
+
+**Web** (2 commits) : `MagasinVenteDTO`/`Payload` → `MagasinDTO`/`MagasinPayload`
+(+ `type`/`seuilAlerteAlveoles`) ; `Magasins.tsx` affiche deux sections (magasins de
+vente / magasins de stockage) avec cartes différentes (stock+vendeurs pour VENTE,
+disponible+seuil alvéoles pour STOCKAGE) ; `CreateMagasinDialog` a un sélecteur de type
+avec champs conditionnels, type verrouillé après création. `CreateCollecteOeufsDialog`/
+`CreateMagasinTransfertDialog` pointent sur `getMagasinsAPI("STOCKAGE")` au lieu de
+`getSelectBatiment()` filtré côté client. `CreateBatimentDialog`/`EditBatimentDialog`
+simplifiés (plus de sélecteur de type ni de seuil alvéoles, poulailler-only). Labels
+"Bâtiment"/"Bâtiments" renommés "Poulailler"/"Poulaillers" dans le flux de création de
+projet (`CreateProjectDialog`, `ProjetDetail.tsx`, import Excel `Projets.tsx`) et
+Paramètres. `npx tsc -p tsconfig.app.json --noEmit` clean.
+
+**Mobile** (1 commit) : `DataApi.getMagasinsSelect` prend maintenant un paramètre
+`type` ; `MagasinSelectResponse` gagne `type`/`seuilAlerteAlveoles` ; le sélecteur
+"bâtiment de stockage" de `SaisieFormActivity` (Collecte œufs) charge désormais
+`GET /magasins/list?type=STOCKAGE` (déjà filtré serveur) au lieu de filtrer côté
+client une liste de bâtiments — le champ `batimentsStockage` change de type
+(`List<BatimentSelectResponse>` → `List<MagasinSelectResponse>`), noms de
+méthodes/variables internes gardés tels quels par pragmatisme (renommage cosmétique
+pur, aucun impact fonctionnel). `CollecteOeufsCreateRequest.batimentStockageUniqueId`
+→ `magasinStockageUniqueId`. Labels "Bâtiment(s)" → "Poulailler(s)" sur l'accueil et le
+formulaire de saisie. **Compilé pour de vrai cette fois** via
+`./gradlew :app:compileDebugJavaWithJavac` (Gradle disponible dans cette session,
+contrairement à la phase précédente) — 0 erreur.
+
+**Choix d'ingénierie assumé** : `Batiment` n'a PAS été renommé en `Poulailler` au
+niveau classe/table Java (contrairement à `MagasinVente`→`Magasin`) — blast radius
+bien plus large (`OccupationBatiment`, dizaines de requêtes/DTO sur 3 dépôts) pour un
+gain purement cosmétique. Le renommage `MagasinVente`→`Magasin` a été fait car plus
+récent/petit ET sémantiquement nécessaire (une classe nommée "Vente" contenant des
+lignes de type STOCKAGE aurait été trompeuse). Le résultat côté utilisateur est
+identique : il ne voit plus jamais "Bâtiment" que pour un poulailler.
 - Attention : une session Postgres/backend **réelle** de l'utilisateur (pas un environnement de test) a été détectée en cours de session — toujours vérifier avant toute opération destructive sur la base.
