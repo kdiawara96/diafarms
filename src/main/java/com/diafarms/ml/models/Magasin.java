@@ -52,6 +52,9 @@ public class Magasin {
     // magasin. Voir NotificationServiceImpl.addMagasinStockAlerts : notifie les
     // RESPONSABLE des projets qui contribuent actuellement au stock de CE magasin dès
     // que le stock passe sous le seuil. N'a de sens que pour type=VENTE.
+    // Exprimé en ALVÉOLES (pas en œufs — plus lisible pour un usage quotidien, même
+    // convention que seuilAlerteAlveoles pour un magasin de STOCKAGE), converti en
+    // œufs pour comparer au disponible réel — voir NotificationServiceImpl.checkMagasinStockAlert.
     @Column(name = "seuil_alerte_oeufs")
     private Integer seuilAlerteOeufs;
 

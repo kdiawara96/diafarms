@@ -11,7 +11,7 @@ public class MagasinCreate {
     private String description; // optionnel
     private List<String> vendeurUniqueIds; // optionnel, VENTE role attendu (non vérifié strictement) — pertinent seulement pour type=VENTE
     // Seuils d'alerte stock bas (optionnels, null = pas d'alerte pour ce type dans ce magasin).
-    private Integer seuilAlerteOeufs;
+    private Integer seuilAlerteOeufs; // en ALVÉOLES, pas en œufs — voir Magasin.seuilAlerteOeufs
     private Integer seuilAlerteReforme;
     private Integer seuilAlerteAlveoles; // pertinent seulement pour type=STOCKAGE
 }

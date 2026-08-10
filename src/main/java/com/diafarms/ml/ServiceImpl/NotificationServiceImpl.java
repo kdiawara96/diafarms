@@ -211,13 +211,17 @@ public class NotificationServiceImpl implements NotificationService {
         Set<Long> mesProjetIds = projetsGeres.stream().map(Projets::getId).collect(Collectors.toSet());
 
         for (Magasin m : magasinRepo.findAllActiveByFarmAndType(farmId, Magasin.TypeMagasin.VENTE)) {
-            checkMagasinStockAlert(result, m, TypeStockMagasin.OEUFS, m.getSeuilAlerteOeufs(), mesProjetIds, "œuf(s)");
-            checkMagasinStockAlert(result, m, TypeStockMagasin.REFORME, m.getSeuilAlerteReforme(), mesProjetIds, "sujet(s) réformé(s)");
+            checkMagasinStockAlert(result, m, TypeStockMagasin.OEUFS, m.getSeuilAlerteOeufs(), mesProjetIds);
+            checkMagasinStockAlert(result, m, TypeStockMagasin.REFORME, m.getSeuilAlerteReforme(), mesProjetIds);
         }
     }
 
+    /** Seuil OEUFS saisi/affiché en ALVÉOLES (voir CreateMagasinDialog côté web,
+     * même convention que Magasin.seuilAlerteAlveoles pour un magasin de STOCKAGE) —
+     * converti en œufs pour comparer au disponible réel. Seuil REFORME reste un
+     * nombre de sujets brut (pas de notion d'alvéole pour la réforme). */
     private void checkMagasinStockAlert(List<NotificationDTO> result, Magasin m, TypeStockMagasin type,
-                                         Integer seuil, Set<Long> mesProjetIds, String unite) {
+                                         Integer seuil, Set<Long> mesProjetIds) {
         if (seuil == null) return; // alerte désactivée pour ce type dans ce magasin
 
         List<Long> contributeurs = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(m.getId(), type);
@@ -225,13 +229,23 @@ public class NotificationServiceImpl implements NotificationService {
 
         StockMagasinDTO stock = magasinService.getStock(m.getUniqueId());
         int disponible = type == TypeStockMagasin.OEUFS ? stock.getOeufsDisponible() : stock.getReformeDisponible();
-        if (disponible >= seuil) return;
+        int seuilEnOeufs = type == TypeStockMagasin.OEUFS ? seuil * OEUFS_PAR_ALVEOLE : seuil;
+        if (disponible >= seuilEnOeufs) return;
+
+        String message;
+        if (type == TypeStockMagasin.OEUFS) {
+            long alveoles = disponible / OEUFS_PAR_ALVEOLE;
+            int reste = disponible % OEUFS_PAR_ALVEOLE;
+            message = "Stock bas — " + m.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))";
+        } else {
+            message = "Stock bas — " + m.getNom() + " (" + disponible + " sujet(s) réformé(s) restant(s))";
+        }
 
         result.add(NotificationDTO.builder()
             .key("stock-magasin-" + type.name().toLowerCase() + "-" + m.getUniqueId())
             .type("STOCK_MAGASIN")
             .level(disponible <= 0 ? "CRITIQUE" : "WARNING")
-            .message("Stock bas — " + m.getNom() + " (" + disponible + " " + unite + " restant(s))")
+            .message(message)
             .actionPath("/magasins")
             .build());
     }
