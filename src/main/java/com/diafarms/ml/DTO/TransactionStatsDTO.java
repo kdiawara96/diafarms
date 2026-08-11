@@ -26,4 +26,8 @@ public class TransactionStatsDTO {
     // théorique/réel plutôt que de sommer aveuglément le théorique comme du cash réel.
     private Double totalMontantRecuVentes;
     private Double totalDuParVendeurs;
+    // Même principe que totalDuParVendeurs, mais pour les ventes à crédit imputées à
+    // un client identifié plutôt qu'au vendeur (voir SoldeClient, Option A retenue
+    // dans ROADMAP_CLIENTS_COMMANDES_FACTURATION.md).
+    private Double totalDuParClients;
 }

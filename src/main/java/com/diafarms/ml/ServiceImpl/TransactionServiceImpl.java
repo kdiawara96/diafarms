@@ -28,6 +28,7 @@ import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.repository.SoldeClientRepo;
 import com.diafarms.ml.repository.SoldeVendeurRepo;
 import com.diafarms.ml.repository.TransactionRepo;
 import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
@@ -53,6 +54,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
     private final SoldeVendeurRepo soldeVendeurRepo;
+    private final SoldeClientRepo soldeClientRepo;
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
 
@@ -503,7 +505,7 @@ public class TransactionServiceImpl implements TransactionService {
                     .nbValide(0).nbAttente(0).nbRejete(0)
                     .totalEntreesValidees(0.0).totalSortiesValidees(0.0)
                     .totalVenteOeufs(0.0).totalVenteReforme(0.0)
-                    .totalMontantRecuVentes(0.0).totalDuParVendeurs(0.0)
+                    .totalMontantRecuVentes(0.0).totalDuParVendeurs(0.0).totalDuParClients(0.0)
                     .build();
         }
 
@@ -537,6 +539,7 @@ public class TransactionServiceImpl implements TransactionService {
         double montantRecuVentes = nz(venteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin))
                 + nz(venteReformeRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin));
         double duParVendeurs = nz(soldeVendeurRepo.sumSoldePositifByFarmId(farmId));
+        double duParClients = nz(soldeClientRepo.sumSoldePositifByFarmId(farmId));
 
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)
@@ -546,6 +549,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .totalSortiesValidees(totalSorties != null ? totalSorties : 0.0)
                 .totalMontantRecuVentes(montantRecuVentes)
                 .totalDuParVendeurs(duParVendeurs)
+                .totalDuParClients(duParClients)
                 .totalVenteOeufs(totalVenteOeufs != null ? totalVenteOeufs : 0.0)
                 .totalVenteReforme(totalVenteReforme != null ? totalVenteReforme : 0.0)
                 .build();
