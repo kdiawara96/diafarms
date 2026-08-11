@@ -25,6 +25,8 @@ public class VenteReformeDTO {
     private LocalTime heure;
     private String magasinUniqueId;
     private String magasinNom;
+    private String clientUniqueId;
+    private String clientNom;
     private Integer nombreSujets;
     private Double prixUnitaire;
     private Double montant;
@@ -42,6 +44,8 @@ public class VenteReformeDTO {
                 .heure(v.getHeure())
                 .magasinUniqueId(v.getMagasin() != null ? v.getMagasin().getUniqueId() : null)
                 .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
+                .clientUniqueId(v.getClient() != null ? v.getClient().getUniqueId() : null)
+                .clientNom(v.getClient() != null ? v.getClient().getNom() : null)
                 .nombreSujets(v.getNombreSujets())
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())

@@ -20,6 +20,7 @@ import com.diafarms.ml.DTO.VenteReformeRepartitionDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Projets;
@@ -27,6 +28,7 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.models.VenteReformeRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.repository.ClientRepo;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
 import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
@@ -54,6 +56,7 @@ public class VenteReformeImpl implements VenteReformeService {
     private final ProjetsRepo projetsRepo;
     private final MagasinRepo magasinRepo;
     private final MagasinTransfertRepo magasinTransfertRepo;
+    private final ClientRepo clientRepo;
     private final SoldeVendeurServiceImpl soldeVendeurService;
     private final LogsServices logs;
     private final OtherService otherService;
@@ -167,10 +170,19 @@ public class VenteReformeImpl implements VenteReformeService {
             );
         }
 
+        Client client = null;
+        if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
+            client = clientRepo.findByUniqueId(data.getClientUniqueId());
+            if (client == null) {
+                throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
+            }
+        }
+
         VenteReforme v = new VenteReforme();
         v.setUniqueId(java.util.UUID.randomUUID().toString());
         v.setFarm(farm);
         v.setMagasin(magasin);
+        v.setClient(client);
         v.setCreePar(currentUser);
         v.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
         v.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
@@ -237,6 +249,18 @@ public class VenteReformeImpl implements VenteReformeService {
 
         if (data.getMontantRapporte() != null) {
             v.setMontantRapporte(data.getMontantRapporte());
+        }
+
+        if (data.getClientUniqueId() != null) {
+            if (data.getClientUniqueId().isBlank()) {
+                v.setClient(null);
+            } else {
+                Client client = clientRepo.findByUniqueId(data.getClientUniqueId());
+                if (client == null) {
+                    throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
+                }
+                v.setClient(client);
+            }
         }
 
         boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;

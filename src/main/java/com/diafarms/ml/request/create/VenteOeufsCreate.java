@@ -10,6 +10,7 @@ public class VenteOeufsCreate {
     private String date;
     private String heure; // "HH:mm", optionnel
     private String magasinUniqueId; // obligatoire, plafonne la quantité vendable
+    private String clientUniqueId; // optionnel — voir VenteOeufs.client
     private Integer quantiteOeufs;
     private Double prixUnitaire; // optionnel, informatif
     private Double montant; // théorique (quantité × prix, ou saisi librement)

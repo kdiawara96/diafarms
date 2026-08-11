@@ -9,6 +9,7 @@ public class VenteReformeCreate {
     private String date;
     private String heure; // "HH:mm", optionnel
     private String magasinUniqueId; // obligatoire, plafonne la quantité vendable
+    private String clientUniqueId; // optionnel — voir VenteReforme.client
     private Integer nombreSujets;
     private Double prixUnitaire; // optionnel, informatif
     private Double montant;

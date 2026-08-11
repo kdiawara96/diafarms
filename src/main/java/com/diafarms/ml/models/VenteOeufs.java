@@ -87,6 +87,15 @@ public class VenteOeufs {
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
 
+    // Client — optionnel ("vente directe" sans client identifié toujours possible).
+    // Quand renseigné, l'écart théorique/rapporté est imputé à SON solde (SoldeClient)
+    // plutôt qu'à celui du vendeur (SoldeVendeur) : ce n'est pas le vendeur qui est en
+    // tort, c'est une vente à crédit pas encore intégralement payée par ce client. Voir
+    // VenteOeufsImpl.create/update pour le routage exact.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
+
     @OneToMany(mappedBy = "venteOeufs", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteOeufsRepartition> repartitions;
 

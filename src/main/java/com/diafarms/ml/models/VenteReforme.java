@@ -76,6 +76,12 @@ public class VenteReforme {
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
 
+    // Client — optionnel, voir VenteOeufs.client pour le détail du routage de l'écart
+    // théorique/rapporté vers SoldeClient plutôt que SoldeVendeur quand renseigné.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
+
     @OneToMany(mappedBy = "venteReforme", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteReformeRepartition> repartitions;
 

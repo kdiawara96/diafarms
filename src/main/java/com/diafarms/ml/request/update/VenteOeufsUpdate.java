@@ -10,4 +10,8 @@ public class VenteOeufsUpdate {
     private Double prixUnitaire;
     private Double montant;
     private Double montantRapporte;
+    // null = non renseigné, pas touché ; "" (chaîne vide) = détache explicitement le
+    // client de la vente ; sinon = nouveau client — même convention que
+    // CollecteOeufsUpdate.batimentUniqueId.
+    private String clientUniqueId;
 }

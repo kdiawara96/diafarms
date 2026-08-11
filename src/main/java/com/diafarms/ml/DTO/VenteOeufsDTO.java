@@ -25,6 +25,8 @@ public class VenteOeufsDTO {
     private LocalTime heure;
     private String magasinUniqueId;
     private String magasinNom;
+    private String clientUniqueId;
+    private String clientNom;
     private Integer quantiteOeufs;
     private Double prixUnitaire;
     private Double montant;
@@ -45,6 +47,8 @@ public class VenteOeufsDTO {
                 .heure(v.getHeure())
                 .magasinUniqueId(v.getMagasin() != null ? v.getMagasin().getUniqueId() : null)
                 .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
+                .clientUniqueId(v.getClient() != null ? v.getClient().getUniqueId() : null)
+                .clientNom(v.getClient() != null ? v.getClient().getNom() : null)
                 .quantiteOeufs(v.getQuantiteOeufs())
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
