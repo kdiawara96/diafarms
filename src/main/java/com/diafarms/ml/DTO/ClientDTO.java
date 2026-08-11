@@ -23,6 +23,11 @@ public class ClientDTO {
     private String adresse;
     private String email;
     private LocalDateTime createdAt;
+    // Positif = le client doit de l'argent à la ferme (vente à crédit), négatif =
+    // avance — voir SoldeClient. Rempli en bulk par ClientServiceImpl.list() (pas ici,
+    // fromEntity ne connaît pas le solde), 0.0 par défaut sinon.
+    @lombok.Builder.Default
+    private double solde = 0.0;
 
     public static ClientDTO fromEntity(Client c) {
         if (c == null) return null;

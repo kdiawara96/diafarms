@@ -1,6 +1,7 @@
 package com.diafarms.ml.ServiceImpl;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.ClientDTO;
 import com.diafarms.ml.DTO.ClientReportDTO;
 import com.diafarms.ml.DTO.ClientVenteLigneDTO;
+import com.diafarms.ml.DTO.SoldeClientDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Utilisateurs;
@@ -171,6 +173,15 @@ public class ClientServiceImpl implements ClientService {
                 : clientRepo.findActiveByFarmId(farmId, pageable);
 
         List<ClientDTO> dtoList = clientPage.getContent().stream().map(ClientDTO::fromEntity).toList();
+
+        // Un seul appel groupé (pas un par client) pour rester utilisable sur une
+        // liste paginée — voir SoldeClientServiceImpl.listNonZero, déjà farm-scopé.
+        Map<String, Double> soldesParClient = soldeClientService.listNonZero(currentUser.getFarm()).stream()
+                .collect(Collectors.toMap(SoldeClientDTO::getClientUniqueId, SoldeClientDTO::getSolde));
+        dtoList.forEach(dto -> {
+            Double solde = soldesParClient.get(dto.getUniqueId());
+            if (solde != null) dto.setSolde(solde);
+        });
 
         return new PaginatedResponse<>(
                 dtoList,
