@@ -22,12 +22,14 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
+import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.repository.ClientRepo;
 import com.diafarms.ml.repository.SoldeClientRepo;
 import com.diafarms.ml.repository.SoldeVendeurRepo;
 import com.diafarms.ml.repository.TransactionRepo;
@@ -55,6 +57,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final VenteReformeRepo venteReformeRepo;
     private final SoldeVendeurRepo soldeVendeurRepo;
     private final SoldeClientRepo soldeClientRepo;
+    private final ClientRepo clientRepo;
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
 
@@ -202,6 +205,14 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDateValidation(LocalDateTime.now());
         t.setCreePar(currentUser);
         t.setInitialisation(Initialisation.init());
+
+        if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
+            Client client = clientRepo.findByUniqueId(data.getClientUniqueId());
+            if (client == null) {
+                throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
+            }
+            t.setClient(client);
+        }
 
         boolean commun = !Boolean.FALSE.equals(data.getCommun())
                 && (Boolean.TRUE.equals(data.getCommun()) || data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank());

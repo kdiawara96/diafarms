@@ -38,10 +38,12 @@ public class TransactionDTO {
     // défaut (aucun écart connu) ; seul .list() calcule la vraie valeur pour les
     // transactions issues d'une vente, via un ratio par ligne de répartition.
     private Double montantReel;
-    // Client de la vente d'origine, si transaction issue d'une vente avec client
-    // identifié (voir VenteOeufs/VenteReforme.client) — null pour une vente directe
-    // (sans client) ou une transaction non issue d'une vente. Rempli par
-    // TransactionServiceImpl.enrichMontantReel, comme montantReel.
+    // Client concerné — soit directement rattaché à la transaction (Transaction.client,
+    // ex: "Paiement client", voir ClientServiceImpl.payerDette), soit dérivé de la vente
+    // d'origine pour une transaction "Vente œufs"/"Vente réforme" avec client identifié
+    // (voir VenteOeufs/VenteReforme.client, rempli par TransactionServiceImpl.
+    // enrichMontantReel). Null = vente directe (sans client) ou transaction sans lien à
+    // un client.
     private String clientNom;
     private String categorie;
     private StatutTransaction statut;
@@ -71,6 +73,7 @@ public class TransactionDTO {
                 .description(t.getDescription())
                 .montant(t.getMontant())
                 .montantReel(t.getMontant()) // corrigé ensuite par enrichMontantReel si pertinent
+                .clientNom(t.getClient() != null ? t.getClient().getNom() : null) // idem si issue d'une vente
                 .categorie(t.getCategorie())
                 .statut(t.getStatut())
                 .commentaireRejet(t.getCommentaireRejet())

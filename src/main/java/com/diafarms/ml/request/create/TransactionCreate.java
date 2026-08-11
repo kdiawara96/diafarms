@@ -13,6 +13,7 @@ public class TransactionCreate {
     private Boolean commun; // true = dépense/rentrée commune, false = liée à un seul projet
     private String projetUniqueId; // requis si commun = false
     private List<String> projetsConcernesUniqueIds; // optionnel, pertinent seulement si commun = true
+    private String clientUniqueId; // optionnel — voir Transaction.client
     private LocalDate date;
     private String description;
     private Double montant;

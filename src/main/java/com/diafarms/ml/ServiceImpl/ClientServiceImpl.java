@@ -294,6 +294,7 @@ public class ClientServiceImpl implements ClientService {
         txData.setDate(java.time.LocalDate.now());
         txData.setMontant(montant);
         txData.setCategorie("Paiement client");
+        txData.setClientUniqueId(client.getUniqueId());
         txData.setDescription((description != null && !description.isBlank())
                 ? description
                 : "Paiement de dette — " + client.getNom());

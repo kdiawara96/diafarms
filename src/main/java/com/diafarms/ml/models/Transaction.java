@@ -126,6 +126,16 @@ public class Transaction {
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
 
+    // Client concerné, si pertinent (typiquement une transaction "Paiement client",
+    // voir ClientServiceImpl.payerDette) — nullable, la plupart des transactions n'ont
+    // pas de client (dépenses, ventes directes...). Distinct du client d'une VenteOeufs/
+    // VenteReforme (voir TransactionDTO.clientNom pour ces transactions-là, dérivé via
+    // TransactionServiceImpl.enrichMontantReel plutôt que stocké ici) : ce champ sert
+    // aux transactions non issues d'une vente qui concernent quand même un client.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
+
     @Embedded
     private Initialisation initialisation;
 }
