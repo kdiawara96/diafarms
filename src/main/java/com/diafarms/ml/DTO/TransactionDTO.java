@@ -38,6 +38,11 @@ public class TransactionDTO {
     // défaut (aucun écart connu) ; seul .list() calcule la vraie valeur pour les
     // transactions issues d'une vente, via un ratio par ligne de répartition.
     private Double montantReel;
+    // Client de la vente d'origine, si transaction issue d'une vente avec client
+    // identifié (voir VenteOeufs/VenteReforme.client) — null pour une vente directe
+    // (sans client) ou une transaction non issue d'une vente. Rempli par
+    // TransactionServiceImpl.enrichMontantReel, comme montantReel.
+    private String clientNom;
     private String categorie;
     private StatutTransaction statut;
     private String commentaireRejet;

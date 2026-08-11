@@ -25,8 +25,10 @@ import com.diafarms.ml.repository.ClientRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.ClientCreate;
+import com.diafarms.ml.request.create.TransactionCreate;
 import com.diafarms.ml.services.ClientService;
 import com.diafarms.ml.services.LogsServices;
+import com.diafarms.ml.services.TransactionService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -42,6 +44,7 @@ public class ClientServiceImpl implements ClientService {
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
     private final SoldeClientServiceImpl soldeClientService;
+    private final TransactionService transactionService;
     private final LogsServices logs;
     private final OtherService otherService;
 
@@ -71,6 +74,15 @@ public class ClientServiceImpl implements ClientService {
     private void ensureCanManage(Utilisateurs u) {
         if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
             throw new IllegalArgumentException("Seul un administrateur ou un responsable peut modifier/supprimer un client.");
+        }
+    }
+
+    // Même périmètre que la visibilité de la page Clients côté web (tout sauf
+    // PRODUCTION) : n'importe lequel de ces rôles peut être celui qui encaisse le
+    // paiement d'un client sur le terrain ou au comptoir.
+    private void ensureCanRecordPayment(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE") && !hasRole(u, "VENTE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour enregistrer un paiement client.");
         }
     }
 
@@ -252,5 +264,50 @@ public class ClientServiceImpl implements ClientService {
                 .solde(solde)
                 .historique(historique)
                 .build();
+    }
+
+    // Un client vient payer (tout ou partie de) sa dette en cours — pas liée à une
+    // nouvelle vente, donc pas de VenteOeufs/VenteReforme ici : juste une Transaction
+    // "entrée" classique (l'argent rentre vraiment dans la caisse à ce moment-là,
+    // voir TransactionServiceImpl.create) et l'ajustement du solde en conséquence.
+    // Autorise un montant supérieur au solde dû (le surplus devient une avance,
+    // solde négatif, pour une prochaine vente) plutôt que de le bloquer arbitrairement.
+    @Override
+    @Transactional
+    public ClientDTO payerDette(String uniqueId, Double montant, String description) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanRecordPayment(currentUser);
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
+        }
+        if (montant == null || montant <= 0) {
+            throw new IllegalArgumentException("Le montant payé doit être positif.");
+        }
+        Client client = clientRepo.findByUniqueId(uniqueId);
+        if (client == null) {
+            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        }
+
+        TransactionCreate txData = new TransactionCreate();
+        txData.setType("ENTREE");
+        txData.setCommun(true);
+        txData.setDate(java.time.LocalDate.now());
+        txData.setMontant(montant);
+        txData.setCategorie("Paiement client");
+        txData.setDescription((description != null && !description.isBlank())
+                ? description
+                : "Paiement de dette — " + client.getNom());
+        transactionService.create(txData);
+
+        soldeClientService.ajusterSolde(client, currentUser.getFarm(), -montant);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), client.getId(), "Client",
+                    "Paiement de " + montant + " FCFA enregistré pour " + client.getNom());
+        }
+
+        ClientDTO dto = ClientDTO.fromEntity(client);
+        dto.setSolde(soldeClientService.getSolde(client).getSolde());
+        return dto;
     }
 }

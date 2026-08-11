@@ -453,9 +453,9 @@ public class TransactionServiceImpl implements TransactionService {
      * jour-là. sourceUniqueId pointe vers la LIGNE de répartition précise (voir
      * Transaction.sourceUniqueId), donc le ratio réel/théorique de LA VENTE ENTIÈRE
      * s'applique tel quel à la part (montant) déjà attribuée à ce projet — même
-     * hypothèse proportionnelle que getVentesReelParProjet. Recherche groupée (2
-     * requêtes max, pas une par transaction) pour rester utilisable sur une liste
-     * paginée. */
+     * hypothèse proportionnelle que getVentesReelParProjet. Enrichit aussi clientNom
+     * (même source, aucune requête supplémentaire). Recherche groupée (2 requêtes
+     * max, pas une par transaction) pour rester utilisable sur une liste paginée. */
     private void enrichMontantReel(List<TransactionDTO> dtoList) {
         List<String> oeufsIds = dtoList.stream()
                 .filter(d -> d.getSourceType() == SourceTransaction.VENTE_OEUFS && d.getSourceUniqueId() != null)
@@ -466,23 +466,25 @@ public class TransactionServiceImpl implements TransactionService {
 
         if (oeufsIds.isEmpty() && reformeIds.isEmpty()) return;
 
-        Map<String, Double> ratioParRepartition = new HashMap<>();
+        Map<String, RepartitionRatioDTO> infoParRepartition = new HashMap<>();
         if (!oeufsIds.isEmpty()) {
             for (RepartitionRatioDTO r : venteOeufsRepartitionRepo.findRatiosByUniqueIds(oeufsIds)) {
-                ratioParRepartition.put(r.getRepartitionUniqueId(), ratio(r));
+                infoParRepartition.put(r.getRepartitionUniqueId(), r);
             }
         }
         if (!reformeIds.isEmpty()) {
             for (RepartitionRatioDTO r : venteReformeRepartitionRepo.findRatiosByUniqueIds(reformeIds)) {
-                ratioParRepartition.put(r.getRepartitionUniqueId(), ratio(r));
+                infoParRepartition.put(r.getRepartitionUniqueId(), r);
             }
         }
 
         for (TransactionDTO d : dtoList) {
-            Double ratio = ratioParRepartition.get(d.getSourceUniqueId());
-            if (ratio != null && d.getMontant() != null) {
-                d.setMontantReel(d.getMontant() * ratio);
+            RepartitionRatioDTO info = infoParRepartition.get(d.getSourceUniqueId());
+            if (info == null) continue;
+            if (d.getMontant() != null) {
+                d.setMontantReel(d.getMontant() * ratio(info));
             }
+            d.setClientNom(info.getClientNom());
         }
     }
 

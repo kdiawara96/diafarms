@@ -11,6 +11,7 @@ import com.diafarms.ml.DTO.ClientReportDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.ClientCreate;
+import com.diafarms.ml.request.others.PayerDetteClientRequest;
 import com.diafarms.ml.services.ClientService;
 
 import lombok.RequiredArgsConstructor;
@@ -68,6 +69,18 @@ public class ClientController {
     public ResponseEntity<ApiResponse<ClientReportDTO>> report(@PathVariable String uniqueId) {
         try {
             return ApiResponse.createResponse("Rapport client récupéré", HttpStatus.OK, service.getReport(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PostMapping("/{uniqueId}/payer-dette")
+    public ResponseEntity<ApiResponse<ClientDTO>> payerDette(@PathVariable String uniqueId, @RequestBody PayerDetteClientRequest request) {
+        try {
+            return ApiResponse.createResponse("Paiement enregistré", HttpStatus.OK,
+                    service.payerDette(uniqueId, request.getMontant(), request.getDescription()), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

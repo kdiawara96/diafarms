@@ -14,4 +14,8 @@ public interface ClientService {
     List<ClientDTO> select();
     PaginatedResponse<ClientDTO> list(int page, int size, String search);
     ClientReportDTO getReport(String uniqueId);
+    // Enregistre un paiement du client sur sa dette en cours (SoldeClient) — génère
+    // aussi une Transaction "entrée" (l'argent rentre vraiment dans la caisse à ce
+    // moment-là), voir ClientServiceImpl.payerDette.
+    ClientDTO payerDette(String uniqueId, Double montant, String description);
 }

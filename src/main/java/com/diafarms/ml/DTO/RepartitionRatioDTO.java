@@ -15,4 +15,5 @@ public class RepartitionRatioDTO {
     private String repartitionUniqueId;
     private Double venteMontant;
     private Double venteMontantRapporte; // null = pas d'écart déclaré pour cette vente
+    private String clientNom; // null = vente directe, pas de client identifié
 }
