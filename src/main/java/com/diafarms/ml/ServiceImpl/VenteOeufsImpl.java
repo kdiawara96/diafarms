@@ -61,6 +61,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final ClientRepo clientRepo;
     private final SoldeVendeurServiceImpl soldeVendeurService;
+    private final SoldeClientServiceImpl soldeClientService;
     private final LogsServices logs;
     private final OtherService otherService;
     private final TransactionService transactionService;
@@ -80,6 +81,17 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
     private double nz(Double v) {
         return v == null ? 0.0 : v;
+    }
+
+    /** Route l'écart théorique/rapporté vers le solde du CLIENT si la vente en a un
+     * (vente à crédit : ce n'est pas le vendeur qui est en tort), sinon vers le solde
+     * du vendeur (comportement historique, vente "directe" sans client identifié). */
+    private void ajusterEcart(Client client, Utilisateurs vendeur, Farm farm, double delta) {
+        if (client != null) {
+            soldeClientService.ajusterSolde(client, farm, delta);
+        } else if (vendeur != null) {
+            soldeVendeurService.ajusterSolde(vendeur, farm, delta);
+        }
     }
 
     /** Stock d'œufs vendables restant DANS ce magasin, projet par projet (ceux qui y
@@ -209,7 +221,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         List<VenteOeufsRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getQuantiteOeufs(), data.getMontant(), currentUser);
 
         if (data.getMontantRapporte() != null) {
-            soldeVendeurService.ajusterSolde(currentUser, farm, data.getMontant() - data.getMontantRapporte());
+            ajusterEcart(client, currentUser, farm, data.getMontant() - data.getMontantRapporte());
         }
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs",
@@ -227,10 +239,12 @@ public class VenteOeufsImpl implements VenteOeufsService {
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
-        // Capturé AVANT toute mutation : sert à annuler l'ancien écart du solde vendeur
-        // plus bas, avant d'appliquer le nouveau (voir bloc solde après les mutations).
+        // Capturé AVANT toute mutation : sert à annuler l'ancien écart du solde
+        // (vendeur OU client selon qui portait l'écart à l'époque) plus bas, avant
+        // d'appliquer le nouveau (voir bloc solde après les mutations).
         Double ancienMontant = v.getMontant();
         Double ancienMontantRapporte = v.getMontantRapporte();
+        Client ancienClient = v.getClient();
 
         if (data.getDate() != null) v.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
@@ -277,16 +291,21 @@ public class VenteOeufsImpl implements VenteOeufsService {
             }
         }
 
-        // Solde vendeur : annule l'ancien écart puis applique le nouveau, seulement si
-        // le montant théorique ou le montant rapporté a changé — le vendeur de
-        // référence reste celui qui a créé la vente (v.creePar), pas celui qui modifie.
+        // Solde (vendeur OU client selon qui porte l'écart) : annule l'ancien écart
+        // puis applique le nouveau — déclenché aussi si le client a changé (l'écart
+        // doit alors migrer de sa cible précédente vers la nouvelle), pas seulement
+        // si le montant/montant rapporté a changé. Le vendeur de référence reste celui
+        // qui a créé la vente (v.creePar), pas celui qui modifie.
+        String ancienClientId = ancienClient != null ? ancienClient.getUniqueId() : null;
+        String nouveauClientId = v.getClient() != null ? v.getClient().getUniqueId() : null;
+        boolean clientChanged = ancienClientId == null ? nouveauClientId != null : !ancienClientId.equals(nouveauClientId);
         boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;
-        if (ecartChange && v.getCreePar() != null) {
+        if (ecartChange || clientChanged) {
             if (ancienMontantRapporte != null) {
-                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
+                ajusterEcart(ancienClient, v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
             }
             if (v.getMontantRapporte() != null) {
-                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
+                ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
             }
         }
 
@@ -345,12 +364,12 @@ public class VenteOeufsImpl implements VenteOeufsService {
             transactionService.toggleRemovedBySource(r.getUniqueId());
         }
 
-        // Supprimer une vente annule aussi son impact sur le solde du vendeur (et la
-        // restauration le réapplique) — sinon une dette resterait comptée pour une
-        // vente qui n'existe plus.
-        if (v.getCreePar() != null && v.getMontantRapporte() != null) {
+        // Supprimer une vente annule aussi son impact sur le solde (vendeur ou client
+        // selon qui le portait — et la restauration le réapplique) — sinon une dette
+        // resterait comptée pour une vente qui n'existe plus.
+        if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
-            soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
+            ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
 
         Utilisateurs currentUser = getCurrentUserSafe();

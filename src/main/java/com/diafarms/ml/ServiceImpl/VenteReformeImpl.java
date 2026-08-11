@@ -58,6 +58,7 @@ public class VenteReformeImpl implements VenteReformeService {
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final ClientRepo clientRepo;
     private final SoldeVendeurServiceImpl soldeVendeurService;
+    private final SoldeClientServiceImpl soldeClientService;
     private final LogsServices logs;
     private final OtherService otherService;
     private final TransactionService transactionService;
@@ -77,6 +78,17 @@ public class VenteReformeImpl implements VenteReformeService {
 
     private double nz(Double v) {
         return v == null ? 0.0 : v;
+    }
+
+    /** Route l'écart théorique/rapporté vers le solde du CLIENT si la vente en a un
+     * (vente à crédit : ce n'est pas le vendeur qui est en tort), sinon vers le solde
+     * du vendeur (comportement historique, vente "directe" sans client identifié). */
+    private void ajusterEcart(Client client, Utilisateurs vendeur, Farm farm, double delta) {
+        if (client != null) {
+            soldeClientService.ajusterSolde(client, farm, delta);
+        } else if (vendeur != null) {
+            soldeVendeurService.ajusterSolde(vendeur, farm, delta);
+        }
     }
 
     private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin) {
@@ -197,7 +209,7 @@ public class VenteReformeImpl implements VenteReformeService {
         List<VenteReformeRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getNombreSujets(), data.getMontant(), currentUser);
 
         if (data.getMontantRapporte() != null) {
-            soldeVendeurService.ajusterSolde(currentUser, farm, data.getMontant() - data.getMontantRapporte());
+            ajusterEcart(client, currentUser, farm, data.getMontant() - data.getMontantRapporte());
         }
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
@@ -217,6 +229,7 @@ public class VenteReformeImpl implements VenteReformeService {
 
         Double ancienMontant = v.getMontant();
         Double ancienMontantRapporte = v.getMontantRapporte();
+        Client ancienClient = v.getClient();
 
         if (data.getDate() != null) v.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
@@ -263,13 +276,16 @@ public class VenteReformeImpl implements VenteReformeService {
             }
         }
 
+        String ancienClientId = ancienClient != null ? ancienClient.getUniqueId() : null;
+        String nouveauClientId = v.getClient() != null ? v.getClient().getUniqueId() : null;
+        boolean clientChanged = ancienClientId == null ? nouveauClientId != null : !ancienClientId.equals(nouveauClientId);
         boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;
-        if (ecartChange && v.getCreePar() != null) {
+        if (ecartChange || clientChanged) {
             if (ancienMontantRapporte != null) {
-                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
+                ajusterEcart(ancienClient, v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
             }
             if (v.getMontantRapporte() != null) {
-                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
+                ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
             }
         }
 
@@ -323,9 +339,9 @@ public class VenteReformeImpl implements VenteReformeService {
             transactionService.toggleRemovedBySource(r.getUniqueId());
         }
 
-        if (v.getCreePar() != null && v.getMontantRapporte() != null) {
+        if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
-            soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
+            ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
 
         Utilisateurs currentUser = getCurrentUserSafe();
