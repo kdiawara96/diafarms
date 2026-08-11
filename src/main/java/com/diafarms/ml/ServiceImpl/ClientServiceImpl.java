@@ -11,11 +11,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.ClientDTO;
+import com.diafarms.ml.DTO.ClientReportDTO;
+import com.diafarms.ml.DTO.ClientVenteLigneDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.models.VenteOeufs;
+import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ClientRepo;
+import com.diafarms.ml.repository.VenteOeufsRepo;
+import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.ClientCreate;
 import com.diafarms.ml.services.ClientService;
 import com.diafarms.ml.services.LogsServices;
@@ -31,6 +37,9 @@ import lombok.RequiredArgsConstructor;
 public class ClientServiceImpl implements ClientService {
 
     private final ClientRepo clientRepo;
+    private final VenteOeufsRepo venteOeufsRepo;
+    private final VenteReformeRepo venteReformeRepo;
+    private final SoldeClientServiceImpl soldeClientService;
     private final LogsServices logs;
     private final OtherService otherService;
 
@@ -170,5 +179,67 @@ public class ClientServiceImpl implements ClientService {
                 clientPage.getTotalElements(),
                 clientPage.getSize()
         );
+    }
+
+    private double nz(Double v) {
+        return v == null ? 0.0 : v;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ClientReportDTO getReport(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
+        }
+        Client client = clientRepo.findByUniqueId(uniqueId);
+        if (client == null) {
+            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        }
+        Long farmId = currentUser.getFarm().getId();
+
+        List<VenteOeufs> ventesOeufs = venteOeufsRepo.findByClientUniqueIdAndFarmId(uniqueId, farmId);
+        List<VenteReforme> ventesReforme = venteReformeRepo.findByClientUniqueIdAndFarmId(uniqueId, farmId);
+
+        List<ClientVenteLigneDTO> historique = new java.util.ArrayList<>();
+        double totalAchete = 0.0;
+        double totalPaye = 0.0;
+
+        for (VenteOeufs v : ventesOeufs) {
+            totalAchete += nz(v.getMontant());
+            totalPaye += v.getMontantRapporte() != null ? v.getMontantRapporte() : nz(v.getMontant());
+            historique.add(ClientVenteLigneDTO.builder()
+                    .uniqueId(v.getUniqueId())
+                    .date(v.getDate())
+                    .type("OEUFS")
+                    .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
+                    .montant(v.getMontant())
+                    .montantRapporte(v.getMontantRapporte())
+                    .build());
+        }
+        for (VenteReforme v : ventesReforme) {
+            totalAchete += nz(v.getMontant());
+            totalPaye += v.getMontantRapporte() != null ? v.getMontantRapporte() : nz(v.getMontant());
+            historique.add(ClientVenteLigneDTO.builder()
+                    .uniqueId(v.getUniqueId())
+                    .date(v.getDate())
+                    .type("REFORME")
+                    .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
+                    .montant(v.getMontant())
+                    .montantRapporte(v.getMontantRapporte())
+                    .build());
+        }
+        historique.sort((a, b) -> b.getDate().compareTo(a.getDate()));
+
+        double solde = soldeClientService.getSolde(client).getSolde();
+
+        return ClientReportDTO.builder()
+                .clientUniqueId(client.getUniqueId())
+                .clientNom(client.getNom())
+                .totalAchete(totalAchete)
+                .totalPaye(totalPaye)
+                .solde(solde)
+                .historique(historique)
+                .build();
     }
 }

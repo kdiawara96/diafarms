@@ -1,5 +1,6 @@
 package com.diafarms.ml.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -15,6 +16,11 @@ import com.diafarms.ml.models.VenteReforme;
 public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
 
     Optional<VenteReforme> findByUniqueId(String uniqueId);
+
+    // Historique des ventes réforme d'un client précis — voir ClientServiceImpl.getReport.
+    @Query("SELECT v FROM VenteReforme v WHERE v.client.uniqueId = :clientUniqueId AND v.farm.id = :farmId " +
+        "AND v.initialisation.removed = false ORDER BY v.date DESC")
+    List<VenteReforme> findByClientUniqueIdAndFarmId(@Param("clientUniqueId") String clientUniqueId, @Param("farmId") Long farmId);
 
     @Query("SELECT v FROM VenteReforme v WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
     Page<VenteReforme> search(@Param("farmId") Long farmId, Pageable pageable);

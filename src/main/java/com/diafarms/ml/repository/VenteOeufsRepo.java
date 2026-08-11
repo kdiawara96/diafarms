@@ -1,5 +1,6 @@
 package com.diafarms.ml.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -15,6 +16,11 @@ import com.diafarms.ml.models.VenteOeufs;
 public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
 
     Optional<VenteOeufs> findByUniqueId(String uniqueId);
+
+    // Historique des ventes d'œufs d'un client précis — voir ClientServiceImpl.getReport.
+    @Query("SELECT v FROM VenteOeufs v WHERE v.client.uniqueId = :clientUniqueId AND v.farm.id = :farmId " +
+        "AND v.initialisation.removed = false ORDER BY v.date DESC")
+    List<VenteOeufs> findByClientUniqueIdAndFarmId(@Param("clientUniqueId") String clientUniqueId, @Param("farmId") Long farmId);
 
     @Query("SELECT v FROM VenteOeufs v WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
     Page<VenteOeufs> search(@Param("farmId") Long farmId, Pageable pageable);

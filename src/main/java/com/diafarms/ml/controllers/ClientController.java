@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.diafarms.ml.DTO.ClientDTO;
+import com.diafarms.ml.DTO.ClientReportDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.ClientCreate;
@@ -58,6 +59,17 @@ public class ClientController {
     public ResponseEntity<ApiResponse<List<ClientDTO>>> select() {
         try {
             return ApiResponse.createResponse("Liste des clients récupérée", HttpStatus.OK, service.select(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @GetMapping("/{uniqueId}/report")
+    public ResponseEntity<ApiResponse<ClientReportDTO>> report(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Rapport client récupéré", HttpStatus.OK, service.getReport(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
