@@ -1,0 +1,174 @@
+package com.diafarms.ml.ServiceImpl;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.diafarms.ml.DTO.ClientDTO;
+import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.models.Client;
+import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.repository.ClientRepo;
+import com.diafarms.ml.request.create.ClientCreate;
+import com.diafarms.ml.services.ClientService;
+import com.diafarms.ml.services.LogsServices;
+
+import lombok.RequiredArgsConstructor;
+
+// Clients d'une ferme (acheteurs) — voir Client.java. Un client est optionnel sur
+// une vente (VenteOeufs/VenteReforme), gestion accessible à ADMIN/RESPONSABLE/VENTE
+// en création (un vendeur rencontre de nouveaux clients sur le terrain), modification
+// et suppression réservées à ADMIN/RESPONSABLE.
+@Service
+@RequiredArgsConstructor
+public class ClientServiceImpl implements ClientService {
+
+    private final ClientRepo clientRepo;
+    private final LogsServices logs;
+    private final OtherService otherService;
+
+    private Utilisateurs getCurrentUserSafe() {
+        try {
+            return otherService.getCurrentUser();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private boolean hasRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
+    private boolean isAdmin(Utilisateurs u) {
+        return hasRole(u, "ADMIN") || hasRole(u, "SUPER_ADMIN");
+    }
+
+    private void ensureCanCreate(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "VENTE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour créer un client.");
+        }
+    }
+
+    private void ensureCanManage(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
+            throw new IllegalArgumentException("Seul un administrateur ou un responsable peut modifier/supprimer un client.");
+        }
+    }
+
+    @Override
+    @Transactional
+    public ClientDTO create(ClientCreate data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanCreate(currentUser);
+        if (data.getNom() == null || data.getNom().isBlank()) {
+            throw new IllegalArgumentException("Le nom du client est obligatoire.");
+        }
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new IllegalArgumentException("Votre compte n'est rattaché à aucune ferme.");
+        }
+        if (clientRepo.existsByNomIgnoreCaseAndFarmId(data.getNom().trim(), currentUser.getFarm().getId())) {
+            throw new IllegalArgumentException("Un client portant ce nom existe déjà.");
+        }
+
+        Client c = new Client();
+        c.setUniqueId(java.util.UUID.randomUUID().toString());
+        c.setNom(data.getNom().trim());
+        c.setTelephone(data.getTelephone());
+        c.setAdresse(data.getAdresse());
+        c.setEmail(data.getEmail());
+        c.setFarm(currentUser.getFarm());
+        c.setInitialisation(Initialisation.init());
+
+        Client saved = clientRepo.save(c);
+        logs.addLogs(currentUser.getId(), saved.getId(), "Client", "Ajout d'un client : " + saved.getNom());
+        return ClientDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public ClientDTO update(String uniqueId, ClientCreate data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
+
+        Client c = clientRepo.findByUniqueId(uniqueId);
+        if (c == null) {
+            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        }
+
+        if (data.getNom() != null && !data.getNom().isBlank()) c.setNom(data.getNom().trim());
+        if (data.getTelephone() != null) c.setTelephone(data.getTelephone());
+        if (data.getAdresse() != null) c.setAdresse(data.getAdresse());
+        if (data.getEmail() != null) c.setEmail(data.getEmail());
+        if (c.getInitialisation() != null) c.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
+
+        Client saved = clientRepo.save(c);
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Client", "Modification d'un client");
+        }
+        return ClientDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public String deleteOrRecover(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
+
+        Client c = clientRepo.findByUniqueId(uniqueId);
+        if (c == null) {
+            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        }
+
+        c.getInitialisation().setRemoved(!c.getInitialisation().getRemoved());
+        clientRepo.save(c);
+        boolean removed = c.getInitialisation().getRemoved();
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), c.getId(), "Client", (removed ? "Suppression" : "Restauration") + " d'un client");
+        }
+        return removed ? "Client supprimé." : "Client récupéré.";
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ClientDTO> select() {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) return List.of();
+        return clientRepo.findAllActiveByFarmId(currentUser.getFarm().getId()).stream()
+                .map(ClientDTO::select)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<ClientDTO> list(int page, int size, String search) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "nom"));
+
+        if (currentUser == null || currentUser.getFarm() == null) {
+            return new PaginatedResponse<>(List.of(), 1, 0, 0, size);
+        }
+        Long farmId = currentUser.getFarm().getId();
+
+        Page<Client> clientPage = (search != null && !search.trim().isEmpty())
+                ? clientRepo.searchByFarm(farmId, search.trim(), pageable)
+                : clientRepo.findActiveByFarmId(farmId, pageable);
+
+        List<ClientDTO> dtoList = clientPage.getContent().stream().map(ClientDTO::fromEntity).toList();
+
+        return new PaginatedResponse<>(
+                dtoList,
+                clientPage.getNumber() + 1,
+                clientPage.getTotalPages(),
+                clientPage.getTotalElements(),
+                clientPage.getSize()
+        );
+    }
+}
