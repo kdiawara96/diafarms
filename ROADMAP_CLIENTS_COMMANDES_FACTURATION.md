@@ -24,21 +24,21 @@ Document de planification (pas encore implémenté). Périmètre : les 3 dépôt
 
 ---
 
-## 1. Gestion des clients (fondation)
+## 1. Gestion des clients (fondation) — ✅ FAIT (2026-08-11)
 
-- [ ] Backend : entité `Client` (uniqueId, nom, téléphone, adresse, email optionnel, farm, `Initialisation`) — même patron que `Magasin`/`Batiment`.
-- [ ] Backend : `ClientRepo`, `ClientDTO`, `ClientServiceImpl`, `ClientController` — CRUD standard (create/update/list/search paginée/deleteOrRecover).
-- [ ] Web : page `/clients` (liste + recherche + pagination, dialogues créer/modifier), suit le patron `Magasins.tsx`.
-- [ ] Mobile : pas de gestion des clients sur mobile dans un premier temps (comme RESPONSABLE, aucune présence mobile) — seulement une sélection de client existant au moment de la vente si le rôle VENTE en a besoin sur le terrain. **❓ Question à trancher** : un vendeur mobile doit-il pouvoir créer un client à la volée pendant une vente, ou uniquement en choisir un déjà créé côté web ?
+- [x] Backend : entité `Client` (uniqueId, nom, téléphone, adresse, email optionnel, farm, `Initialisation`) — même patron que `Magasin`/`Batiment`.
+- [x] Backend : `ClientRepo`, `ClientDTO`, `ClientServiceImpl`, `ClientController` — CRUD standard (create/update/list/search paginée/deleteOrRecover). Création ouverte à ADMIN/RESPONSABLE/VENTE, modification/suppression réservées à ADMIN/RESPONSABLE.
+- [x] Web : page `/clients` (liste + recherche + pagination, dialogues créer/modifier), suit le patron `Magasins.tsx`. Visible à ADMIN/RESPONSABLE/COMPTABLE/VENTE.
+- [ ] Mobile : pas encore fait — reste à ajouter un sélecteur de client (optionnel) sur les écrans de vente mobile (`SaisieFormActivity`), avec fallback "sans client". **❓ Question toujours ouverte** : un vendeur mobile doit-il pouvoir créer un client à la volée, ou uniquement choisir parmi ceux déjà créés côté web ?
 
-## 2. Rattachement du client aux ventes + dette client
+## 2. Rattachement du client aux ventes + dette client — ✅ FAIT côté backend+web (2026-08-11)
 
-- [ ] Backend : ajouter `client` (`@ManyToOne`, **nullable**) à `VenteOeufs` et `VenteReforme` — nullable explicitement pour permettre une vente sans client ("vente directe"/anonyme), demande confirmée par l'utilisateur.
-- [ ] Backend : migration additive uniquement (colonne nullable, `ddl-auto=update` suffit, aucune donnée existante à toucher).
-- [ ] Web : `CreateVenteOeufsDialog`/`CreateVenteReformeDialog` — sélecteur de client optionnel (recherche parmi les clients existants), avec une option explicite "Vente sans client".
-- [ ] Mobile : même sélecteur optionnel sur les écrans de vente (`SaisieFormActivity`), avec fallback "sans client" par défaut pour ne pas bloquer une vente rapide sur le terrain.
+- [x] Backend : `client` (`@ManyToOne`, **nullable**) ajouté à `VenteOeufs` et `VenteReforme` — on peut toujours vendre sans client ("vente directe").
+- [x] Backend : migration additive uniquement (colonne nullable, `ddl-auto=update` a suffi).
+- [x] Web : `CreateVenteOeufsDialog`/`CreateVenteReformeDialog` — sélecteur de client optionnel ("Vente directe (sans client)" par défaut) + bouton "+ Client" pour créer un client à la volée sans quitter le formulaire.
+- [ ] Mobile : pas encore fait (même sélecteur à ajouter sur `SaisieFormActivity`).
 
-### Dette client — **❓ Décision de conception à trancher avant d'implémenter**
+### Dette client — **✅ Option A retenue et implémentée**
 
 Aujourd'hui, l'écart entre `montant` (théorique) et `montantRapporte` (ce que le
 vendeur a rapporté) alimente uniquement `SoldeVendeur` — c'est-à-dire que le
@@ -57,10 +57,11 @@ L'option A change un comportement déjà en production (le calcul de
 `SoldeVendeur`/`totalDuParVendeurs` affiché en Comptabilité/Reporting) — à
 valider explicitement avec l'utilisateur avant de coder.
 
-- [ ] **Trancher A vs B avec l'utilisateur avant d'implémenter.**
-- [ ] Backend : entité `SoldeClient` (uniqueId, client — FK unique, farm, solde, `Initialisation`), repo/service/controller — miroir de `SoldeVendeur`.
-- [ ] Backend : `ClientReportDTO` — total acheté (théorique, somme des ventes du client), total payé (réel, somme des `montantRapporte`/montant réel), solde dû (depuis `SoldeClient`), historique des ventes.
-- [ ] Web : en cliquant sur un client (page `/clients` ou une fiche client dédiée `/clients/:id`) — affichage du rapport complet : combien acheté, combien payé, combien dû, historique des ventes liées.
+- [x] Choix retenu : **Option A**, implémentée (l'utilisateur a validé "vas y").
+- [x] Backend : entité `SoldeClient` (uniqueId, client — FK unique, farm, solde, `Initialisation`), repo/service/controller — miroir de `SoldeVendeur`. `VenteOeufsImpl`/`VenteReformeImpl.ajusterEcart` route vers `SoldeClient` si un client est renseigné, `SoldeVendeur` sinon — le routage suit aussi un changement de client sur une vente déjà créée.
+- [x] Backend : `ClientReportDTO` — total acheté (théorique), total payé (réel, `COALESCE(montantRapporte, montant)` par vente), solde dû (depuis `SoldeClient`), historique chronologique des ventes (`GET /clients/{uniqueId}/report`).
+- [x] Web : cliquer sur un client dans `/clients` ouvre `ClientDetailDialog` — rapport complet (acheté/payé/dû + historique avec écart théorique/réel par ligne).
+- [ ] **Reste à faire (petit)** : `GET /soldes-client/list` existe côté back mais n'est encore consommé nulle part côté web — pas de carte "Total dû par les clients" sur Comptabilité/Reporting (l'équivalent `totalDuParVendeurs` existe déjà pour les vendeurs). Ajout rapide si besoin.
 
 ## 3. Gestion des commandes
 
