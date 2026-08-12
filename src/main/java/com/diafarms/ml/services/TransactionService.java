@@ -37,6 +37,16 @@ public interface TransactionService {
     TransactionDTO createFromSource(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
                                      String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar);
 
+    /**
+     * Crée une transaction "sortie" commune (pas de projet, pas de client) tracée
+     * jusqu'à sa source — utilisée par SalaireServiceImpl.payer pour que "Payer le
+     * salaire" génère une vraie Transaction (catégorie "Salaires",
+     * SourceTransaction.SALAIRE) au lieu de laisser l'utilisateur ressaisir une
+     * transaction manuelle non structurée. Même statut VALIDE par défaut que create().
+     */
+    TransactionDTO createSortieCommune(Farm farm, Double montant, String categorie, LocalDate date,
+                                        String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar);
+
     /** Bascule removed sur la transaction liée à une vente supprimée/restaurée
      * (retrouvée via sourceUniqueId) — pas de recette fantôme après suppression. */
     void toggleRemovedBySource(String sourceUniqueId);

@@ -271,6 +271,31 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
+    public TransactionDTO createSortieCommune(Farm farm, Double montant, String categorie, java.time.LocalDate date,
+                                               String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar) {
+        Transaction t = new Transaction();
+        t.setUniqueId(java.util.UUID.randomUUID().toString());
+        t.setRef(generateRef());
+        t.setType(TypeTransaction.SORTIE);
+        t.setDate(date != null ? date : java.time.LocalDate.now());
+        t.setDescription(description);
+        t.setMontant(montant);
+        t.setCategorie(categorie);
+        t.setStatut(StatutTransaction.VALIDE);
+        t.setValidateur(creePar);
+        t.setDateValidation(LocalDateTime.now());
+        t.setSourceType(sourceType);
+        t.setSourceUniqueId(sourceUniqueId);
+        t.setFarm(farm);
+        t.setCreePar(creePar);
+        t.setInitialisation(Initialisation.init());
+
+        Transaction saved = transactionRepo.save(t);
+        return TransactionDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
     public void toggleRemovedBySource(String sourceUniqueId) {
         transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
             t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
