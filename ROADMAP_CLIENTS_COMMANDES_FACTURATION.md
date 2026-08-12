@@ -83,12 +83,12 @@ acompte seulement) — distincte d'une vente immédiate.
 - [x] Web : page `/factures` (onglets par statut, téléchargement PDF, marquer payée), bouton "Facturer" sur `Commandes.tsx` et sur l'historique d'achats de `ClientDetailDialog` (pas sur Ventes.tsx/Comptabilité : une ligne y est une Transaction, potentiellement scindée en plusieurs par projet contributeur — la vraie source d'une vente est accessible depuis la fiche client). Accès réservé à ADMIN/RESPONSABLE/COMPTABLE.
 - [ ] Mobile : hors périmètre (comme RESPONSABLE, la facturation reste une action web ADMIN/COMPTABLE).
 
-## 5. Gestion des salaires
+## 5. Gestion des salaires — ✅ FAIT côté backend+web (2026-08-12)
 
-- [ ] Backend : entité `Salaire` (uniqueId, `employe` — FK `Utilisateurs`, farm, montantMensuel de base, historique de paiements — soit une sous-entité `PaiementSalaire` (période, montantPaye, datePaiement, statut) soit un simple historique de `Transaction` liées).
-- [ ] Backend : action "Payer le salaire" pour une période donnée → génère automatiquement une `Transaction` (sortie, catégorie "Salaires", nouveau `SourceTransaction.SALAIRE` pour la traçabilité) plutôt que de laisser l'utilisateur saisir une transaction manuelle non structurée comme aujourd'hui — évite la double-saisie et garde la Comptabilité exacte.
-- [ ] Backend : `SalaireRepo`, `SalaireDTO`, `SalaireServiceImpl`, `SalaireController`.
-- [ ] Web : page `/salaires` — liste des employés avec salaire de base, historique des paiements, bouton "Payer" par période, export Excel mensuel.
+- [x] Backend : entité `Salaire` (uniqueId, `employe` — FK `Utilisateurs`, unique, farm, montantMensuel de base) + `PaiementSalaire` (période "AAAA-MM", montantPaye, datePaiement, au plus un paiement par période).
+- [x] Backend : action "Payer le salaire" → `TransactionService.createSortieCommune` génère automatiquement une `Transaction` (sortie, catégorie "Salaires", nouveau `SourceTransaction.SALAIRE`) plutôt que de laisser l'utilisateur saisir une transaction manuelle non structurée.
+- [x] Backend : `SalaireRepo`, `PaiementSalaireRepo`, `SalaireDTO`, `PaiementSalaireDTO`, `SalaireServiceImpl`, `SalaireController` (`definir` upsert, `payer`, `list`, `{employeUniqueId}/paiements`).
+- [x] Web : page `/salaires` — liste des employés avec salaire de base (dialogue "Définir un salaire", réutilisable pour modifier), bouton "Payer" par période (dialogue avec période/montant/description), historique des paiements par employé, export Excel.
 - [ ] Mobile : hors périmètre (gestion RH/finance, pas un besoin terrain).
 
 ## 6. Gestion des utilisateurs — compléments
