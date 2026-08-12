@@ -63,16 +63,16 @@ valider explicitement avec l'utilisateur avant de coder.
 - [x] Web : cliquer sur un client dans `/clients` ouvre `ClientDetailDialog` — rapport complet (acheté/payé/dû + historique avec écart théorique/réel par ligne).
 - [ ] **Reste à faire (petit)** : `GET /soldes-client/list` existe côté back mais n'est encore consommé nulle part côté web — pas de carte "Total dû par les clients" sur Comptabilité/Reporting (l'équivalent `totalDuParVendeurs` existe déjà pour les vendeurs). Ajout rapide si besoin.
 
-## 3. Gestion des commandes
+## 3. Gestion des commandes — ✅ FAIT côté backend+web (2026-08-12)
 
 Une commande = ce qu'un client demande **avant** que la vente ne soit
 finalisée (quantité pas encore livrée, paiement pas encore encaissé, ou
 acompte seulement) — distincte d'une vente immédiate.
 
-- [ ] Backend : entité `Commande` (uniqueId, client — obligatoire cette fois, une commande anonyme n'a pas de sens —, farm, magasin destination, dateCommande, dateLivraisonPrevue, type OEUFS/REFORME, quantité, prixUnitaireEstime, montantAcompte optionnel, statut : EN_ATTENTE / CONFIRMEE / CONVERTIE / ANNULEE, `Initialisation`).
-- [ ] Backend : `CommandeRepo`, `CommandeDTO`, `CommandeServiceImpl`, `CommandeController` — CRUD + action `convertirEnVente(commandeUniqueId, ...)` qui crée la/les `VenteOeufs`/`VenteReforme` correspondante(s) (réutilise la logique de répartition déjà existante) et marque la commande `CONVERTIE`, en gardant un lien vers la vente générée.
-- [ ] Web : page `/commandes` — liste par statut (façon kanban ou onglets), création de commande depuis la fiche client, bouton "Convertir en vente".
-- [ ] Mobile : à confirmer si un rôle VENTE doit pouvoir créer/consulter des commandes sur le terrain, ou si c'est réservé à ADMIN/RESPONSABLE côté web. **❓ Question à trancher.**
+- [x] Backend : entité `Commande` (uniqueId, client — obligatoire, farm, magasin destination, dateCommande, dateLivraisonPrevue, type OEUFS/REFORME, quantité, prixUnitaireEstime, montantEstime, montantAcompte optionnel, statut EN_ATTENTE/CONFIRMEE/CONVERTIE/ANNULEE, venteUniqueId une fois convertie, `Initialisation`).
+- [x] Backend : `CommandeRepo`, `CommandeDTO`, `CommandeServiceImpl`, `CommandeController` — create/update (EN_ATTENTE seulement)/confirmer/annuler/`convertirEnVente` (réutilise directement `VenteOeufsService`/`VenteReformeService.create`, aucune duplication de la logique de répartition ; l'acompte devient `montantRapporte` de la vente, jamais laissé null pour que le reste dû devienne une vraie dette client)/deleteOrRecover (EN_ATTENTE seulement)/list paginée par statut+client.
+- [x] Web : page `/commandes` (onglets par statut), `CreateCommandeDialog` (client obligatoire + "+ Client" à la volée, magasin, type, quantité/prix/montant auto-calculé, acompte), bouton "Convertir en vente" par ligne, bouton "+ Nouvelle commande" depuis la fiche client.
+- [ ] Mobile : pas fait — **décision prise par défaut** (cohérence avec Client) : ADMIN/RESPONSABLE/VENTE peuvent créer/gérer des commandes côté web, mobile laissé de côté pour l'instant comme pour Client.
 
 ## 4. Finaliser la facturation
 
