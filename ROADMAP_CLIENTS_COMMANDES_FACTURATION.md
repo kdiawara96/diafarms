@@ -61,7 +61,7 @@ valider explicitement avec l'utilisateur avant de coder.
 - [x] Backend : entité `SoldeClient` (uniqueId, client — FK unique, farm, solde, `Initialisation`), repo/service/controller — miroir de `SoldeVendeur`. `VenteOeufsImpl`/`VenteReformeImpl.ajusterEcart` route vers `SoldeClient` si un client est renseigné, `SoldeVendeur` sinon — le routage suit aussi un changement de client sur une vente déjà créée.
 - [x] Backend : `ClientReportDTO` — total acheté (théorique), total payé (réel, `COALESCE(montantRapporte, montant)` par vente), solde dû (depuis `SoldeClient`), historique chronologique des ventes (`GET /clients/{uniqueId}/report`).
 - [x] Web : cliquer sur un client dans `/clients` ouvre `ClientDetailDialog` — rapport complet (acheté/payé/dû + historique avec écart théorique/réel par ligne).
-- [ ] **Reste à faire (petit)** : `GET /soldes-client/list` existe côté back mais n'est encore consommé nulle part côté web — pas de carte "Total dû par les clients" sur Comptabilité/Reporting (l'équivalent `totalDuParVendeurs` existe déjà pour les vendeurs). Ajout rapide si besoin.
+- [x] Web : carte "Total dû par les clients" + section "Soldes clients" (liste pliable "Voir plus"/"Voir moins") sur Comptabilité/Ventes/Reporting, colonne Client sur les tableaux Ventes/Comptabilité ("Inconnu" si vente sans client), remboursement de dette client (`payerDette`) avec formulaire dans `ClientDetailDialog`.
 
 ## 3. Gestion des commandes — ✅ FAIT côté backend+web (2026-08-12)
 
@@ -78,9 +78,9 @@ acompte seulement) — distincte d'une vente immédiate.
 
 Entièrement à construire (aucune base existante).
 
-- [ ] Backend : entité `Facture` (numéroFacture séquentiel par ferme, client, dateEmission, lignes — snapshot des quantités/prix au moment de la facture, montantTotal, montantPaye, statut PAYEE/PARTIELLE/IMPAYEE, farm, lien optionnel vers la/les vente(s) ou commande d'origine).
-- [ ] **❓ Question à trancher** : une facture nécessite-t-elle toujours un client (facture au sens strict), ou doit-on aussi pouvoir émettre un "reçu" pour une vente anonyme ? Proposition : `Facture` réservée aux ventes/commandes avec client identifié ; un simple reçu (déjà couvert par le ticket de caisse habituel) reste hors périmètre.
-- [ ] **❓ Décision technique** : génération PDF — côté backend (ex. bibliothèque type OpenPDF/iText, permet un envoi par email direct) vs côté web (ex. jsPDF, plus simple mais moins adapté à l'envoi automatique). Recommandation : backend, pour pouvoir réutiliser la génération depuis un futur envoi par email et rester cohérent quel que soit le client (web/mobile).
+- [x] Décisions tranchées avec l'utilisateur (2026-08-12) : **client obligatoire** sur `Facture` (comme `Commande`, pas de facture anonyme) ; génération PDF **côté backend** (OpenPDF).
+- [ ] Backend : entité `Facture` (numéroFacture séquentiel par ferme, client — obligatoire, dateEmission, lignes — snapshot des quantités/prix au moment de la facture, montantTotal, montantPaye, statut PAYEE/PARTIELLE/IMPAYEE, farm, lien optionnel vers la/les vente(s) ou commande d'origine).
+- [ ] Backend : dépendance OpenPDF (`com.github.librepdf:openpdf`), génération du PDF depuis les lignes de facture (en-tête ferme, client, tableau lignes, total, statut).
 - [ ] Backend : `FactureController` — créer depuis une vente/commande, lister/rechercher, télécharger le PDF, marquer comme payée (met à jour `montantPaye`, potentiellement `SoldeClient`).
 - [ ] Web : page `/factures`, bouton "Générer une facture" depuis une vente ou une commande (uniquement si un client est renseigné), téléchargement/impression du PDF.
 - [ ] Mobile : hors périmètre dans un premier temps (comme RESPONSABLE, la facturation reste une action web ADMIN/COMPTABLE).
