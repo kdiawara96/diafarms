@@ -74,16 +74,14 @@ acompte seulement) — distincte d'une vente immédiate.
 - [x] Web : page `/commandes` (onglets par statut), `CreateCommandeDialog` (client obligatoire + "+ Client" à la volée, magasin, type, quantité/prix/montant auto-calculé, acompte), bouton "Convertir en vente" par ligne, bouton "+ Nouvelle commande" depuis la fiche client.
 - [ ] Mobile : pas fait — **décision prise par défaut** (cohérence avec Client) : ADMIN/RESPONSABLE/VENTE peuvent créer/gérer des commandes côté web, mobile laissé de côté pour l'instant comme pour Client.
 
-## 4. Finaliser la facturation
-
-Entièrement à construire (aucune base existante).
+## 4. Finaliser la facturation — ✅ FAIT côté backend+web (2026-08-12)
 
 - [x] Décisions tranchées avec l'utilisateur (2026-08-12) : **client obligatoire** sur `Facture` (comme `Commande`, pas de facture anonyme) ; génération PDF **côté backend** (OpenPDF).
-- [ ] Backend : entité `Facture` (numéroFacture séquentiel par ferme, client — obligatoire, dateEmission, lignes — snapshot des quantités/prix au moment de la facture, montantTotal, montantPaye, statut PAYEE/PARTIELLE/IMPAYEE, farm, lien optionnel vers la/les vente(s) ou commande d'origine).
-- [ ] Backend : dépendance OpenPDF (`com.github.librepdf:openpdf`), génération du PDF depuis les lignes de facture (en-tête ferme, client, tableau lignes, total, statut).
-- [ ] Backend : `FactureController` — créer depuis une vente/commande, lister/rechercher, télécharger le PDF, marquer comme payée (met à jour `montantPaye`, potentiellement `SoldeClient`).
-- [ ] Web : page `/factures`, bouton "Générer une facture" depuis une vente ou une commande (uniquement si un client est renseigné), téléchargement/impression du PDF.
-- [ ] Mobile : hors périmètre dans un premier temps (comme RESPONSABLE, la facturation reste une action web ADMIN/COMPTABLE).
+- [x] Backend : entité `Facture` (numéroFacture séquentiel par ferme format `FAC-{année}-{seq}`, client obligatoire, dateEmission, sourceType/sourceUniqueId — snapshot figé d'UNE vente ou UNE commande au moment de l'émission, montantTotal, montantPaye, statut PAYEE/PARTIELLE/IMPAYEE, farm).
+- [x] Backend : dépendance OpenPDF (`com.github.librepdf:openpdf`), PDF généré depuis la facture (en-tête, client, ligne description/quantité/prix/montant, total/payé/reste, statut).
+- [x] Backend : `FactureController` — générer depuis une vente/commande (`sourceType` VENTE_OEUFS/VENTE_REFORME/COMMANDE, une seule facture par source), lister/filtrer par statut+client, télécharger le PDF, marquer comme payée (réutilise `ClientService.payerDette` — vraie Transaction + `SoldeClient`, pas une case cochée isolée).
+- [x] Web : page `/factures` (onglets par statut, téléchargement PDF, marquer payée), bouton "Facturer" sur `Commandes.tsx` et sur l'historique d'achats de `ClientDetailDialog` (pas sur Ventes.tsx/Comptabilité : une ligne y est une Transaction, potentiellement scindée en plusieurs par projet contributeur — la vraie source d'une vente est accessible depuis la fiche client). Accès réservé à ADMIN/RESPONSABLE/COMPTABLE.
+- [ ] Mobile : hors périmètre (comme RESPONSABLE, la facturation reste une action web ADMIN/COMPTABLE).
 
 ## 5. Gestion des salaires
 
