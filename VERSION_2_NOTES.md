@@ -215,3 +215,92 @@ récent/petit ET sémantiquement nécessaire (une classe nommée "Vente" contena
 lignes de type STOCKAGE aurait été trompeuse). Le résultat côté utilisateur est
 identique : il ne voit plus jamais "Bâtiment" que pour un poulailler.
 - Attention : une session Postgres/backend **réelle** de l'utilisateur (pas un environnement de test) a été détectée en cours de session — toujours vérifier avant toute opération destructive sur la base.
+
+### Mise à jour — Clients, Commandes, Facturation, Salaires (2026-08-10 → 2026-08-12)
+
+Feuille de route complète : `diafarms_back/ROADMAP_CLIENTS_COMMANDES_FACTURATION.md`
+(checkboxes tenues à jour au fil de l'eau, décisions/choix par défaut documentés
+dedans plutôt que redupliqués ici). **À tester par l'utilisateur avant tout autre
+travail sur ces zones** — rien de ce qui suit n'a été testé en conditions réelles
+(pas de serveur backend actif la majeure partie de cette session, aucun run
+Android réel).
+
+**Sections 1-2 — Client (fondation) + dette client (Option A)** : entité `Client`
+(nom/téléphone/adresse/email, farm-scopée), rattachée en optionnel à
+`VenteOeufs`/`VenteReforme`. Écart théorique/rapporté d'une vente routé vers
+`SoldeClient` si un client est identifié, vers `SoldeVendeur` sinon (Option A du
+roadmap, choisie explicitement par l'utilisateur — changement de comportement déjà
+en prod sur `totalDuParVendeurs`). Remboursement de dette (`ClientServiceImpl.
+payerDette`) génère une vraie `Transaction` + ajuste `SoldeClient`. Web : page
+`/clients`, `ClientDetailDialog` (rapport + historique + paiement), cartes "Total dû
+par les clients"/"Soldes clients" sur Comptabilité/Ventes/Reporting (liste pliable
+"Voir plus", pas de navigation séparée — l'utilisateur a explicitement rejeté un
+premier essai avec lien vers une autre page). Colonne Client sur les tableaux
+Ventes/Comptabilité ("Inconnu" si vente sans client identifié).
+
+**Section 3 — Commandes** : entité `Commande` (client **obligatoire**, contrairement
+à une vente), cycle EN_ATTENTE→CONFIRMEE→CONVERTIE (crée la vraie vente via
+`VenteOeufsService`/`VenteReformeService.create`, aucune duplication de la logique de
+répartition entre projets) ou →ANNULEE. Point piège déjà géré : l'acompte devient
+`montantRapporte` de la vente générée via un `nz()` explicite (jamais `null`), sinon
+la convention "`null` = pas d'écart connu" masquerait à tort une vraie dette client
+sur le reste non payé. Web : page `/commandes`, bouton "Convertir en vente".
+
+**Section 4 — Facturation** : `Facture` (client obligatoire, numéro séquentiel
+`FAC-{année}-{seq}`, **snapshot figé** au moment de l'émission — ne suit plus les
+modifications ultérieures de la vente/commande d'origine), générée depuis UNE vente
+ou UNE commande (jamais une ligne de `Ventes.tsx`/Comptabilité : une vente peut être
+scindée en plusieurs `Transaction` par projet contributeur, la vraie source reste
+accessible depuis la fiche client). PDF généré **côté backend** (nouvelle dépendance
+`com.github.librepdf:openpdf`). "Marquer payée" réutilise `ClientService.payerDette`
+(même Transaction + SoldeClient que le paiement de dette normal) plutôt que de
+dupliquer la logique de règlement — risque assumé et documenté : rien n'empêche un
+double comptage si quelqu'un enregistre le même paiement via les deux chemins
+(fiche client ET facture) pour la même somme. Accès ADMIN/RESPONSABLE/COMPTABLE
+(pas VENTE, décision du roadmap : "la facturation reste une action web
+ADMIN/COMPTABLE").
+
+**Section 5 — Salaires** : `Salaire` (base mensuelle par employé, upsert) +
+`PaiementSalaire` (au plus un paiement par période "AAAA-MM", vérifié par
+`existsBySalaire_IdAndPeriode`). "Payer" génère une transaction réelle via un
+nouveau `TransactionService.createSortieCommune` (SORTIE, commun, sans projet ni
+client — mirror de `createFromSource` qui lui est ENTREE-only et toujours lié à un
+projet, donc pas réutilisable tel quel) + nouveau `SourceTransaction.SALAIRE`. Accès
+ADMIN/RESPONSABLE/COMPTABLE.
+
+**Piège récurrent évité sur TOUTES les nouvelles requêtes paginées** (`CommandeRepo`,
+`FactureRepo`, `PaiementSalaireRepo`) : ne jamais mettre un `ORDER BY` explicite dans
+le JPQL en même temps qu'un `Pageable` construit avec un `Sort` côté service — les
+deux entrent en conflit. Toujours l'un OU l'autre (choix fait ici : `Sort` côté
+service, JPQL sans `ORDER BY`, avec un commentaire dans chaque repo pour ne pas
+réintroduire l'erreur).
+
+**Section 6 (Utilisateurs — compléments) : PAS commencée.** Le roadmap lui-même
+pose la question à trancher avec l'utilisateur ("quel manque précis a motivé cette
+demande ?") — ne pas commencer sans réponse, plusieurs pistes possibles listées dans
+le roadmap mais aucune confirmée.
+
+**Mobile (2026-08-12)** — Client + Commande ajoutés côté VENTE uniquement (pas
+COMPTABLE : `ensureCanManage` back n'autorise pas ce rôle pour Client/Commande ; pas
+ADMIN/RESPONSABLE : aucune présence mobile pour ces rôles, caractéristique de toute
+l'appli, pas propre à cette feature). Suit le patron existant à la lettre : écriture
+toujours locale d'abord (`SaisieType.CLIENT_CREATE`/`COMMANDE_CREATE`, table
+`saisies_locales`), synchronisée plus tard par `SyncManager`, jamais d'appel réseau
+direct depuis le formulaire. **Limitation assumée et documentée en commentaire dans
+le code** : le sélecteur client (vente optionnelle ou commande obligatoire) ne
+propose QUE les clients déjà synchronisés côté serveur — `SyncManager` traite les
+saisies une à la fois sans résolution de dépendances entre elles (et dans l'ordre
+`created_at DESC`, donc le plus récent d'abord, ce qui aurait de toute façon traité
+une commande AVANT le client qu'elle référence si la dépendance avait été autorisée).
+Un client créé hors ligne redevient sélectionnable après sa synchronisation (cache
+rafraîchi automatiquement après chaque sync, comme les projets/magasins).
+Compilé/vérifié via `./gradlew compileDebugJavaWithJavac` + `processDebugResources`
+(0 erreur) — **jamais lancé sur un appareil/émulateur réel cette session**.
+
+**État de vérification à l'entrée de la prochaine session** : les 3 dépôts sont
+`git status` propres sur `version_2`. Backend compile (`./mvnw clean compile`), web
+type-check clean (`npx tsc -p tsconfig.app.json --noEmit`), mobile compile
+(`./gradlew compileDebugJavaWithJavac`) — mais AUCUN des trois n'a été testé
+fonctionnellement (pas de serveur dev lancé, pas de build web servi, pas d'APK
+installé). L'utilisateur a dit vouloir tester après cette session : ne pas supposer
+que quoi que ce soit fonctionne réellement avant qu'il ne confirme.
