@@ -29,14 +29,14 @@ Document de planification (pas encore implémenté). Périmètre : les 3 dépôt
 - [x] Backend : entité `Client` (uniqueId, nom, téléphone, adresse, email optionnel, farm, `Initialisation`) — même patron que `Magasin`/`Batiment`.
 - [x] Backend : `ClientRepo`, `ClientDTO`, `ClientServiceImpl`, `ClientController` — CRUD standard (create/update/list/search paginée/deleteOrRecover). Création ouverte à ADMIN/RESPONSABLE/VENTE, modification/suppression réservées à ADMIN/RESPONSABLE.
 - [x] Web : page `/clients` (liste + recherche + pagination, dialogues créer/modifier), suit le patron `Magasins.tsx`. Visible à ADMIN/RESPONSABLE/COMPTABLE/VENTE.
-- [ ] Mobile : pas encore fait — reste à ajouter un sélecteur de client (optionnel) sur les écrans de vente mobile (`SaisieFormActivity`), avec fallback "sans client". **❓ Question toujours ouverte** : un vendeur mobile doit-il pouvoir créer un client à la volée, ou uniquement choisir parmi ceux déjà créés côté web ?
+- [x] Mobile : ✅ FAIT (2026-08-12) — carte "Nouveau client" (VENTE), écriture locale + synchronisation comme toute saisie (`SaisieType.CLIENT_CREATE`). Réponse à la question ouverte : un vendeur PEUT créer un client à la volée depuis le mobile (hors ligne), mais il ne devient sélectionnable dans une vente/commande qu'une fois synchronisé (pas de résolution de dépendances entre saisies locales, voir `SyncManager`).
 
 ## 2. Rattachement du client aux ventes + dette client — ✅ FAIT côté backend+web (2026-08-11)
 
 - [x] Backend : `client` (`@ManyToOne`, **nullable**) ajouté à `VenteOeufs` et `VenteReforme` — on peut toujours vendre sans client ("vente directe").
 - [x] Backend : migration additive uniquement (colonne nullable, `ddl-auto=update` a suffi).
 - [x] Web : `CreateVenteOeufsDialog`/`CreateVenteReformeDialog` — sélecteur de client optionnel ("Vente directe (sans client)" par défaut) + bouton "+ Client" pour créer un client à la volée sans quitter le formulaire.
-- [ ] Mobile : pas encore fait (même sélecteur à ajouter sur `SaisieFormActivity`).
+- [x] Mobile : ✅ FAIT (2026-08-12) — sélecteur client optionnel ajouté aux formulaires Vente œufs/réforme mobile (`spinnerClientVenteOeufs`/`spinnerClientVenteReforme`, "Vente directe" par défaut), ne liste que les clients déjà synchronisés.
 
 ### Dette client — **✅ Option A retenue et implémentée**
 
@@ -72,7 +72,7 @@ acompte seulement) — distincte d'une vente immédiate.
 - [x] Backend : entité `Commande` (uniqueId, client — obligatoire, farm, magasin destination, dateCommande, dateLivraisonPrevue, type OEUFS/REFORME, quantité, prixUnitaireEstime, montantEstime, montantAcompte optionnel, statut EN_ATTENTE/CONFIRMEE/CONVERTIE/ANNULEE, venteUniqueId une fois convertie, `Initialisation`).
 - [x] Backend : `CommandeRepo`, `CommandeDTO`, `CommandeServiceImpl`, `CommandeController` — create/update (EN_ATTENTE seulement)/confirmer/annuler/`convertirEnVente` (réutilise directement `VenteOeufsService`/`VenteReformeService.create`, aucune duplication de la logique de répartition ; l'acompte devient `montantRapporte` de la vente, jamais laissé null pour que le reste dû devienne une vraie dette client)/deleteOrRecover (EN_ATTENTE seulement)/list paginée par statut+client.
 - [x] Web : page `/commandes` (onglets par statut), `CreateCommandeDialog` (client obligatoire + "+ Client" à la volée, magasin, type, quantité/prix/montant auto-calculé, acompte), bouton "Convertir en vente" par ligne, bouton "+ Nouvelle commande" depuis la fiche client.
-- [ ] Mobile : pas fait — **décision prise par défaut** (cohérence avec Client) : ADMIN/RESPONSABLE/VENTE peuvent créer/gérer des commandes côté web, mobile laissé de côté pour l'instant comme pour Client.
+- [x] Mobile : ✅ FAIT (2026-08-12) — carte "Nouvelle commande" (VENTE), client obligatoire (choisi parmi les clients déjà synchronisés, message explicite si aucun), magasin/type/quantité/prix/montant estimé/acompte/livraison prévue. Écriture locale + synchronisation (`SaisieType.COMMANDE_CREATE`), pas de confirmer/annuler/convertir sur mobile (actions de gestion, restent web).
 
 ## 4. Finaliser la facturation — ✅ FAIT côté backend+web (2026-08-12)
 
