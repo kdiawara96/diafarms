@@ -426,3 +426,42 @@ clean. **Cette fois, une partie a été testée en conditions réelles par
 l'utilisateur** (c'est comme ça que les deux bugs 500 de la mise à jour précédente
 ont été trouvés) — mais le logo/tampon/bulletin/Personnel de cette mise à jour n'ont
 pas encore été testés par l'utilisateur au moment d'écrire cette note.
+
+### Mise à jour — Historique des taux de salaire (2026-08-12, même session)
+
+**Problème réel signalé par l'utilisateur** (pas un bug trouvé en testant, une
+question posée directement) : un salaire passe de 75000 à 100000 FCFA, mais un mois
+où l'employé était encore à 75000 n'a jamais été payé — le comptable veut le payer
+maintenant, après le changement. Sans historique, `payer()` proposait par défaut le
+taux ACTUEL de la grille (100000) pour ce mois passé, alors que 75000 était le bon
+montant. Le champ montant restait modifiable à la main donc ce n'était pas cassé,
+mais rien n'avertissait le comptable ni ne calculait le bon montant automatiquement.
+
+**Choix tranché avec l'utilisateur** : historiser correctement plutôt qu'un simple
+avertissement. Nouvelle entité `SalaireHistorique` (mode/taux/dateEffective/dateFin,
+dateFin null = taux courant) — `SalaireServiceImpl.definir()` ferme l'enregistrement
+actif et en ouvre un nouveau à chaque changement RÉEL de mode/taux (pas de doublon si
+on re-sauvegarde la même valeur). `payer()` résout maintenant le taux réellement en
+vigueur pour la PÉRIODE choisie (`resolveTauxPourPeriode` : dernier historique dont
+`dateEffective` ne dépasse pas la fin du mois demandé), pas le taux courant — un
+montant explicite reste toujours prioritaire (prime/retenue ponctuelle inchangée).
+
+**Bulletin de paie aussi corrigé par la même occasion** : il lisait `Salaire.
+tauxBase` (taux ACTUEL) au lieu du taux réellement payé ce jour-là — même classe de
+bug. `PaiementSalaire` gagne `modePaiementApplique`/`tauxApplique`, renseignés à
+chaque paiement avec le taux résolu pour la période, lus par le PDF en priorité
+(repli sur le taux actuel de la grille uniquement pour un paiement antérieur à cette
+fonctionnalité, jamais migré).
+
+Nouvel endpoint `GET /salaires/{employeUniqueId}/taux?periode=AAAA-MM` — le web
+(`PayerSalaireDialog`) le requête à chaque changement de mois/année et affiche un
+avertissement explicite quand le taux de la période diffère du taux actuel de la
+grille, avec le bon montant déjà pré-rempli.
+
+**Migration** effectuée en direct sur la base de dev (serveur toujours en cours,
+recompilation → devtools recharge → nouvelle table/colonnes ajoutées par
+ddl-auto=update, purement additif donc sans risque) : un `SalaireHistorique` de
+départ créé pour chacun des 2 `Salaire` existants (dateEffective = aujourd'hui), et
+`modePaiementApplique`/`tauxApplique` rétro-remplis sur l'unique `PaiementSalaire`
+déjà enregistré à partir du taux de son `Salaire` — vérifié avant commit, comme les
+migrations précédentes de cette session.
