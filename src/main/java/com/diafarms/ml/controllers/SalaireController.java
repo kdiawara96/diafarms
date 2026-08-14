@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import com.diafarms.ml.DTO.PaiementSalaireDTO;
 import com.diafarms.ml.DTO.SalaireDTO;
+import com.diafarms.ml.DTO.TauxSalaireDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.SalaireDefinirRequest;
@@ -66,6 +67,19 @@ public class SalaireController {
         headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentDisposition(ContentDisposition.attachment().filename(paiementUniqueId + ".pdf").build());
         return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/{employeUniqueId}/taux")
+    public ResponseEntity<ApiResponse<TauxSalaireDTO>> tauxPourPeriode(
+            @PathVariable String employeUniqueId,
+            @RequestParam String periode) {
+        try {
+            return ApiResponse.createResponse("Taux récupéré", HttpStatus.OK, service.getTauxPourPeriode(employeUniqueId, periode), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
     }
 
     @GetMapping("/{employeUniqueId}/paiements")

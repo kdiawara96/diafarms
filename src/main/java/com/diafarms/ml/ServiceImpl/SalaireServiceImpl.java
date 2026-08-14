@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.PaiementSalaireDTO;
 import com.diafarms.ml.DTO.SalaireDTO;
+import com.diafarms.ml.DTO.TauxSalaireDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.Farm;
@@ -21,10 +22,12 @@ import com.diafarms.ml.models.PaiementSalaire;
 import com.diafarms.ml.models.Personnel;
 import com.diafarms.ml.models.Salaire;
 import com.diafarms.ml.models.Salaire.ModePaiement;
+import com.diafarms.ml.models.SalaireHistorique;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.PaiementSalaireRepo;
 import com.diafarms.ml.repository.PersonnelRepo;
+import com.diafarms.ml.repository.SalaireHistoriqueRepo;
 import com.diafarms.ml.repository.SalaireRepo;
 import com.diafarms.ml.request.create.SalaireDefinirRequest;
 import com.diafarms.ml.request.others.SalairePayerRequest;
@@ -58,6 +61,7 @@ public class SalaireServiceImpl implements SalaireService {
 
     private final SalaireRepo salaireRepo;
     private final PaiementSalaireRepo paiementSalaireRepo;
+    private final SalaireHistoriqueRepo salaireHistoriqueRepo;
     private final PersonnelRepo personnelRepo;
     private final TransactionService transactionService;
     private final LogsServices logs;
@@ -123,14 +127,71 @@ public class SalaireServiceImpl implements SalaireService {
         } else if (s.getInitialisation() != null) {
             s.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }
-        s.setModePaiement(modePaiement);
-        s.setTauxBase(data.getTauxBase());
+        // Le taux change réellement (ou c'est un tout nouveau Salaire) : ferme
+        // l'enregistrement historique actif et en ouvre un nouveau — sans ça, payer
+        // en retard une période antérieure à ce changement proposerait à tort le
+        // NOUVEAU taux (voir resolveTauxPourPeriode, utilisé par payer()).
+        boolean changementReel = nouveau || !modePaiement.equals(s.getModePaiement()) || !data.getTauxBase().equals(s.getTauxBase());
+        if (changementReel) {
+            if (!nouveau) {
+                SalaireHistorique actif = salaireHistoriqueRepo.findFirstBySalaire_IdAndDateFinIsNull(s.getId());
+                if (actif != null) {
+                    actif.setDateFin(LocalDate.now());
+                    salaireHistoriqueRepo.save(actif);
+                }
+            }
+            SalaireHistorique nouvelHistorique = new SalaireHistorique();
+            nouvelHistorique.setUniqueId(java.util.UUID.randomUUID().toString());
+            nouvelHistorique.setSalaire(s);
+            nouvelHistorique.setModePaiement(modePaiement);
+            nouvelHistorique.setTauxBase(data.getTauxBase());
+            nouvelHistorique.setDateEffective(LocalDate.now());
+            nouvelHistorique.setInitialisation(Initialisation.init());
+            s.setModePaiement(modePaiement);
+            s.setTauxBase(data.getTauxBase());
+            Salaire saved = salaireRepo.save(s);
+            nouvelHistorique.setSalaire(saved);
+            salaireHistoriqueRepo.save(nouvelHistorique);
+
+            logs.addLogs(currentUser.getId(), saved.getId(), "Salaire",
+                    (nouveau ? "Grille salariale définie pour " : "Grille salariale mise à jour pour ") + employe.getNom()
+                            + " (" + modePaiement + ", " + data.getTauxBase() + " FCFA)");
+            return SalaireDTO.fromEntity(saved, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(saved.getId()));
+        }
 
         Salaire saved = salaireRepo.save(s);
-        logs.addLogs(currentUser.getId(), saved.getId(), "Salaire",
-                (nouveau ? "Grille salariale définie pour " : "Grille salariale mise à jour pour ") + employe.getNom()
-                        + " (" + modePaiement + ", " + data.getTauxBase() + " FCFA)");
         return SalaireDTO.fromEntity(saved, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(saved.getId()));
+    }
+
+    // Taux réellement en vigueur pour la période demandée (format "AAAA-MM") — le
+    // dernier enregistrement SalaireHistorique dont dateEffective ne dépasse pas la
+    // fin de ce mois-là. Si aucun (données antérieures à cette fonctionnalité, jamais
+    // migrées), retombe sur le taux ACTUEL de la grille plutôt que d'échouer.
+    private TauxSalaireDTO resolveTauxPourPeriode(Salaire s, String periode) {
+        java.time.YearMonth ym = java.time.YearMonth.parse(periode);
+        SalaireHistorique h = salaireHistoriqueRepo.findFirstBySalaire_IdAndDateEffectiveLessThanEqualOrderByDateEffectiveDesc(
+                s.getId(), ym.atEndOfMonth());
+        if (h != null) {
+            return TauxSalaireDTO.builder().modePaiement(h.getModePaiement().name()).tauxBase(h.getTauxBase()).build();
+        }
+        return TauxSalaireDTO.builder().modePaiement(s.getModePaiement().name()).tauxBase(s.getTauxBase()).build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TauxSalaireDTO getTauxPourPeriode(String employeUniqueId, String periode) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
+        }
+        if (periode == null || !periode.matches("\\d{4}-\\d{2}")) {
+            throw new IllegalArgumentException("La période est obligatoire (format AAAA-MM).");
+        }
+        Salaire s = salaireRepo.findByEmploye_UniqueIdAndFarm_Id(employeUniqueId, currentUser.getFarm().getId());
+        if (s == null) {
+            throw new IllegalArgumentException("Aucun salaire de base défini pour cet employé.");
+        }
+        return resolveTauxPourPeriode(s, periode);
     }
 
     @Override
@@ -156,23 +217,30 @@ public class SalaireServiceImpl implements SalaireService {
             throw new IllegalArgumentException("Le salaire de " + data.getPeriode() + " a déjà été payé pour " + s.getEmploye().getNom() + ".");
         }
 
+        // Taux réellement en vigueur pour CETTE période (pas forcément le taux actuel
+        // de la grille — voir resolveTauxPourPeriode) : sert au calcul automatique ET
+        // gardé sur le paiement pour que le bulletin reste exact même si la grille
+        // change plus tard (ex: paiement en retard d'un mois à l'ancien taux).
+        TauxSalaireDTO tauxPeriode = resolveTauxPourPeriode(s, data.getPeriode());
+        ModePaiement modePeriode = ModePaiement.valueOf(tauxPeriode.getModePaiement());
+
         Double quantite = null;
         double montant;
         if (data.getMontant() != null && data.getMontant() > 0) {
             // Montant forcé explicitement — prioritaire sur le calcul automatique, quel
             // que soit le mode (permet une prime/retenue ponctuelle sans changer la grille).
             montant = data.getMontant();
-            if (s.getModePaiement() != ModePaiement.MENSUEL) quantite = data.getQuantite();
-        } else if (s.getModePaiement() == ModePaiement.MENSUEL) {
-            montant = s.getTauxBase();
+            if (modePeriode != ModePaiement.MENSUEL) quantite = data.getQuantite();
+        } else if (modePeriode == ModePaiement.MENSUEL) {
+            montant = tauxPeriode.getTauxBase();
         } else {
             if (data.getQuantite() == null || data.getQuantite() <= 0) {
-                throw new IllegalArgumentException(s.getModePaiement() == ModePaiement.HORAIRE
+                throw new IllegalArgumentException(modePeriode == ModePaiement.HORAIRE
                         ? "Veuillez indiquer le nombre d'heures travaillées."
                         : "Veuillez indiquer le nombre de jours travaillés.");
             }
             quantite = data.getQuantite();
-            montant = s.getTauxBase() * quantite;
+            montant = tauxPeriode.getTauxBase() * quantite;
         }
 
         PaiementSalaire p = new PaiementSalaire();
@@ -181,6 +249,8 @@ public class SalaireServiceImpl implements SalaireService {
         p.setPeriode(data.getPeriode());
         p.setMontantPaye(montant);
         p.setQuantite(quantite);
+        p.setModePaiementApplique(modePeriode);
+        p.setTauxApplique(tauxPeriode.getTauxBase());
         p.setDatePaiement(LocalDate.now());
         p.setCreePar(currentUser);
         p.setInitialisation(Initialisation.init());
@@ -263,6 +333,11 @@ public class SalaireServiceImpl implements SalaireService {
         Salaire s = p.getSalaire();
         Personnel employe = s.getEmploye();
         Farm farm = s.getFarm();
+        // Mode/taux réellement appliqués à CE paiement (voir payer()) — retombe sur le
+        // taux ACTUEL de la grille seulement pour un paiement antérieur à cette
+        // fonctionnalité (modePaiementApplique/tauxApplique alors null).
+        ModePaiement modeBulletin = p.getModePaiementApplique() != null ? p.getModePaiementApplique() : s.getModePaiement();
+        double tauxBulletin = p.getTauxApplique() != null ? p.getTauxApplique() : s.getTauxBase();
 
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -295,20 +370,20 @@ public class SalaireServiceImpl implements SalaireService {
             if (employe.getTelephone() != null) document.add(new Paragraph("Téléphone : " + employe.getTelephone(), normalFont));
             document.add(Chunk.NEWLINE);
 
-            String modeLabel = switch (s.getModePaiement()) {
+            String modeLabel = switch (modeBulletin) {
                 case MENSUEL -> "Mensuel";
                 case JOURNALIER -> "Journalier";
                 case HORAIRE -> "Horaire";
             };
             document.add(new Paragraph("Mode de paiement : " + modeLabel, normalFont));
-            String suffixeTaux = switch (s.getModePaiement()) {
+            String suffixeTaux = switch (modeBulletin) {
                 case MENSUEL -> "/ mois";
                 case JOURNALIER -> "/ jour";
                 case HORAIRE -> "/ heure";
             };
-            document.add(new Paragraph("Taux : " + String.format("%.0f FCFA %s", s.getTauxBase(), suffixeTaux), normalFont));
+            document.add(new Paragraph("Taux : " + String.format("%.0f FCFA %s", tauxBulletin, suffixeTaux), normalFont));
             if (p.getQuantite() != null) {
-                String uniteQuantite = s.getModePaiement() == ModePaiement.HORAIRE ? "heure(s)" : "jour(s)";
+                String uniteQuantite = modeBulletin == ModePaiement.HORAIRE ? "heure(s)" : "jour(s)";
                 document.add(new Paragraph("Quantité : " + p.getQuantite() + " " + uniteQuantite, normalFont));
             }
             document.add(Chunk.NEWLINE);

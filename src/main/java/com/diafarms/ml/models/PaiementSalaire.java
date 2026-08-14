@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import jakarta.persistence.*;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.models.Salaire.ModePaiement;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -46,6 +47,18 @@ public class PaiementSalaire {
     // MENSUEL), gardé pour trace même si la grille change ensuite.
     @Column(name = "quantite")
     private Double quantite;
+
+    // Mode/taux réellement en vigueur pour la PÉRIODE payée (voir
+    // SalaireServiceImpl.resolveTauxPourPeriode) — gardés ici, pas seulement déduits
+    // de Salaire.modePaiement/tauxBase actuels, pour que le bulletin de paie reste
+    // exact même après un changement de grille ultérieur (ex: augmentation de
+    // salaire après coup, paiement en retard d'un mois à l'ancien taux).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement_applique", length = 20)
+    private ModePaiement modePaiementApplique;
+
+    @Column(name = "taux_applique")
+    private Double tauxApplique;
 
     @Column(name = "date_paiement", nullable = false)
     private LocalDate datePaiement;
