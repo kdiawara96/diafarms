@@ -2,7 +2,10 @@ package com.diafarms.ml.controllers;
 
 import java.util.List;
 
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -54,6 +57,15 @@ public class SalaireController {
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
+    }
+
+    @GetMapping("/paiements/{paiementUniqueId}/pdf")
+    public ResponseEntity<byte[]> bulletinPdf(@PathVariable String paiementUniqueId) {
+        byte[] pdf = service.genererBulletinPdf(paiementUniqueId);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition.attachment().filename(paiementUniqueId + ".pdf").build());
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 
     @GetMapping("/{employeUniqueId}/paiements")

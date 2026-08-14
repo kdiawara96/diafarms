@@ -1,6 +1,8 @@
 package com.diafarms.ml.ServiceImpl;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -14,6 +16,7 @@ import com.diafarms.ml.DTO.PaiementSalaireDTO;
 import com.diafarms.ml.DTO.SalaireDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
+import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.PaiementSalaire;
 import com.diafarms.ml.models.Personnel;
 import com.diafarms.ml.models.Salaire;
@@ -26,8 +29,18 @@ import com.diafarms.ml.repository.SalaireRepo;
 import com.diafarms.ml.request.create.SalaireDefinirRequest;
 import com.diafarms.ml.request.others.SalairePayerRequest;
 import com.diafarms.ml.services.LogsServices;
+import com.diafarms.ml.services.MinioService;
 import com.diafarms.ml.services.SalaireService;
 import com.diafarms.ml.services.TransactionService;
+
+import com.lowagie.text.Chunk;
+import com.lowagie.text.Document;
+import com.lowagie.text.Element;
+import com.lowagie.text.Font;
+import com.lowagie.text.Image;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.pdf.PdfWriter;
 
 import lombok.RequiredArgsConstructor;
 
@@ -49,6 +62,7 @@ public class SalaireServiceImpl implements SalaireService {
     private final TransactionService transactionService;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final MinioService minioService;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -227,5 +241,92 @@ public class SalaireServiceImpl implements SalaireService {
                 paiementPage.getTotalElements(),
                 paiementPage.getSize()
         );
+    }
+
+    // Logo/tampon optionnels (voir Farm.logoNomMinio/tamponNomMinio) — mirroir de
+    // FactureServiceImpl.chargerImage, un échec de chargement est traité comme
+    // absent plutôt que de faire échouer toute la génération du PDF.
+    private Image chargerImage(String nomMinio) {
+        if (nomMinio == null) return null;
+        try (java.io.InputStream stream = minioService.downloadFile(nomMinio)) {
+            return Image.getInstance(stream.readAllBytes());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] genererBulletinPdf(String paiementUniqueId) {
+        PaiementSalaire p = paiementSalaireRepo.findByUniqueId(paiementUniqueId);
+        if (p == null) throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
+        Salaire s = p.getSalaire();
+        Personnel employe = s.getEmploye();
+        Farm farm = s.getFarm();
+
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            Document document = new Document(PageSize.A4, 50, 50, 50, 50);
+            PdfWriter.getInstance(document, out);
+            document.open();
+
+            Font titleFont = new Font(Font.HELVETICA, 20, Font.BOLD);
+            Font normalFont = new Font(Font.HELVETICA, 11, Font.NORMAL);
+            Font boldFont = new Font(Font.HELVETICA, 11, Font.BOLD);
+
+            Image logo = farm != null ? chargerImage(farm.getLogoNomMinio()) : null;
+            if (logo != null) {
+                logo.scaleToFit(150, 80);
+                logo.setAlignment(Element.ALIGN_LEFT);
+                document.add(logo);
+            }
+
+            Paragraph title = new Paragraph("BULLETIN DE PAIE", titleFont);
+            title.setAlignment(Element.ALIGN_CENTER);
+            document.add(title);
+            document.add(Chunk.NEWLINE);
+
+            document.add(new Paragraph("Période : " + p.getPeriode(), boldFont));
+            document.add(new Paragraph("Date de paiement : " + p.getDatePaiement().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), normalFont));
+            document.add(Chunk.NEWLINE);
+
+            document.add(new Paragraph("Employé : " + employe.getNom(), boldFont));
+            if (employe.getPoste() != null) document.add(new Paragraph("Poste : " + employe.getPoste(), normalFont));
+            if (employe.getTelephone() != null) document.add(new Paragraph("Téléphone : " + employe.getTelephone(), normalFont));
+            document.add(Chunk.NEWLINE);
+
+            String modeLabel = switch (s.getModePaiement()) {
+                case MENSUEL -> "Mensuel";
+                case JOURNALIER -> "Journalier";
+                case HORAIRE -> "Horaire";
+            };
+            document.add(new Paragraph("Mode de paiement : " + modeLabel, normalFont));
+            String suffixeTaux = switch (s.getModePaiement()) {
+                case MENSUEL -> "/ mois";
+                case JOURNALIER -> "/ jour";
+                case HORAIRE -> "/ heure";
+            };
+            document.add(new Paragraph("Taux : " + String.format("%.0f FCFA %s", s.getTauxBase(), suffixeTaux), normalFont));
+            if (p.getQuantite() != null) {
+                String uniteQuantite = s.getModePaiement() == ModePaiement.HORAIRE ? "heure(s)" : "jour(s)";
+                document.add(new Paragraph("Quantité : " + p.getQuantite() + " " + uniteQuantite, normalFont));
+            }
+            document.add(Chunk.NEWLINE);
+
+            document.add(new Paragraph("Montant net payé : " + String.format("%.0f FCFA", p.getMontantPaye()), titleFont));
+            document.add(Chunk.NEWLINE);
+
+            Image tampon = farm != null ? chargerImage(farm.getTamponNomMinio()) : null;
+            if (tampon != null) {
+                tampon.scaleToFit(100, 100);
+                tampon.setAlignment(Element.ALIGN_RIGHT);
+                document.add(tampon);
+            }
+
+            document.close();
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors de la génération du bulletin : " + e.getMessage(), e);
+        }
     }
 }

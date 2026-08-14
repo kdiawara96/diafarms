@@ -15,4 +15,7 @@ public interface SalaireService {
     PaiementSalaireDTO payer(SalairePayerRequest data);
     PaginatedResponse<SalaireDTO> list(int page, int size);
     PaginatedResponse<PaiementSalaireDTO> listPaiements(String employeUniqueId, int page, int size);
+    // Bulletin de paie PDF pour un paiement précis — voir SalaireServiceImpl, mirroir
+    // de FactureServiceImpl.genererPdf (logo/tampon de la ferme insérés si présents).
+    byte[] genererBulletinPdf(String paiementUniqueId);
 }

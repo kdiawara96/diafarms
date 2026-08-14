@@ -14,6 +14,8 @@ public interface PaiementSalaireRepo extends JpaRepository<PaiementSalaire, Long
 
     boolean existsBySalaire_IdAndPeriode(Long salaireId, String periode);
 
+    PaiementSalaire findByUniqueId(String uniqueId);
+
     // Le plus récent d'abord — utilisé pour afficher "dernier paiement" sur SalaireDTO.
     PaiementSalaire findFirstBySalaire_IdOrderByPeriodeDesc(Long salaireId);
 
