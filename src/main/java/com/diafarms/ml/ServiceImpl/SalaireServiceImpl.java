@@ -15,13 +15,14 @@ import com.diafarms.ml.DTO.SalaireDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.PaiementSalaire;
+import com.diafarms.ml.models.Personnel;
 import com.diafarms.ml.models.Salaire;
 import com.diafarms.ml.models.Salaire.ModePaiement;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.PaiementSalaireRepo;
+import com.diafarms.ml.repository.PersonnelRepo;
 import com.diafarms.ml.repository.SalaireRepo;
-import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.SalaireDefinirRequest;
 import com.diafarms.ml.request.others.SalairePayerRequest;
 import com.diafarms.ml.services.LogsServices;
@@ -44,7 +45,7 @@ public class SalaireServiceImpl implements SalaireService {
 
     private final SalaireRepo salaireRepo;
     private final PaiementSalaireRepo paiementSalaireRepo;
-    private final UtilisateursRepo utilisateursRepo;
+    private final PersonnelRepo personnelRepo;
     private final TransactionService transactionService;
     private final LogsServices logs;
     private final OtherService otherService;
@@ -92,8 +93,10 @@ public class SalaireServiceImpl implements SalaireService {
         } catch (Exception e) {
             throw new IllegalArgumentException("Mode de paiement invalide (attendu MENSUEL, JOURNALIER ou HORAIRE) : " + data.getModePaiement());
         }
-        Utilisateurs employe = utilisateursRepo.findByUniqueId(data.getEmployeUniqueId())
-                .orElseThrow(() -> new IllegalArgumentException("Employé introuvable : " + data.getEmployeUniqueId()));
+        Personnel employe = personnelRepo.findByUniqueId(data.getEmployeUniqueId());
+        if (employe == null) {
+            throw new IllegalArgumentException("Employé introuvable : " + data.getEmployeUniqueId());
+        }
 
         Salaire s = salaireRepo.findByEmploye_UniqueIdAndFarm_Id(data.getEmployeUniqueId(), currentUser.getFarm().getId());
         boolean nouveau = (s == null);
@@ -111,7 +114,7 @@ public class SalaireServiceImpl implements SalaireService {
 
         Salaire saved = salaireRepo.save(s);
         logs.addLogs(currentUser.getId(), saved.getId(), "Salaire",
-                (nouveau ? "Grille salariale définie pour " : "Grille salariale mise à jour pour ") + employe.getFullName()
+                (nouveau ? "Grille salariale définie pour " : "Grille salariale mise à jour pour ") + employe.getNom()
                         + " (" + modePaiement + ", " + data.getTauxBase() + " FCFA)");
         return SalaireDTO.fromEntity(saved, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(saved.getId()));
     }
@@ -136,7 +139,7 @@ public class SalaireServiceImpl implements SalaireService {
             throw new IllegalArgumentException("Aucun salaire de base défini pour cet employé — définissez-le d'abord.");
         }
         if (paiementSalaireRepo.existsBySalaire_IdAndPeriode(s.getId(), data.getPeriode())) {
-            throw new IllegalArgumentException("Le salaire de " + data.getPeriode() + " a déjà été payé pour " + s.getEmploye().getFullName() + ".");
+            throw new IllegalArgumentException("Le salaire de " + data.getPeriode() + " a déjà été payé pour " + s.getEmploye().getNom() + ".");
         }
 
         Double quantite = null;
@@ -171,12 +174,12 @@ public class SalaireServiceImpl implements SalaireService {
 
         String description = (data.getDescription() != null && !data.getDescription().isBlank())
                 ? data.getDescription()
-                : "Salaire " + data.getPeriode() + " — " + s.getEmploye().getFullName();
+                : "Salaire " + data.getPeriode() + " — " + s.getEmploye().getNom();
         transactionService.createSortieCommune(currentUser.getFarm(), montant, "Salaires", LocalDate.now(),
                 description, SourceTransaction.SALAIRE, saved.getUniqueId(), currentUser);
 
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementSalaire",
-                "Salaire de " + montant + " FCFA payé à " + s.getEmploye().getFullName() + " pour " + data.getPeriode());
+                "Salaire de " + montant + " FCFA payé à " + s.getEmploye().getNom() + " pour " + data.getPeriode());
         return PaiementSalaireDTO.fromEntity(saved);
     }
 
@@ -187,7 +190,7 @@ public class SalaireServiceImpl implements SalaireService {
         if (currentUser == null || currentUser.getFarm() == null) {
             return new PaginatedResponse<>(List.of(), 1, 0, 0, size);
         }
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "employe.fullName"));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "employe.nom"));
         Page<Salaire> salairePage = salaireRepo.search(currentUser.getFarm().getId(), pageable);
         List<SalaireDTO> dtoList = salairePage.getContent().stream()
                 .map(s -> SalaireDTO.fromEntity(s, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(s.getId())))

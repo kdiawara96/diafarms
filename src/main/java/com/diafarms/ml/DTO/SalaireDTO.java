@@ -31,7 +31,7 @@ public class SalaireDTO {
         return SalaireDTO.builder()
                 .uniqueId(s.getUniqueId())
                 .employeUniqueId(s.getEmploye() != null ? s.getEmploye().getUniqueId() : null)
-                .employeNom(s.getEmploye() != null ? s.getEmploye().getFullName() : null)
+                .employeNom(s.getEmploye() != null ? s.getEmploye().getNom() : null)
                 .modePaiement(s.getModePaiement() != null ? s.getModePaiement().name() : null)
                 .tauxBase(s.getTauxBase())
                 .dernierPaiementPeriode(dernier != null ? dernier.getPeriode() : null)

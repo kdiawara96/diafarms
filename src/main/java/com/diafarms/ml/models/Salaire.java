@@ -9,7 +9,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Grille salariale d'un employé (Utilisateurs) — un seul Salaire par employé (voir
+// Grille salariale d'un membre du personnel (Personnel, pas forcément un compte
+// Utilisateurs — voir Personnel.java) — un seul Salaire par personnel (voir
 // SalaireServiceImpl.definir, upsert). tauxBase a un sens différent selon
 // modePaiement : montant fixe mensuel, taux par jour, ou taux par heure — voir
 // SalaireServiceImpl.payer pour le calcul du montant réel à chaque paiement.
@@ -31,7 +32,7 @@ public class Salaire {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "employe_id", nullable = false, unique = true)
-    private Utilisateurs employe;
+    private Personnel employe;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)

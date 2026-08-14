@@ -30,7 +30,7 @@ public class PaiementSalaireDTO {
         if (p == null) return null;
         return PaiementSalaireDTO.builder()
                 .uniqueId(p.getUniqueId())
-                .employeNom(p.getSalaire() != null && p.getSalaire().getEmploye() != null ? p.getSalaire().getEmploye().getFullName() : null)
+                .employeNom(p.getSalaire() != null && p.getSalaire().getEmploye() != null ? p.getSalaire().getEmploye().getNom() : null)
                 .periode(p.getPeriode())
                 .montantPaye(p.getMontantPaye())
                 .quantite(p.getQuantite())
