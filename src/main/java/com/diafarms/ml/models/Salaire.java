@@ -9,9 +9,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Fiche salariale d'un employé (Utilisateurs) — un seul salaire de base par employé
-// (voir SalaireServiceImpl.definir, upsert). L'historique des paiements réels vit
-// dans PaiementSalaire, un par période payée — voir "Payer le salaire".
+// Grille salariale d'un employé (Utilisateurs) — un seul Salaire par employé (voir
+// SalaireServiceImpl.definir, upsert). tauxBase a un sens différent selon
+// modePaiement : montant fixe mensuel, taux par jour, ou taux par heure — voir
+// SalaireServiceImpl.payer pour le calcul du montant réel à chaque paiement.
+// L'historique des paiements réels vit dans PaiementSalaire, un par période payée.
 @Entity
 @Table(name = "salaires")
 @AllArgsConstructor
@@ -35,9 +37,20 @@ public class Salaire {
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
 
-    @Column(name = "montant_mensuel", nullable = false)
-    private Double montantMensuel;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement", nullable = false, length = 20,
+            columnDefinition = "varchar(20) not null default 'MENSUEL'")
+    private ModePaiement modePaiement = ModePaiement.MENSUEL;
+
+    // Sens dépendant de modePaiement : salaire mensuel fixe, taux journalier, ou
+    // taux horaire (jamais un montant déjà multiplié par une durée).
+    @Column(name = "taux_base", nullable = false)
+    private Double tauxBase;
 
     @Embedded
     private Initialisation initialisation;
+
+    public enum ModePaiement {
+        MENSUEL, JOURNALIER, HORAIRE
+    }
 }

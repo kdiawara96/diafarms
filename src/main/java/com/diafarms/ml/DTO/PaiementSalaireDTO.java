@@ -21,6 +21,7 @@ public class PaiementSalaireDTO {
     private String employeNom;
     private String periode;
     private Double montantPaye;
+    private Double quantite;
     private LocalDate datePaiement;
     private String creeParNom;
     private LocalDateTime createdAt;
@@ -32,6 +33,7 @@ public class PaiementSalaireDTO {
                 .employeNom(p.getSalaire() != null && p.getSalaire().getEmploye() != null ? p.getSalaire().getEmploye().getFullName() : null)
                 .periode(p.getPeriode())
                 .montantPaye(p.getMontantPaye())
+                .quantite(p.getQuantite())
                 .datePaiement(p.getDatePaiement())
                 .creeParNom(p.getCreePar() != null ? p.getCreePar().getFullName() : null)
                 .createdAt(p.getInitialisation() != null ? p.getInitialisation().getCreatedAt() : null)

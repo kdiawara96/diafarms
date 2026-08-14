@@ -20,7 +20,8 @@ public class SalaireDTO {
     private String uniqueId;
     private String employeUniqueId;
     private String employeNom;
-    private Double montantMensuel;
+    private String modePaiement;
+    private Double tauxBase;
     private String dernierPaiementPeriode;
     private LocalDate dernierPaiementDate;
     private Double dernierPaiementMontant;
@@ -31,7 +32,8 @@ public class SalaireDTO {
                 .uniqueId(s.getUniqueId())
                 .employeUniqueId(s.getEmploye() != null ? s.getEmploye().getUniqueId() : null)
                 .employeNom(s.getEmploye() != null ? s.getEmploye().getFullName() : null)
-                .montantMensuel(s.getMontantMensuel())
+                .modePaiement(s.getModePaiement() != null ? s.getModePaiement().name() : null)
+                .tauxBase(s.getTauxBase())
                 .dernierPaiementPeriode(dernier != null ? dernier.getPeriode() : null)
                 .dernierPaiementDate(dernier != null ? dernier.getDatePaiement() : null)
                 .dernierPaiementMontant(dernier != null ? dernier.getMontantPaye() : null)

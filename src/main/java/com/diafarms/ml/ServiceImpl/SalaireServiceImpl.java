@@ -16,6 +16,7 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.PaiementSalaire;
 import com.diafarms.ml.models.Salaire;
+import com.diafarms.ml.models.Salaire.ModePaiement;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.PaiementSalaireRepo;
@@ -29,12 +30,14 @@ import com.diafarms.ml.services.TransactionService;
 
 import lombok.RequiredArgsConstructor;
 
-// Salaire = fiche salariale d'un employé (base mensuelle) ; PaiementSalaire = un
-// paiement réel pour une période — voir Salaire.java/PaiementSalaire.java. "Payer le
-// salaire" génère une vraie Transaction (TransactionService.createSortieCommune)
-// plutôt que de laisser ressaisir une transaction manuelle non structurée. Permissions
-// alignées sur FactureServiceImpl : gestion RH/finance réservée à
-// ADMIN/RESPONSABLE/COMPTABLE, pas VENTE/PRODUCTION.
+// Salaire = grille salariale d'un employé (mode MENSUEL/JOURNALIER/HORAIRE + taux) ;
+// PaiementSalaire = un paiement réel pour une période — voir Salaire.java/
+// PaiementSalaire.java. "Payer le salaire" calcule le montant selon le mode
+// (tauxBase directement en MENSUEL, tauxBase × quantite en JOURNALIER/HORAIRE) et
+// génère une vraie Transaction (TransactionService.createSortieCommune) plutôt que
+// de laisser ressaisir une transaction manuelle non structurée. Permissions alignées
+// sur FactureServiceImpl : gestion RH/finance réservée à ADMIN/RESPONSABLE/COMPTABLE,
+// pas VENTE/PRODUCTION.
 @Service
 @RequiredArgsConstructor
 public class SalaireServiceImpl implements SalaireService {
@@ -80,8 +83,14 @@ public class SalaireServiceImpl implements SalaireService {
         if (data.getEmployeUniqueId() == null || data.getEmployeUniqueId().isBlank()) {
             throw new IllegalArgumentException("L'employé est obligatoire.");
         }
-        if (data.getMontantMensuel() == null || data.getMontantMensuel() <= 0) {
-            throw new IllegalArgumentException("Le salaire mensuel doit être positif.");
+        if (data.getTauxBase() == null || data.getTauxBase() <= 0) {
+            throw new IllegalArgumentException("Le taux (mensuel/journalier/horaire) doit être positif.");
+        }
+        ModePaiement modePaiement;
+        try {
+            modePaiement = ModePaiement.valueOf(data.getModePaiement().toUpperCase());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Mode de paiement invalide (attendu MENSUEL, JOURNALIER ou HORAIRE) : " + data.getModePaiement());
         }
         Utilisateurs employe = utilisateursRepo.findByUniqueId(data.getEmployeUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Employé introuvable : " + data.getEmployeUniqueId()));
@@ -97,12 +106,13 @@ public class SalaireServiceImpl implements SalaireService {
         } else if (s.getInitialisation() != null) {
             s.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }
-        s.setMontantMensuel(data.getMontantMensuel());
+        s.setModePaiement(modePaiement);
+        s.setTauxBase(data.getTauxBase());
 
         Salaire saved = salaireRepo.save(s);
         logs.addLogs(currentUser.getId(), saved.getId(), "Salaire",
-                (nouveau ? "Salaire de base défini pour " : "Salaire de base mis à jour pour ") + employe.getFullName()
-                        + " (" + data.getMontantMensuel() + " FCFA/mois)");
+                (nouveau ? "Grille salariale définie pour " : "Grille salariale mise à jour pour ") + employe.getFullName()
+                        + " (" + modePaiement + ", " + data.getTauxBase() + " FCFA)");
         return SalaireDTO.fromEntity(saved, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(saved.getId()));
     }
 
@@ -128,13 +138,32 @@ public class SalaireServiceImpl implements SalaireService {
         if (paiementSalaireRepo.existsBySalaire_IdAndPeriode(s.getId(), data.getPeriode())) {
             throw new IllegalArgumentException("Le salaire de " + data.getPeriode() + " a déjà été payé pour " + s.getEmploye().getFullName() + ".");
         }
-        double montant = (data.getMontant() != null && data.getMontant() > 0) ? data.getMontant() : s.getMontantMensuel();
+
+        Double quantite = null;
+        double montant;
+        if (data.getMontant() != null && data.getMontant() > 0) {
+            // Montant forcé explicitement — prioritaire sur le calcul automatique, quel
+            // que soit le mode (permet une prime/retenue ponctuelle sans changer la grille).
+            montant = data.getMontant();
+            if (s.getModePaiement() != ModePaiement.MENSUEL) quantite = data.getQuantite();
+        } else if (s.getModePaiement() == ModePaiement.MENSUEL) {
+            montant = s.getTauxBase();
+        } else {
+            if (data.getQuantite() == null || data.getQuantite() <= 0) {
+                throw new IllegalArgumentException(s.getModePaiement() == ModePaiement.HORAIRE
+                        ? "Veuillez indiquer le nombre d'heures travaillées."
+                        : "Veuillez indiquer le nombre de jours travaillés.");
+            }
+            quantite = data.getQuantite();
+            montant = s.getTauxBase() * quantite;
+        }
 
         PaiementSalaire p = new PaiementSalaire();
         p.setUniqueId(java.util.UUID.randomUUID().toString());
         p.setSalaire(s);
         p.setPeriode(data.getPeriode());
         p.setMontantPaye(montant);
+        p.setQuantite(quantite);
         p.setDatePaiement(LocalDate.now());
         p.setCreePar(currentUser);
         p.setInitialisation(Initialisation.init());

@@ -41,6 +41,12 @@ public class PaiementSalaire {
     @Column(name = "montant_paye", nullable = false)
     private Double montantPaye;
 
+    // Nombre de jours/heures travaillés pour cette période — renseigné uniquement si
+    // le Salaire était en mode JOURNALIER/HORAIRE au moment du paiement (null pour
+    // MENSUEL), gardé pour trace même si la grille change ensuite.
+    @Column(name = "quantite")
+    private Double quantite;
+
     @Column(name = "date_paiement", nullable = false)
     private LocalDate datePaiement;
 
