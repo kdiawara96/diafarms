@@ -28,6 +28,16 @@ public class Farm {
     @Column(name = "ville", length = 100)
     private String ville;
 
+    // Logo et tampon de la ferme — optionnels, insérés sur les factures et bulletins
+    // de salaire générés en PDF (voir FactureServiceImpl/SalaireServiceImpl), laissés
+    // vides si la ferme n'en a pas encore fourni. Stocke le nom d'objet MinIO (voir
+    // FarmController, MinioService), jamais le fichier lui-même en base.
+    @Column(name = "logo_nom_minio")
+    private String logoNomMinio;
+
+    @Column(name = "tampon_nom_minio")
+    private String tamponNomMinio;
+
     @OneToMany(mappedBy = "farm")
     private List<Utilisateurs> utilisateurs;
 

@@ -20,6 +20,7 @@ import com.diafarms.ml.models.Commande.StatutCommande;
 import com.diafarms.ml.models.Facture;
 import com.diafarms.ml.models.Facture.SourceFacture;
 import com.diafarms.ml.models.Facture.StatutFacture;
+import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
@@ -32,11 +33,13 @@ import com.diafarms.ml.request.create.FactureGenerateRequest;
 import com.diafarms.ml.services.ClientService;
 import com.diafarms.ml.services.FactureService;
 import com.diafarms.ml.services.LogsServices;
+import com.diafarms.ml.services.MinioService;
 
 import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
+import com.lowagie.text.Image;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.pdf.PdfPCell;
@@ -60,6 +63,7 @@ public class FactureServiceImpl implements FactureService {
     private final ClientService clientService;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final MinioService minioService;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -228,11 +232,25 @@ public class FactureServiceImpl implements FactureService {
         return FactureDTO.fromEntity(saved);
     }
 
+    // Logo/tampon sont optionnels (voir Farm.logoNomMinio/tamponNomMinio) — laissés
+    // vides si la ferme n'en a pas encore fourni, jamais d'espace réservé/placeholder.
+    // Échec de chargement (MinIO indisponible...) traité comme absent plutôt que de
+    // faire échouer toute la génération du PDF.
+    private Image chargerImage(String nomMinio) {
+        if (nomMinio == null) return null;
+        try (java.io.InputStream stream = minioService.downloadFile(nomMinio)) {
+            return Image.getInstance(stream.readAllBytes());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Override
     @Transactional(readOnly = true)
     public byte[] genererPdf(String uniqueId) {
         Facture f = factureRepo.findByUniqueId(uniqueId);
         if (f == null) throw new IllegalArgumentException("Facture introuvable : " + uniqueId);
+        Farm farm = f.getFarm();
 
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -243,6 +261,13 @@ public class FactureServiceImpl implements FactureService {
             Font titleFont = new Font(Font.HELVETICA, 20, Font.BOLD);
             Font normalFont = new Font(Font.HELVETICA, 11, Font.NORMAL);
             Font boldFont = new Font(Font.HELVETICA, 11, Font.BOLD);
+
+            Image logo = farm != null ? chargerImage(farm.getLogoNomMinio()) : null;
+            if (logo != null) {
+                logo.scaleToFit(150, 80);
+                logo.setAlignment(Element.ALIGN_LEFT);
+                document.add(logo);
+            }
 
             Paragraph title = new Paragraph("FACTURE", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
@@ -282,6 +307,14 @@ public class FactureServiceImpl implements FactureService {
             document.add(new Paragraph("Montant payé : " + String.format("%.0f FCFA", f.getMontantPaye()), normalFont));
             document.add(new Paragraph("Reste dû : " + String.format("%.0f FCFA", reste), boldFont));
             document.add(new Paragraph("Statut : " + f.getStatut().name(), boldFont));
+
+            Image tampon = farm != null ? chargerImage(farm.getTamponNomMinio()) : null;
+            if (tampon != null) {
+                tampon.scaleToFit(100, 100);
+                tampon.setAlignment(Element.ALIGN_RIGHT);
+                document.add(Chunk.NEWLINE);
+                document.add(tampon);
+            }
 
             document.close();
             return out.toByteArray();

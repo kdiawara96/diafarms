@@ -5,17 +5,22 @@ import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.repository.FarmsRepo;
+import com.diafarms.ml.services.MinioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Endpoints minimaux pour la ferme courante — pour l'instant limités à la ville
- * (utilisée par WeatherService pour géolocaliser les alertes météo). Pas encore de
- * gestion complète de la ferme (nom, adresse...), à étendre si le besoin apparaît.
+ * Endpoints pour la ferme courante — ville (WeatherService) et identité visuelle
+ * (logo/tampon, insérés sur les factures et bulletins de salaire générés en PDF,
+ * voir FactureServiceImpl/SalaireServiceImpl). Pas encore de gestion complète de la
+ * ferme (nom, adresse...), à étendre si le besoin apparaît.
  */
 @RestController
 @RequestMapping("/diafarms/api/v1/farms")
@@ -24,6 +29,7 @@ public class FarmController {
 
     private final FarmsRepo farmsRepo;
     private final OtherService otherService;
+    private final MinioService minioService;
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<Map<String, String>>> getMyFarm() {
@@ -31,8 +37,12 @@ public class FarmController {
         if (farm == null) {
             return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.OK, null, null);
         }
-        return ApiResponse.createResponse("Ferme récupérée", HttpStatus.OK,
-                Map.of("uniqueId", farm.getUniqueId(), "ville", farm.getVille() == null ? "" : farm.getVille()), null);
+        Map<String, String> result = new HashMap<>();
+        result.put("uniqueId", farm.getUniqueId());
+        result.put("ville", farm.getVille() == null ? "" : farm.getVille());
+        result.put("logoUrl", presignedUrlOrNull(farm.getLogoNomMinio()));
+        result.put("tamponUrl", presignedUrlOrNull(farm.getTamponNomMinio()));
+        return ApiResponse.createResponse("Ferme récupérée", HttpStatus.OK, result, null);
     }
 
     @PutMapping("/me/ville")
@@ -45,6 +55,95 @@ public class FarmController {
         farm.setVille(ville == null || ville.isBlank() ? null : ville.trim());
         farmsRepo.save(farm);
         return ApiResponse.createResponse("Ville de la ferme mise à jour", HttpStatus.OK, farm.getVille(), null);
+    }
+
+    @PostMapping("/me/logo")
+    public ResponseEntity<ApiResponse<String>> uploadLogo(@RequestParam("file") MultipartFile file) {
+        return uploadBranding(file, true);
+    }
+
+    @DeleteMapping("/me/logo")
+    public ResponseEntity<ApiResponse<String>> removeLogo() {
+        return removeBranding(true);
+    }
+
+    @PostMapping("/me/tampon")
+    public ResponseEntity<ApiResponse<String>> uploadTampon(@RequestParam("file") MultipartFile file) {
+        return uploadBranding(file, false);
+    }
+
+    @DeleteMapping("/me/tampon")
+    public ResponseEntity<ApiResponse<String>> removeTampon() {
+        return removeBranding(false);
+    }
+
+    private ResponseEntity<ApiResponse<String>> uploadBranding(MultipartFile file, boolean isLogo) {
+        try {
+            Utilisateurs currentUser = ensureAdmin();
+            Farm farm = getCurrentUserFarm();
+            if (farm == null) {
+                return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.BAD_REQUEST, null, null);
+            }
+            if (file == null || file.isEmpty()) {
+                return ApiResponse.createResponse("Fichier manquant", HttpStatus.BAD_REQUEST, null, List.of("Aucun fichier reçu"));
+            }
+            String ancien = isLogo ? farm.getLogoNomMinio() : farm.getTamponNomMinio();
+            String nomMinio = minioService.uploadFile(file, isLogo ? "farm-logo" : "farm-tampon");
+            if (isLogo) farm.setLogoNomMinio(nomMinio); else farm.setTamponNomMinio(nomMinio);
+            farmsRepo.save(farm);
+            if (ancien != null) {
+                try { minioService.deleteFile(ancien); } catch (Exception ignored) { }
+            }
+            return ApiResponse.createResponse((isLogo ? "Logo" : "Tampon") + " mis à jour", HttpStatus.OK,
+                    minioService.getPresignedUrl(nomMinio), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur lors de l'upload", HttpStatus.INTERNAL_SERVER_ERROR, null, List.of(e.getMessage()));
+        }
+    }
+
+    private ResponseEntity<ApiResponse<String>> removeBranding(boolean isLogo) {
+        try {
+            ensureAdmin();
+            Farm farm = getCurrentUserFarm();
+            if (farm == null) {
+                return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.BAD_REQUEST, null, null);
+            }
+            String ancien = isLogo ? farm.getLogoNomMinio() : farm.getTamponNomMinio();
+            if (ancien != null) {
+                try { minioService.deleteFile(ancien); } catch (Exception ignored) { }
+                if (isLogo) farm.setLogoNomMinio(null); else farm.setTamponNomMinio(null);
+                farmsRepo.save(farm);
+            }
+            return ApiResponse.createResponse((isLogo ? "Logo" : "Tampon") + " retiré", HttpStatus.OK, null, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    private String presignedUrlOrNull(String nomMinio) {
+        if (nomMinio == null) return null;
+        try {
+            return minioService.getPresignedUrl(nomMinio);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // Logo/tampon apparaissent sur des documents officiels (factures, bulletins de
+    // salaire) : réservé à ADMIN/SUPER_ADMIN, comme le reste de la page Paramètres
+    // côté web (voir DashboardLayout.navItems).
+    private Utilisateurs ensureAdmin() {
+        Utilisateurs currentUser = otherService.getCurrentUser();
+        boolean isAdmin = currentUser != null && currentUser.getRoles() != null && currentUser.getRoles().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+        if (!isAdmin) {
+            throw new IllegalArgumentException("Seul un administrateur peut modifier l'identité visuelle de la ferme.");
+        }
+        return currentUser;
     }
 
     // currentUser.getFarm() est une association LAZY : appeler un accesseur autre que
