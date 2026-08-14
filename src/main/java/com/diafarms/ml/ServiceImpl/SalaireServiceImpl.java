@@ -16,6 +16,7 @@ import com.diafarms.ml.DTO.PaiementSalaireDTO;
 import com.diafarms.ml.DTO.SalaireDTO;
 import com.diafarms.ml.DTO.TauxSalaireDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.commons.PdfStyle;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.PaiementSalaire;
@@ -36,13 +37,12 @@ import com.diafarms.ml.services.MinioService;
 import com.diafarms.ml.services.SalaireService;
 import com.diafarms.ml.services.TransactionService;
 
-import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
-import com.lowagie.text.Font;
 import com.lowagie.text.Image;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
+import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 
 import lombok.RequiredArgsConstructor;
@@ -341,62 +341,92 @@ public class SalaireServiceImpl implements SalaireService {
 
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            Document document = new Document(PageSize.A4, 50, 50, 50, 50);
+            Document document = new Document(PageSize.A4, 45, 45, 40, 40);
             PdfWriter.getInstance(document, out);
             document.open();
 
-            Font titleFont = new Font(Font.HELVETICA, 20, Font.BOLD);
-            Font normalFont = new Font(Font.HELVETICA, 11, Font.NORMAL);
-            Font boldFont = new Font(Font.HELVETICA, 11, Font.BOLD);
+            // ===== En-tête : logo à gauche, titre + période à droite =====
+            PdfPTable header = new PdfPTable(2);
+            header.setWidthPercentage(100);
+            header.setWidths(new float[]{1, 1});
 
             Image logo = farm != null ? chargerImage(farm.getLogoNomMinio()) : null;
             if (logo != null) {
-                logo.scaleToFit(150, 80);
-                logo.setAlignment(Element.ALIGN_LEFT);
-                document.add(logo);
+                logo.scaleToFit(140, 70);
+                header.addCell(PdfStyle.layoutCell(logo));
+            } else {
+                header.addCell(PdfStyle.layoutCell(new Paragraph(" ", PdfStyle.normal())));
             }
 
-            Paragraph title = new Paragraph("BULLETIN DE PAIE", titleFont);
-            title.setAlignment(Element.ALIGN_CENTER);
-            document.add(title);
-            document.add(Chunk.NEWLINE);
+            Paragraph title = new Paragraph("BULLETIN DE PAIE", PdfStyle.title());
+            title.setAlignment(Element.ALIGN_RIGHT);
+            String periodeLabel = MOIS_LABEL_FR[Integer.parseInt(p.getPeriode().substring(5)) - 1] + " " + p.getPeriode().substring(0, 4);
+            Paragraph periode = new Paragraph(periodeLabel, PdfStyle.bold());
+            periode.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph datePaiement = new Paragraph("Payé le " + p.getDatePaiement().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            datePaiement.setAlignment(Element.ALIGN_RIGHT);
+            header.addCell(PdfStyle.layoutCell(title, periode, datePaiement));
+            document.add(header);
 
-            document.add(new Paragraph("Période : " + p.getPeriode(), boldFont));
-            document.add(new Paragraph("Date de paiement : " + p.getDatePaiement().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), normalFont));
-            document.add(Chunk.NEWLINE);
+            document.add(new Paragraph(" "));
+            document.add(PdfStyle.colorBand(3f));
+            document.add(new Paragraph(" "));
 
-            document.add(new Paragraph("Employé : " + employe.getNom(), boldFont));
-            if (employe.getPoste() != null) document.add(new Paragraph("Poste : " + employe.getPoste(), normalFont));
-            if (employe.getTelephone() != null) document.add(new Paragraph("Téléphone : " + employe.getTelephone(), normalFont));
-            document.add(Chunk.NEWLINE);
+            // ===== Employé =====
+            document.add(new Paragraph("EMPLOYÉ", PdfStyle.sectionLabel()));
+            document.add(new Paragraph(" "));
+            java.util.List<Paragraph> employeLignes = new java.util.ArrayList<>();
+            employeLignes.add(new Paragraph(employe.getNom(), PdfStyle.bold()));
+            if (employe.getPoste() != null) employeLignes.add(new Paragraph(employe.getPoste(), PdfStyle.normal()));
+            if (employe.getTelephone() != null) employeLignes.add(new Paragraph(employe.getTelephone(), PdfStyle.normal()));
+            PdfPTable employeBox = new PdfPTable(1);
+            employeBox.setWidthPercentage(100);
+            employeBox.addCell(PdfStyle.infoBox(employeLignes));
+            document.add(employeBox);
+            document.add(new Paragraph(" "));
 
+            // ===== Détail du paiement =====
             String modeLabel = switch (modeBulletin) {
                 case MENSUEL -> "Mensuel";
                 case JOURNALIER -> "Journalier";
                 case HORAIRE -> "Horaire";
             };
-            document.add(new Paragraph("Mode de paiement : " + modeLabel, normalFont));
             String suffixeTaux = switch (modeBulletin) {
                 case MENSUEL -> "/ mois";
                 case JOURNALIER -> "/ jour";
                 case HORAIRE -> "/ heure";
             };
-            document.add(new Paragraph("Taux : " + String.format("%.0f FCFA %s", tauxBulletin, suffixeTaux), normalFont));
+            PdfPTable detail = new PdfPTable(2);
+            detail.setWidthPercentage(100);
+            detail.setWidths(new float[]{1, 1});
+            detail.addCell(PdfStyle.tableHeaderCell("Mode de paiement"));
+            detail.addCell(PdfStyle.tableHeaderCell("Taux"));
+            detail.addCell(PdfStyle.bodyCell(modeLabel));
+            detail.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA %s", tauxBulletin, suffixeTaux)));
             if (p.getQuantite() != null) {
-                String uniteQuantite = modeBulletin == ModePaiement.HORAIRE ? "heure(s)" : "jour(s)";
-                document.add(new Paragraph("Quantité : " + p.getQuantite() + " " + uniteQuantite, normalFont));
+                String uniteQuantite = modeBulletin == ModePaiement.HORAIRE ? "Heures travaillées" : "Jours travaillés";
+                detail.addCell(PdfStyle.tableHeaderCell(uniteQuantite));
+                detail.addCell(PdfStyle.tableHeaderCell("Période"));
+                detail.addCell(PdfStyle.bodyCell(String.valueOf(p.getQuantite())));
+                detail.addCell(PdfStyle.bodyCell(periodeLabel));
             }
-            document.add(Chunk.NEWLINE);
+            document.add(detail);
+            document.add(new Paragraph(" "));
 
-            document.add(new Paragraph("Montant net payé : " + String.format("%.0f FCFA", p.getMontantPaye()), titleFont));
-            document.add(Chunk.NEWLINE);
+            document.add(PdfStyle.highlightAmount("MONTANT NET PAYÉ", String.format("%,.0f FCFA", p.getMontantPaye())));
+            document.add(new Paragraph(" "));
+            document.add(new Paragraph(" "));
 
             Image tampon = farm != null ? chargerImage(farm.getTamponNomMinio()) : null;
             if (tampon != null) {
-                tampon.scaleToFit(100, 100);
+                tampon.scaleToFit(90, 90);
                 tampon.setAlignment(Element.ALIGN_RIGHT);
                 document.add(tampon);
+                document.add(new Paragraph(" "));
             }
+
+            Paragraph footer = new Paragraph("Diafarms — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            document.add(footer);
 
             document.close();
             return out.toByteArray();
@@ -404,4 +434,9 @@ public class SalaireServiceImpl implements SalaireService {
             throw new RuntimeException("Erreur lors de la génération du bulletin : " + e.getMessage(), e);
         }
     }
+
+    private static final String[] MOIS_LABEL_FR = {
+            "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+            "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+    };
 }

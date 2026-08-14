@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.FactureDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.commons.PdfStyle;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Commande;
 import com.diafarms.ml.models.Commande.StatutCommande;
@@ -35,14 +36,11 @@ import com.diafarms.ml.services.FactureService;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.MinioService;
 
-import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
-import com.lowagie.text.Font;
 import com.lowagie.text.Image;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
-import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 
@@ -245,6 +243,14 @@ public class FactureServiceImpl implements FactureService {
         }
     }
 
+    private String statutLabelFr(StatutFacture statut) {
+        return switch (statut) {
+            case IMPAYEE -> "IMPAYÉE";
+            case PARTIELLE -> "PARTIELLE";
+            case PAYEE -> "PAYÉE";
+        };
+    }
+
     @Override
     @Transactional(readOnly = true)
     public byte[] genererPdf(String uniqueId) {
@@ -254,73 +260,112 @@ public class FactureServiceImpl implements FactureService {
 
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            Document document = new Document(PageSize.A4, 50, 50, 50, 50);
+            Document document = new Document(PageSize.A4, 45, 45, 40, 40);
             PdfWriter.getInstance(document, out);
             document.open();
 
-            Font titleFont = new Font(Font.HELVETICA, 20, Font.BOLD);
-            Font normalFont = new Font(Font.HELVETICA, 11, Font.NORMAL);
-            Font boldFont = new Font(Font.HELVETICA, 11, Font.BOLD);
+            // ===== En-tête : logo à gauche, titre + n°/date à droite =====
+            PdfPTable header = new PdfPTable(2);
+            header.setWidthPercentage(100);
+            header.setWidths(new float[]{1, 1});
 
             Image logo = farm != null ? chargerImage(farm.getLogoNomMinio()) : null;
             if (logo != null) {
-                logo.scaleToFit(150, 80);
-                logo.setAlignment(Element.ALIGN_LEFT);
-                document.add(logo);
+                logo.scaleToFit(140, 70);
+                header.addCell(PdfStyle.layoutCell(logo));
+            } else {
+                header.addCell(PdfStyle.layoutCell(new Paragraph(" ", PdfStyle.normal())));
             }
 
-            Paragraph title = new Paragraph("FACTURE", titleFont);
-            title.setAlignment(Element.ALIGN_CENTER);
-            document.add(title);
-            document.add(Chunk.NEWLINE);
+            Paragraph title = new Paragraph("FACTURE", PdfStyle.title());
+            title.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph numero = new Paragraph("N° " + f.getNumeroFacture(), PdfStyle.bold());
+            numero.setAlignment(Element.ALIGN_RIGHT);
+            Paragraph date = new Paragraph("Émise le " + f.getDateEmission().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            date.setAlignment(Element.ALIGN_RIGHT);
+            header.addCell(PdfStyle.layoutCell(title, numero, date));
+            document.add(header);
 
-            document.add(new Paragraph("N° facture : " + f.getNumeroFacture(), boldFont));
-            document.add(new Paragraph("Date d'émission : " + f.getDateEmission().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), normalFont));
-            document.add(Chunk.NEWLINE);
+            document.add(new Paragraph(" "));
+            document.add(PdfStyle.colorBand(3f));
+            document.add(new Paragraph(" "));
 
-            document.add(new Paragraph("Client : " + f.getClient().getNom(), boldFont));
-            if (f.getClient().getTelephone() != null) {
-                document.add(new Paragraph("Téléphone : " + f.getClient().getTelephone(), normalFont));
-            }
-            if (f.getClient().getAdresse() != null) {
-                document.add(new Paragraph("Adresse : " + f.getClient().getAdresse(), normalFont));
-            }
-            document.add(Chunk.NEWLINE);
+            // Statut, aligné à droite
+            PdfPTable statutTable = new PdfPTable(1);
+            statutTable.setWidthPercentage(28);
+            statutTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            statutTable.addCell(PdfStyle.badgeCell(statutLabelFr(f.getStatut()), PdfStyle.statutFactureColor(f.getStatut().name())));
+            document.add(statutTable);
+            document.add(new Paragraph(" "));
 
+            // ===== Facturé à =====
+            document.add(new Paragraph("FACTURÉ À", PdfStyle.sectionLabel()));
+            document.add(new Paragraph(" "));
+            java.util.List<Paragraph> clientLignes = new java.util.ArrayList<>();
+            clientLignes.add(new Paragraph(f.getClient().getNom(), PdfStyle.bold()));
+            if (f.getClient().getTelephone() != null) clientLignes.add(new Paragraph(f.getClient().getTelephone(), PdfStyle.normal()));
+            if (f.getClient().getAdresse() != null) clientLignes.add(new Paragraph(f.getClient().getAdresse(), PdfStyle.normal()));
+            PdfPTable clientBox = new PdfPTable(1);
+            clientBox.setWidthPercentage(100);
+            clientBox.addCell(PdfStyle.infoBox(clientLignes));
+            document.add(clientBox);
+            document.add(new Paragraph(" "));
+
+            // ===== Ligne de facturation =====
             PdfPTable table = new PdfPTable(4);
             table.setWidthPercentage(100);
-            table.setWidths(new float[]{4, 1, 2, 2});
-            for (String header : new String[]{"Description", "Quantité", "Prix unitaire", "Montant"}) {
-                PdfPCell cell = new PdfPCell(new Paragraph(header, boldFont));
-                cell.setBackgroundColor(new java.awt.Color(230, 230, 230));
-                table.addCell(cell);
-            }
-            table.addCell(new Paragraph(f.getDescription(), normalFont));
-            table.addCell(new Paragraph(f.getQuantite() != null ? f.getQuantite().toString() : "-", normalFont));
-            table.addCell(new Paragraph(f.getPrixUnitaire() != null ? String.format("%.0f", f.getPrixUnitaire()) : "-", normalFont));
-            table.addCell(new Paragraph(String.format("%.0f FCFA", f.getMontantTotal()), normalFont));
+            table.setWidths(new float[]{3.5f, 1.5f, 2, 2});
+            table.addCell(PdfStyle.tableHeaderCell("Description"));
+            table.addCell(PdfStyle.tableHeaderCell("Quantité"));
+            table.addCell(PdfStyle.tableHeaderCell("Prix unitaire"));
+            table.addCell(PdfStyle.tableHeaderCell("Montant"));
+            table.addCell(PdfStyle.bodyCell(f.getDescription()));
+            table.addCell(PdfStyle.bodyCell(f.getQuantite() != null ? f.getQuantite().toString() : "-", Element.ALIGN_RIGHT));
+            table.addCell(PdfStyle.bodyCell(f.getPrixUnitaire() != null ? String.format("%.0f", f.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
+            table.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA", f.getMontantTotal()), Element.ALIGN_RIGHT));
             document.add(table);
-            document.add(Chunk.NEWLINE);
+            document.add(new Paragraph(" "));
 
+            // ===== Récapitulatif (aligné à droite) =====
             double reste = f.getMontantTotal() - f.getMontantPaye();
-            document.add(new Paragraph("Montant total : " + String.format("%.0f FCFA", f.getMontantTotal()), normalFont));
-            document.add(new Paragraph("Montant payé : " + String.format("%.0f FCFA", f.getMontantPaye()), normalFont));
-            document.add(new Paragraph("Reste dû : " + String.format("%.0f FCFA", reste), boldFont));
-            document.add(new Paragraph("Statut : " + f.getStatut().name(), boldFont));
+            PdfPTable recap = new PdfPTable(2);
+            recap.setWidthPercentage(55);
+            recap.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            recap.setWidths(new float[]{1, 1});
+            recap.addCell(PdfStyle.layoutCell(new Paragraph("Montant total", PdfStyle.normal())));
+            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", f.getMontantTotal()), PdfStyle.normal()))));
+            recap.addCell(PdfStyle.layoutCell(new Paragraph("Montant payé", PdfStyle.normal())));
+            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", f.getMontantPaye()), PdfStyle.normal()))));
+            document.add(recap);
+            document.add(new Paragraph(" "));
+
+            document.add(PdfStyle.highlightAmount(
+                    reste > 0 ? "RESTE DÛ" : "FACTURE SOLDÉE",
+                    String.format("%,.0f FCFA", reste)));
+            document.add(new Paragraph(" "));
+            document.add(new Paragraph(" "));
 
             Image tampon = farm != null ? chargerImage(farm.getTamponNomMinio()) : null;
             if (tampon != null) {
-                tampon.scaleToFit(100, 100);
+                tampon.scaleToFit(90, 90);
                 tampon.setAlignment(Element.ALIGN_RIGHT);
-                document.add(Chunk.NEWLINE);
                 document.add(tampon);
+                document.add(new Paragraph(" "));
             }
+
+            Paragraph footer = new Paragraph("Diafarms — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            document.add(footer);
 
             document.close();
             return out.toByteArray();
         } catch (Exception e) {
             throw new RuntimeException("Erreur lors de la génération du PDF : " + e.getMessage(), e);
         }
+    }
+
+    private Paragraph alignRight(Paragraph p) {
+        p.setAlignment(Element.ALIGN_RIGHT);
+        return p;
     }
 
     @Override
