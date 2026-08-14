@@ -337,3 +337,18 @@ utilisateur explicite, pas "Personnel"). Mobile toujours hors périmètre pour S
 tsconfig.app.json --noEmit` clean, mobile `compileDebugJavaWithJavac` +
 `processDebugResources` clean pour la partie Transfert/Commande. Comme le reste,
 **rien n'a été testé en conditions réelles**.
+
+**Bug trouvé au premier vrai test (2026-08-12)** : `POST /salaires/definir` → 500.
+Cause : renommer `Salaire.montantMensuel` → `tauxBase` fait ajouter `taux_base` par
+`ddl-auto=update` mais ne DROP jamais l'ancienne colonne `montant_mensuel`, restée
+`NOT NULL` sans défaut et orpheline (plus mappée par l'entité) → toute insertion
+viole la contrainte NOT NULL (exception non catchée par `IllegalArgumentException`,
+d'où 500 et pas 400). Table `salaires` vérifiée vide (0 ligne) avant correctif :
+colonne droppée directement via psql (`ALTER TABLE salaires DROP COLUMN
+montant_mensuel;`), aucune perte de données, aucun changement de code nécessaire.
+**Leçon à généraliser** : `ddl-auto=update` n'ajoute que des colonnes, ne renomme et
+ne supprime jamais rien — tout renommage de colonne (pas seulement les nouvelles
+colonnes NOT NULL, leçon déjà connue) doit être suivi d'une vérification manuelle
+(`\d table` via psql) que l'ancienne colonne n'est pas restée orpheline avec une
+contrainte NOT NULL, surtout un jour après avoir livré la fonctionnalité sans
+serveur backend actif pour le remarquer immédiatement.
