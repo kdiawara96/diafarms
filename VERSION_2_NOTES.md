@@ -352,3 +352,22 @@ colonnes NOT NULL, leçon déjà connue) doit être suivi d'une vérification ma
 (`\d table` via psql) que l'ancienne colonne n'est pas restée orpheline avec une
 contrainte NOT NULL, surtout un jour après avoir livré la fonctionnalité sans
 serveur backend actif pour le remarquer immédiatement.
+
+**Deuxième bug trouvé juste après (2026-08-12)** : `POST /salaires/payer` → 500 aussi.
+Cause différente mais même famille : `SourceTransaction.SALAIRE` (nouvelle valeur
+ajoutée à un enum EXISTANT, pas une nouvelle colonne) — `ddl-auto=update` ne touche
+jamais les CHECK constraints déjà en place, donc `transactions_source_type_check`
+restait figé sur `('MANUEL','VENTE_OEUFS','VENTE_REFORME')` et rejetait toute
+Transaction générée par un paiement de salaire. Corrigé via psql (`ALTER TABLE
+transactions DROP CONSTRAINT ... ; ALTER TABLE transactions ADD CONSTRAINT ...`
+avec les 4 valeurs), testé par un insert/delete manuel avant de confirmer. Vérifié
+par la même occasion que les CHECK constraints de `commandes`/`factures`/`salaires`
+(tables entièrement nouvelles cette session, jamais un enum étendu après coup) sont
+déjà correctes — seul un enum qui existait AVANT cette session et qu'on étend avec
+une nouvelle valeur (comme `SourceTransaction`) est à risque.
+**Leçon généralisée** (voir aussi mémoire assistant `ddl_auto_update_column_rename_orphan`,
+à renommer mentalement en "ddl-auto=update ne modifie jamais un CHECK/une colonne
+existante") : après avoir ajouté une valeur à un `@Enumerated(EnumType.STRING)` déjà
+utilisé par des lignes existantes, toujours vérifier le CHECK constraint réel en
+base (`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid =
+'<table>'::regclass AND contype = 'c';`), pas seulement le code Java.
