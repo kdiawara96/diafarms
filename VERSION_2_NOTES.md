@@ -371,3 +371,58 @@ existante") : après avoir ajouté une valeur à un `@Enumerated(EnumType.STRING
 utilisé par des lignes existantes, toujours vérifier le CHECK constraint réel en
 base (`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid =
 '<table>'::regclass AND contype = 'c';`), pas seulement le code Java.
+
+### Mise à jour — Personnel, identité de la ferme, UX Salaires (2026-08-12)
+
+**Personnel** (nouvelle entité) : `Salaire.employe` pointait vers `Utilisateurs`
+(comptes de connexion) — un gardien ou tout employé n'ayant jamais besoin de se
+connecter ne pouvait donc pas être payé via le système. Ajout de `Personnel` (nom,
+poste, téléphone, lien optionnel vers un compte `Utilisateurs` si la personne en a
+un), et retarget de `Salaire.employe` vers cette entité. Migration effectuée en
+direct sur la base de dev pendant que le serveur tournait (voir mémoire assistant
+`ddl_auto_update_column_rename_orphan`, point 3 : retargeter un `@ManyToOne` ne fait
+JAMAIS bouger la FK existante ni migrer les données — vérifié et corrigé à la main,
+transaction validée avant commit). Web : `DefinirSalaireDialog` sélectionne
+maintenant un Personnel (avec "+ Personnel" pour en créer un à la volée) au lieu
+d'un Utilisateurs.
+
+**Identité de la ferme (logo/tampon)** : `Farm.logoNomMinio`/`tamponNomMinio`
+(nullable, ajout pur donc sans risque). Réutilise `MinioService` existant (déjà
+utilisé pour les fichiers projet), pas de nouvelle infra d'upload.
+`FarmController` étendu — upload/retrait réservés à ADMIN/SUPER_ADMIN. Insérés
+automatiquement par `FactureServiceImpl.genererPdf` (déjà existant) et le nouveau
+`SalaireServiceImpl.genererBulletinPdf` (**bulletin de salaire PDF**, nouveau
+document, `GET /salaires/paiements/{uniqueId}/pdf`) — laissés simplement vides si la
+ferme n'en a pas fourni, jamais de placeholder. Web : section "Identité de la ferme"
+dans Paramètres (upload/aperçu/retrait), bouton de téléchargement du bulletin dans
+l'historique des paiements.
+
+**UX Salaires** (retours utilisateur après premier vrai test) : période saisie via
+deux listes déroulantes (mois en toutes lettres + année) au lieu d'un
+`<input type="month">` brut ; historique affiche "Août 2026" au lieu de "2026-08" et
+la quantité avec son unité ("22 jour(s)"/"8 heure(s)") au lieu d'un nombre nu. Le
+refus d'un double paiement sur la même période était déjà géré côté back
+(confirmé, pas un bug).
+
+**Menu latéral regroupé par section** (Production / Ventes / Finance /
+Administration, Tableau de bord seul en tête) — purement visuel, `DashboardLayout`
+seulement, aucun changement de permissions.
+
+**Correction faite puis défaite dans la même session** : un premier essai avait mis
+la quantité œufs de Transfert/Commande en double champ combiné (alvéoles + œufs
+additionnés, comme Collecte) — l'utilisateur voulait en fait le toggle exclusif
+"Unité de vente" (Œuf OU Alvéole) déjà utilisé par Vente œufs. Revenu en arrière sur
+les 3 fichiers concernés avant de passer à autre chose. **Leçon** : une formulation
+ambiguë avec un exemple chiffré ("les deux alvéole et œuf, exemple 10 alvéole et 20
+œufs") ne suffit pas à conclure "champs combinés" avec certitude quand un patron
+différent existe déjà ailleurs dans l'app pour un besoin très proche — vérifier
+plutôt que d'aligner sur la première lecture plausible.
+
+**Vérification** : backend `./mvnw clean compile` clean à chaque étape (serveur de
+dev réel, `com.diafarms.ml.MlApplication`, tournait déjà sur le port 9093 pendant
+toute cette session — devtools recharge automatiquement à la compilation, migration
+DB faite en direct entre deux compilations). Web `tsc -p tsconfig.app.json --noEmit`
+clean. **Cette fois, une partie a été testée en conditions réelles par
+l'utilisateur** (c'est comme ça que les deux bugs 500 de la mise à jour précédente
+ont été trouvés) — mais le logo/tampon/bulletin/Personnel de cette mise à jour n'ont
+pas encore été testés par l'utilisateur au moment d'écrire cette note.
