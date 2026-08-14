@@ -304,3 +304,36 @@ type-check clean (`npx tsc -p tsconfig.app.json --noEmit`), mobile compile
 fonctionnellement (pas de serveur dev lancé, pas de build web servi, pas d'APK
 installé). L'utilisateur a dit vouloir tester après cette session : ne pas supposer
 que quoi que ce soit fonctionne réellement avant qu'il ne confirme.
+
+### Mise à jour — Unité de vente œufs sur Transfert/Commande + grille salariale (2026-08-12)
+
+**Transfert de stock + Commande, quantité en œufs** : premier essai avec deux champs
+simultanés additionnés (alvéoles + œufs, comme Collecte œufs) — **rejeté par
+l'utilisateur**, qui voulait le toggle exclusif "Unité de vente" (Œuf OU Alvéole, un
+seul champ dont l'unité change) déjà utilisé par Vente œufs, pas une saisie combinée.
+Revenu en arrière sur les 3 fichiers concernés (`CreateMagasinTransfertDialog.tsx`,
+`CreateCommandeDialog.tsx` web, `groupCommande` dans `SaisieFormActivity` mobile) pour
+mirror exactement `CreateVenteOeufsDialog`/`groupVenteOeufs` (radio Œuf/Alvéole,
+conversion vers œufs uniquement à l'envoi). **Leçon** : ne pas supposer qu'une
+formulation ambiguë ("les deux alvéole et œuf") veut dire "champs combinés" — même si
+un exemple chiffré était donné, vérifier plutôt que d'aligner sur un patron déjà
+présent ailleurs dans l'app sans demander.
+
+**Salaire — grille salariale (mensuel/journalier/horaire)** : `Salaire.montantMensuel`
+→ `modePaiement` (MENSUEL/JOURNALIER/HORAIRE, `Salaire.ModePaiement` inner enum) +
+`tauxBase` (sens dépendant du mode). `SalairePayerRequest` gagne `quantite` (nombre de
+jours/heures travaillés, saisi à la main — pas de système de pointage dans Diafarms) ;
+`SalaireServiceImpl.payer` calcule `tauxBase` directement en MENSUEL, `tauxBase ×
+quantite` sinon, un `montant` explicite restant toujours prioritaire (prime/retenue
+ponctuelle). `PaiementSalaire` garde `quantite` pour trace dans l'historique. Web :
+`DefinirSalaireDialog` = éditeur de grille (mode + taux, libellé adapté),
+`PayerSalaireDialog` ajoute le champ jours/heures uniquement si le mode n'est pas
+MENSUEL, `Salaires.tsx` — ligne entière cliquable pour ouvrir le paiement (pas
+seulement l'icône), colonne Mode ajoutée. Page/route restée nommée "Salaires" (choix
+utilisateur explicite, pas "Personnel"). Mobile toujours hors périmètre pour Salaire
+(décision déjà actée plus tôt cette session).
+
+**Vérification** : backend `./mvnw clean compile` clean, web `tsc -p
+tsconfig.app.json --noEmit` clean, mobile `compileDebugJavaWithJavac` +
+`processDebugResources` clean pour la partie Transfert/Commande. Comme le reste,
+**rien n'a été testé en conditions réelles**.
