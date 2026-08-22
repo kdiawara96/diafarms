@@ -23,10 +23,12 @@ import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.request.create.AlimentationCreate;
 import com.diafarms.ml.request.update.AlimentationUpdate;
 import com.diafarms.ml.services.AlimentationService;
 import com.diafarms.ml.services.LogsServices;
+import com.diafarms.ml.services.TransactionService;
 
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,18 @@ public class AlimentationImpl implements AlimentationService {
     private final ConsommationAlimentRepo consommationAlimentRepo;
     private final OtherService otherService;
     private final LogsServices logs;
+    private final TransactionService transactionService;
+
+    // Génère/synchronise la sortie comptable liée à cet achat d'aliment — voir
+    // TransactionService.syncSortie : plus besoin de ressaisir le coût manuellement
+    // en Comptabilité, la Transaction suit automatiquement coutTotal.
+    private void syncTransaction(Alimentation a, Utilisateurs currentUser) {
+        if (currentUser == null || currentUser.getFarm() == null) return;
+        String description = "Achat aliment : " + a.getNomAliment() + " (" + a.getQuantiteKg() + " kg) — projet "
+                + (a.getProjet() != null ? a.getProjet().getTitre() : "?");
+        transactionService.syncSortie(a.getProjet(), currentUser.getFarm(), a.getCoutTotal(), "Aliment",
+                a.getDateDistribution(), description, SourceTransaction.ALIMENTATION, a.getUniqueId(), currentUser);
+    }
 
     // --- Génération UID ---   
     private String generateUID() {
@@ -102,6 +116,7 @@ public class AlimentationImpl implements AlimentationService {
 
         // 4. Sauvegarder
         Alimentation saved = alimentationRepo.save(alimentation);
+        syncTransaction(saved, currentUser);
 
         // 5. Log
         logAction(currentUser, saved,
@@ -181,6 +196,7 @@ public class AlimentationImpl implements AlimentationService {
 
         // 6. Log
         Utilisateurs currentUser = getCurrentUserSafe();
+        syncTransaction(updated, currentUser);
         logAction(currentUser, updated,
             "Modification de l'alimentation '" + ancienNom + "' → '" + updated.getNomAliment()
                 + "' | Quantité : " + ancienneQuantite + " → " + updated.getQuantiteKg()
@@ -211,6 +227,7 @@ public class AlimentationImpl implements AlimentationService {
         alimentation.setInitialisation(Initialisation.updateDate(alimentation.getInitialisation()));
 
         Alimentation deleted = alimentationRepo.save(alimentation);
+        transactionService.toggleRemovedBySource(deleted.getUniqueId());
 
         // 4. Log
         Utilisateurs currentUser = getCurrentUserSafe();

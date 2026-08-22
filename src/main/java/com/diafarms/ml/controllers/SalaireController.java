@@ -60,6 +60,15 @@ public class SalaireController {
         }
     }
 
+    @GetMapping("/select")
+    public ResponseEntity<ApiResponse<List<SalaireDTO>>> select() {
+        try {
+            return ApiResponse.createResponse("Grille salariale récupérée", HttpStatus.OK, service.select(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/paiements/{paiementUniqueId}/pdf")
     public ResponseEntity<byte[]> bulletinPdf(@PathVariable String paiementUniqueId) {
         byte[] pdf = service.genererBulletinPdf(paiementUniqueId);

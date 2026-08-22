@@ -17,6 +17,7 @@ import com.diafarms.ml.DTO.ProjetsDTO;
 import com.diafarms.ml.DTO.ProjetsSelect;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.Objectif;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.Alimentation;
 import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Farm;
@@ -49,6 +50,7 @@ import com.diafarms.ml.request.update.ProjetUpdate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.ProjectAlertConfigService;
 import com.diafarms.ml.services.ProjetServices;
+import com.diafarms.ml.services.TransactionService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -71,8 +73,33 @@ public class ProjetImpl implements ProjetServices {
     private final MortaliteRepo mortaliteRepo;
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final com.diafarms.ml.repository.ReformeRepo reformeRepo;
+    private final TransactionService transactionService;
 
     private static final int TAUX_PONTE_WINDOW_DAYS = 7;
+
+    // Achat sujets (nbSujets × puSujet) et "autres charges" saisis à la création/
+    // modification du projet sont de vrais frais de démarrage — ils comptaient dans
+    // caTotalSujets (mal nommé : c'est un coût, pas un CA) mais ne généraient jamais
+    // de sortie comptable réelle avant ça. sourceUniqueId synthétique et stable
+    // (pas d'entité dédiée pour cette "dépense") pour que syncSortie retrouve
+    // toujours la même ligne d'une modification à l'autre. Voir
+    // AlimentationImpl.syncTransaction pour le même principe général.
+    private void syncAchatSujets(Projets projet, Utilisateurs currentUser) {
+        if (currentUser == null || currentUser.getFarm() == null) return;
+        Integer nbSujets = projet.getNbSujets();
+        Double puSujet = projet.getPuSujet();
+        Double montant = (nbSujets != null && puSujet != null) ? nbSujets * puSujet : null;
+        String description = "Achat sujets : " + (nbSujets != null ? nbSujets : 0) + " sujets — projet " + projet.getTitre();
+        transactionService.syncSortie(projet, currentUser.getFarm(), montant, "Achat sujets",
+                projet.getDebut(), description, SourceTransaction.PROJET_ACHAT_SUJETS, "SUJETS-" + projet.getUniqueId(), currentUser);
+    }
+
+    private void syncAutresCharges(Projets projet, Utilisateurs currentUser) {
+        if (currentUser == null || currentUser.getFarm() == null) return;
+        String description = "Autres charges initiales — projet " + projet.getTitre();
+        transactionService.syncSortie(projet, currentUser.getFarm(), projet.getAutresDepense(), "Autres charges",
+                projet.getDebut(), description, SourceTransaction.PROJET_CHARGES, "CHARGES-" + projet.getUniqueId(), currentUser);
+    }
 
     // Mortalité cumulée réelle (morts / effectif initial) et taux de ponte
     // récent (moyenne journalière des 7 derniers jours / effectif actuel) —
@@ -309,6 +336,11 @@ public class ProjetImpl implements ProjetServices {
         // Sauvegarder le projet d'abord (pour avoir l'ID pour les relations)
         Projets savedProjet = projetsRepo.save(projet);
 
+        // Achat sujets + autres charges de démarrage — voir syncAchatSujets/
+        // syncAutresCharges : jusqu'ici jamais transformés en vraie sortie comptable.
+        syncAchatSujets(savedProjet, currentUser);
+        syncAutresCharges(savedProjet, currentUser);
+
         // 5. Créer l'alimentation initiale
         if (data.getAlimentNom() != null && !data.getAlimentNom().trim().isEmpty()) {
             Alimentation alimentation = new Alimentation();
@@ -323,7 +355,12 @@ public class ProjetImpl implements ProjetServices {
             alimentation.setFarm(farm);
             alimentation.setInitialisation(Initialisation.init());
 
-            alimentationRepo.save(alimentation);
+            Alimentation savedAlimentation = alimentationRepo.save(alimentation);
+            if (currentUser != null && currentUser.getFarm() != null) {
+                String descAliment = "Achat aliment : " + savedAlimentation.getNomAliment() + " (" + savedAlimentation.getQuantiteKg() + " kg) — projet " + savedProjet.getTitre();
+                transactionService.syncSortie(savedProjet, currentUser.getFarm(), savedAlimentation.getCoutTotal(), "Aliment",
+                        savedAlimentation.getDateDistribution(), descAliment, SourceTransaction.ALIMENTATION, savedAlimentation.getUniqueId(), currentUser);
+            }
         }
 
         // APPEL DE TA MÉTHODE POUR CRÉER LES ALERTES PAR DÉFAUT
@@ -349,7 +386,12 @@ public class ProjetImpl implements ProjetServices {
                 vaccination.setFarm(farm);
                 vaccination.setInitialisation(Initialisation.init());
 
-                vaccinationRepo.save(vaccination);
+                Vaccination savedVaccination = vaccinationRepo.save(vaccination);
+                if (currentUser != null && currentUser.getFarm() != null) {
+                    String descVaccin = "Vaccin " + savedVaccination.getNomVaccin() + " (" + savedVaccination.getQuantite() + " doses) — projet " + savedProjet.getTitre();
+                    transactionService.syncSortie(savedProjet, currentUser.getFarm(), savedVaccination.getCoutTotal(), "Vaccination",
+                            savedProjet.getDebut(), descVaccin, SourceTransaction.VACCINATION, savedVaccination.getUniqueId(), currentUser);
+                }
             }
         }
 
@@ -684,6 +726,8 @@ public class ProjetImpl implements ProjetServices {
 
         // 6. Log
         Utilisateurs currentUser = getCurrentUserSafe();
+        syncAchatSujets(updatedProjet, currentUser);
+        syncAutresCharges(updatedProjet, currentUser);
         if (currentUser != null) {
             logs.addLogs(
                 currentUser.getId(),

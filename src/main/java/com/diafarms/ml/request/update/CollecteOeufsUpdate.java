@@ -10,4 +10,5 @@ public class CollecteOeufsUpdate {
     private String heure;
     private Integer oeufsCollectes;
     private Integer oeufsCasses;
+    private Integer oeufsNonUtilisables;
 }

@@ -90,20 +90,26 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
         return total - dejaTransfere;
     }
 
-    /** Combien chaque projet a déposé dans CE magasin de stockage (œufs collectés -
-     * cassés) moins ce qui en a déjà été transféré DEPUIS ce même magasin — sert de
-     * base à la répartition automatique d'un transfert OEUFS entre projets
-     * contributeurs (voir create() ci-dessous), même rôle que
-     * VenteOeufsImpl.disponibleParProjetDansMagasin mais un cran plus tôt dans la
-     * chaîne (magasin de stockage, pas magasin de vente). */
-    private Map<Long, Integer> disponibleParProjetDansMagasinStockage(Magasin magasinStockage) {
+    /** Combien chaque projet a déposé dans CE magasin de stockage — pool "bon"
+     * (collectés - cassés) OU pool "cassé" selon type, totalement séparés — moins ce
+     * qui en a déjà été transféré DEPUIS ce même magasin POUR CE TYPE — sert de base à
+     * la répartition automatique d'un transfert entre projets contributeurs (voir
+     * create() ci-dessous), même rôle que VenteOeufsImpl.disponibleParProjetDansMagasin
+     * mais un cran plus tôt dans la chaîne (magasin de stockage, pas magasin de vente). */
+    private Map<Long, Integer> disponibleParProjetDansMagasinStockage(Magasin magasinStockage, TypeStockMagasin type) {
         Map<Long, Integer> disponible = new LinkedHashMap<>();
         for (Long projetId : collecteOeufsRepo.findDistinctProjetIdsByMagasinStockageId(magasinStockage.getId())) {
-            int collecte = nz(collecteOeufsRepo.sumOeufsCollectesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
-            int casse = nz(collecteOeufsRepo.sumOeufsCassesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
+            int totalPool;
+            if (type == TypeStockMagasin.OEUFS_CASSES) {
+                totalPool = nz(collecteOeufsRepo.sumOeufsCassesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
+            } else {
+                int collecte = nz(collecteOeufsRepo.sumOeufsCollectesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
+                int casse = nz(collecteOeufsRepo.sumOeufsCassesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
+                totalPool = collecte - casse;
+            }
             int dejaTransfere = nz(magasinTransfertRepo.sumQuantiteByProjetIdAndMagasinStockageIdAndType(
-                    projetId, magasinStockage.getId(), TypeStockMagasin.OEUFS));
-            int restant = collecte - casse - dejaTransfere;
+                    projetId, magasinStockage.getId(), type));
+            int restant = totalPool - dejaTransfere;
             if (restant > 0) disponible.put(projetId, restant);
         }
         return disponible;
@@ -111,12 +117,13 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
 
     @Override
     @Transactional(readOnly = true)
-    public int disponibleATransfererDepuisMagasinStockage(String magasinStockageUniqueId) {
+    public int disponibleATransfererDepuisMagasinStockage(String magasinStockageUniqueId, String type) {
         Magasin magasin = magasinRepo.findByUniqueId(magasinStockageUniqueId).orElse(null);
         if (magasin == null || magasin.getType() != Magasin.TypeMagasin.STOCKAGE) {
             throw new IllegalArgumentException("Magasin de stockage introuvable : " + magasinStockageUniqueId);
         }
-        return disponibleParProjetDansMagasinStockage(magasin).values().stream().mapToInt(Integer::intValue).sum();
+        TypeStockMagasin t = (type == null || type.isBlank()) ? TypeStockMagasin.OEUFS : TypeStockMagasin.valueOf(type.toUpperCase());
+        return disponibleParProjetDansMagasinStockage(magasin, t).values().stream().mapToInt(Integer::intValue).sum();
     }
 
     @Override
@@ -144,7 +151,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
         try {
             type = TypeStockMagasin.valueOf(data.getType().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Type de stock invalide (attendu OEUFS ou REFORME) : " + data.getType());
+            throw new IllegalArgumentException("Type de stock invalide (attendu OEUFS, OEUFS_CASSES ou REFORME) : " + data.getType());
         }
 
         LocalDate date = data.getDate() != null && !data.getDate().isBlank() ? LocalDate.parse(data.getDate()) : LocalDate.now();
@@ -179,11 +186,12 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             return List.of(MagasinTransfertDTO.fromEntity(magasinTransfertRepo.save(t)));
         }
 
-        // Œufs : la source est un magasin de stockage, pas un projet — le vendeur/
-        // responsable ne se soucie pas de savoir quel projet a pondu quel œuf, tous
-        // les œufs du magasin sont mélangés. La répartition entre projets
-        // contributeurs reste nécessaire en coulisses pour que le chiffre d'affaires
-        // remonte correctement à chacun (voir VenteOeufsImpl), donc on la fait ici
+        // Œufs (bons ou cassés) : la source est un magasin de stockage, pas un projet —
+        // le vendeur/responsable ne se soucie pas de savoir quel projet a pondu quel
+        // œuf, tous les œufs du magasin sont mélangés (dans leur pool respectif, bon ou
+        // cassé — jamais les deux ensemble). La répartition entre projets contributeurs
+        // reste nécessaire en coulisses pour que le chiffre d'affaires remonte
+        // correctement à chacun (voir VenteOeufsImpl), donc on la fait ici
         // automatiquement — même algorithme que pour une vente (RepartitionUtil),
         // sans montant associé (un transfert ne génère pas d'argent, juste un
         // mouvement physique).
@@ -195,11 +203,12 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
         }
 
-        Map<Long, Integer> disponibleParProjet = disponibleParProjetDansMagasinStockage(magasinStockage);
+        Map<Long, Integer> disponibleParProjet = disponibleParProjetDansMagasinStockage(magasinStockage, type);
         int disponibleTotal = disponibleParProjet.values().stream().mapToInt(Integer::intValue).sum();
         if (data.getQuantite() > disponibleTotal) {
             throw new IllegalArgumentException(
-                "Stock insuffisant dans ce magasin de stockage (" + disponibleTotal + " œuf(s) restant(s))."
+                (type == TypeStockMagasin.OEUFS_CASSES ? "Stock d'œufs cassés insuffisant" : "Stock insuffisant")
+                        + " dans ce magasin de stockage (" + disponibleTotal + " œuf(s) restant(s))."
             );
         }
 

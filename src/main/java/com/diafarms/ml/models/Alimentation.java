@@ -32,10 +32,10 @@ public class Alimentation {
     @Column(name = "quantite_kg", nullable = false)
     private Double quantiteKg; // Quantité distribuée ou achetée en kg (
 
-    // Optionnel : le coût d'un achat d'aliment se déclare désormais comme une sortie
-    // d'argent (Transaction) côté Finance, pas ici — ce champ ne reste que pour les
-    // achats saisis avant cette séparation Production/Finance, ou saisis manuellement
-    // depuis Fiche Projet (web) qui continue de le proposer.
+    // Optionnel — si renseigné, génère/synchronise automatiquement une sortie
+    // comptable liée à ce projet (voir AlimentationImpl.syncTransaction,
+    // TransactionService.syncSortie) : plus besoin de ressaisir ce coût manuellement
+    // en Comptabilité.
     @Column(name = "cout_total")
     private Double coutTotal;
 

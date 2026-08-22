@@ -15,4 +15,5 @@ public class VenteOeufsCreate {
     private Double prixUnitaire; // optionnel, informatif
     private Double montant; // théorique (quantité × prix, ou saisi librement)
     private Double montantRapporte; // optionnel : ce que le vendeur a réellement rapporté
+    private String typeOeuf; // "BON" (défaut) ou "CASSE" — voir TypeVenteOeufs
 }

@@ -14,4 +14,8 @@ public class MagasinCreate {
     private Integer seuilAlerteOeufs; // en ALVÉOLES, pas en œufs — voir Magasin.seuilAlerteOeufs
     private Integer seuilAlerteReforme;
     private Integer seuilAlerteAlveoles; // pertinent seulement pour type=STOCKAGE
+    // Pertinent seulement pour type=STOCKAGE — voir Magasin.magasinVenteParDefaut.
+    // Chaîne vide/blanche = désactive l'automatisation (même convention que les
+    // seuils d'alerte ci-dessus, toujours écrasé, pas de "null = inchangé").
+    private String magasinVenteParDefautUniqueId;
 }

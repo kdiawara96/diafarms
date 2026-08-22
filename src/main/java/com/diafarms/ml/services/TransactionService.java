@@ -51,6 +51,19 @@ public interface TransactionService {
      * (retrouvée via sourceUniqueId) — pas de recette fantôme après suppression. */
     void toggleRemovedBySource(String sourceUniqueId);
 
+    /**
+     * Crée, met à jour ou retire la transaction "sortie" liée à une source
+     * (Alimentation/Soins/Vaccination/Investissement) — point d'entrée unique appelé
+     * aussi bien à la création qu'à la modification de la source, pour que le coût
+     * saisi côté Production/Investissement compte automatiquement comme une vraie
+     * sortie en Comptabilité, sans ressaisie manuelle. projet à null = dépense commune
+     * (pas rattachée à un projet précis, ex: investissement COMMUN) ; montant nul ou
+     * <= 0 retire (removed=true) la transaction existante sans la supprimer
+     * définitivement, plutôt que de laisser une sortie à 0 FCFA polluer les rapports.
+     */
+    void syncSortie(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
+                     String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar);
+
     /** Met à jour le montant de la transaction liée à une vente modifiée. */
     void updateMontantBySource(String sourceUniqueId, Double montant);
 

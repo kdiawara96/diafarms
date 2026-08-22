@@ -33,9 +33,19 @@ public interface ReformeRepo extends JpaRepository<Reforme, Long> {
         "WHERE r.projet.id = :projetId AND r.initialisation.removed = false")
     Integer sumSujetsByProjetId(@Param("projetId") Long projetId);
 
+    // Réforme PAR BÂTIMENT — sert à calculer l'effectif vivant d'un bâtiment précis
+    // (voir CollecteOeufsImpl.effectifVivantBatiment), distinct du total du projet.
+    @Query("SELECT COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
+        "WHERE r.batiment.id = :batimentId AND r.initialisation.removed = false")
+    Integer sumSujetsByBatimentId(@Param("batimentId") Long batimentId);
+
     // Total réformé de toute la ferme (tous projets confondus) — plafonne la vente
     // réforme côté Finance (VenteReformeImpl), qui n'est pas rattachée à un projet.
     @Query("SELECT COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
         "WHERE r.farm.id = :farmId AND r.initialisation.removed = false")
     Integer sumSujetsByFarmId(@Param("farmId") Long farmId);
+
+    // Voir CollecteOeufsRepo.findAllByProjetId — même usage pour RapportJournalierServiceImpl.
+    @Query("SELECT r FROM Reforme r WHERE r.projet.id = :projetId AND r.initialisation.removed = false")
+    java.util.List<Reforme> findAllByProjetId(@Param("projetId") Long projetId);
 }

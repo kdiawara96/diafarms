@@ -71,6 +71,17 @@ public class Magasin {
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
 
+    // N'a de sens que pour type=STOCKAGE : magasin de VENTE vers lequel transférer
+    // automatiquement chaque collecte dès sa saisie (voir CollecteOeufsImpl.create),
+    // pour qu'une petite ferme qui démarre (admin peu disponible) puisse vendre sans
+    // attendre un transfert manuel — voir MagasinTransfertServiceImpl, réservé à
+    // ADMIN/RESPONSABLE. Null = pas d'automatisation, transfert manuel comme avant.
+    // Choix explicite, pas de déduction automatique ("un seul magasin de vente sur la
+    // ferme") : reste correct même si un deuxième magasin de vente est ajouté plus tard.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "magasin_vente_par_defaut_id")
+    private Magasin magasinVenteParDefaut;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JsonIgnore
     @JoinTable(name = "magasin_vendeurs",

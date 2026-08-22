@@ -103,7 +103,10 @@ public class Projets {
 
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Vaccination> vaccinations = new ArrayList<>();
-    
+
+    @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<Soins> soins = new ArrayList<>();
+
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ProjectAlertConfig> alertConfigs = new ArrayList<>();
 

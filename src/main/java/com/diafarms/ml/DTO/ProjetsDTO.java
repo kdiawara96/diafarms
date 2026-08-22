@@ -53,6 +53,7 @@ public class ProjetsDTO {
      private RaceDTO race;
      private List<OccupationBatimentDTO> occupationBatiment;
      private List<VaccinationDTO> vaccination;
+     private List<SoinsDTO> soins;
      private List<ProjectAlertConfigDTO> alertConfig;
      private List<FichierMediaDTO> fichiersMedia;
 
@@ -187,6 +188,11 @@ public class ProjetsDTO {
                 // CORRECTION ICI : Ajout de la sécurité anti-NullPointerException
                 .vaccination(data.getVaccinations() != null ? data.getVaccinations().stream()
                         .map(VaccinationDTO::fromEntity)
+                        .toList() : java.util.Collections.emptyList())
+
+                .soins(data.getSoins() != null ? data.getSoins().stream()
+                        .filter(s -> s.getInitialisation() == null || !Boolean.TRUE.equals(s.getInitialisation().getRemoved()))
+                        .map(SoinsDTO::fromEntity)
                         .toList() : java.util.Collections.emptyList())
 
                 .alertConfig(data.getAlertConfigs() != null ? data.getAlertConfigs().stream()

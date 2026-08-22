@@ -25,6 +25,7 @@ import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
+import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.CommandeRepo;
 import com.diafarms.ml.repository.FactureRepo;
@@ -227,7 +228,47 @@ public class FactureServiceImpl implements FactureService {
         f.setMontantPaye(f.getMontantPaye() + montantAPayer);
         f.setStatut(computeStatut(f.getMontantTotal(), f.getMontantPaye()));
         Facture saved = factureRepo.save(f);
+
+        // Garde la page Ventes cohérente avec ce paiement : la vente d'origine (directe,
+        // ou issue d'une commande convertie) affichait encore le montant rapporté figé
+        // au moment de la vente/conversion — sans ceci, elle resterait indéfiniment
+        // "théorique 25000 / rapporté 20000" même après règlement complet du solde côté
+        // facture, ce qui a dérouté l'utilisateur (le paiement semblait "invisible" en
+        // Ventes). On met à jour directement via le repo (pas via
+        // VenteOeufsService/VenteReformeService.update) pour ne pas ajuster SoldeClient
+        // une seconde fois : payerDette ci-dessus est l'unique source de vérité pour ce
+        // paiement précis.
+        propagerPaiementVersVente(f, montantAPayer);
+
         return FactureDTO.fromEntity(saved);
+    }
+
+    private void propagerPaiementVersVente(Facture f, double montantAPayer) {
+        switch (f.getSourceType()) {
+            case VENTE_OEUFS -> venteOeufsRepo.findByUniqueId(f.getSourceUniqueId()).ifPresent(v -> {
+                v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
+                venteOeufsRepo.save(v);
+            });
+            case VENTE_REFORME -> venteReformeRepo.findByUniqueId(f.getSourceUniqueId()).ifPresent(v -> {
+                v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
+                venteReformeRepo.save(v);
+            });
+            case COMMANDE -> {
+                Commande c = commandeRepo.findByUniqueId(f.getSourceUniqueId());
+                if (c == null || c.getVenteUniqueId() == null) return;
+                if (c.getType() == TypeStockMagasin.OEUFS) {
+                    venteOeufsRepo.findByUniqueId(c.getVenteUniqueId()).ifPresent(v -> {
+                        v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
+                        venteOeufsRepo.save(v);
+                    });
+                } else {
+                    venteReformeRepo.findByUniqueId(c.getVenteUniqueId()).ifPresent(v -> {
+                        v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
+                        venteReformeRepo.save(v);
+                    });
+                }
+            }
+        }
     }
 
     // Logo/tampon sont optionnels (voir Farm.logoNomMinio/tamponNomMinio) — laissés
@@ -264,18 +305,24 @@ public class FactureServiceImpl implements FactureService {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            // ===== En-tête : logo à gauche, titre + n°/date à droite =====
+            // ===== En-tête : logo + identité de la ferme à gauche, titre + n°/date à
+            // droite — voir Farm.nom/quartier/ville/pays/telephone1/telephone2/email,
+            // configurables depuis Paramètres > Identité de la ferme côté web.
             PdfPTable header = new PdfPTable(2);
             header.setWidthPercentage(100);
             header.setWidths(new float[]{1, 1});
 
+            java.util.List<Element> farmCellElements = new java.util.ArrayList<>();
             Image logo = farm != null ? chargerImage(farm.getLogoNomMinio()) : null;
             if (logo != null) {
                 logo.scaleToFit(140, 70);
-                header.addCell(PdfStyle.layoutCell(logo));
-            } else {
-                header.addCell(PdfStyle.layoutCell(new Paragraph(" ", PdfStyle.normal())));
+                farmCellElements.add(logo);
             }
+            if (farm != null) {
+                farmCellElements.addAll(PdfStyle.farmBlockLines(farm.getNom(), farm.getQuartier(), farm.getVille(), farm.getPays(), farm.getTelephone1(), farm.getTelephone2(), farm.getEmail()));
+            }
+            if (farmCellElements.isEmpty()) farmCellElements.add(new Paragraph(" ", PdfStyle.normal()));
+            header.addCell(PdfStyle.layoutCell(farmCellElements.toArray(new Element[0])));
 
             Paragraph title = new Paragraph("FACTURE", PdfStyle.title());
             title.setAlignment(Element.ALIGN_RIGHT);
@@ -353,7 +400,7 @@ public class FactureServiceImpl implements FactureService {
                 document.add(new Paragraph(" "));
             }
 
-            Paragraph footer = new Paragraph("Diafarms — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            Paragraph footer = new Paragraph("Cocorico — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
             document.add(footer);
 
             document.close();

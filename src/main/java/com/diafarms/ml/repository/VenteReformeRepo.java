@@ -32,9 +32,12 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     // Voir VenteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange (même raisonnement :
     // montantRapporte optionnel, une vente où il n'a jamais été renseigné n'a pas de
     // dette connue et compte pour son montant théorique complet).
+    // dateDebut/dateFin ATTENDUS NON-NULS — voir TransactionRepo.countByProjetIdsAndStatut
+    // pour le raisonnement (le pattern "IS NULL OR" plantait Postgres sur ce type de
+    // requête agrégat, quelle que soit la valeur réelle passée).
     @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteReforme v " +
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
-        "AND (:dateDebut IS NULL OR v.date >= :dateDebut) AND (:dateFin IS NULL OR v.date <= :dateFin)")
+        "AND v.date >= :dateDebut AND v.date <= :dateFin")
     Double sumMontantRapporteByFarmIdAndDateRange(@Param("farmId") Long farmId,
                                                    @Param("dateDebut") java.time.LocalDate dateDebut,
                                                    @Param("dateFin") java.time.LocalDate dateFin);

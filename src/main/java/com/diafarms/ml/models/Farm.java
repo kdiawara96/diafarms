@@ -23,10 +23,31 @@ public class Farm {
     @Column(name = "unique_id", nullable = false, unique = true , length = 50)
     private String uniqueId;
 
-    // Ville de la ferme, utilisée pour géolocaliser la météo (WeatherService) — une
-    // ferme opère à un seul endroit, donc granularité farm plutôt que par projet.
+    // Ville de la ferme, utilisée pour géolocaliser la météo (WeatherService) et
+    // affichée avec le reste des coordonnées ci-dessous sur les factures/bulletins.
     @Column(name = "ville", length = 100)
     private String ville;
+
+    // Coordonnées de la ferme — optionnelles, affichées dans l'en-tête des factures
+    // et bulletins de salaire générés en PDF (voir PdfStyle/FactureServiceImpl/
+    // SalaireServiceImpl), configurables depuis Paramètres > Identité de la ferme.
+    @Column(name = "nom", length = 150)
+    private String nom;
+
+    @Column(name = "quartier", length = 150)
+    private String quartier;
+
+    @Column(name = "pays", length = 100)
+    private String pays;
+
+    @Column(name = "telephone1", length = 50)
+    private String telephone1;
+
+    @Column(name = "telephone2", length = 50)
+    private String telephone2;
+
+    @Column(name = "email", length = 100)
+    private String email;
 
     // Logo et tampon de la ferme — optionnels, insérés sur les factures et bulletins
     // de salaire générés en PDF (voir FactureServiceImpl/SalaireServiceImpl), laissés

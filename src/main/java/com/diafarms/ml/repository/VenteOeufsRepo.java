@@ -39,10 +39,23 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
     // SUM(montantRapporte) ignorait silencieusement (SQL) toutes les ventes où ce
     // champ n'a jamais été rempli, écrasant "Montant reçu" bien en dessous de la
     // réalité au lieu de ne compter que les vraies dettes en cours.
+    // dateDebut/dateFin ATTENDUS NON-NULS — voir TransactionRepo.countByProjetIdsAndStatut
+    // pour le raisonnement (le pattern "IS NULL OR" plantait Postgres sur ce type de
+    // requête agrégat, quelle que soit la valeur réelle passée).
     @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteOeufs v " +
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
-        "AND (:dateDebut IS NULL OR v.date >= :dateDebut) AND (:dateFin IS NULL OR v.date <= :dateFin)")
+        "AND v.date >= :dateDebut AND v.date <= :dateFin")
     Double sumMontantRapporteByFarmIdAndDateRange(@Param("farmId") Long farmId,
                                                    @Param("dateDebut") java.time.LocalDate dateDebut,
                                                    @Param("dateFin") java.time.LocalDate dateFin);
+
+    // Ventes d'œufs BONS (jamais cassés) de toute la ferme, triées par date croissante —
+    // sert à RapportJournalierServiceImpl à déterminer le "dernier prix de vente connu"
+    // (PUA/potentiel) jour par jour : la vente n'est pas rattachée à un seul projet
+    // (répartie entre contributeurs), donc le prix reste un indicatif farm-wide, pas
+    // projet-par-projet.
+    @Query("SELECT v FROM VenteOeufs v WHERE v.farm.id = :farmId " +
+        "AND v.typeOeuf = com.diafarms.ml.enums.TypeVenteOeufs.BON AND v.initialisation.removed = false " +
+        "ORDER BY v.date ASC")
+    java.util.List<VenteOeufs> findAllBonByFarmIdOrderByDateAsc(@Param("farmId") Long farmId);
 }

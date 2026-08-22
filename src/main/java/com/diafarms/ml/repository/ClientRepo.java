@@ -19,6 +19,15 @@ public interface ClientRepo extends JpaRepository<Client, Long> {
     @Query("SELECT COUNT(c) > 0 FROM Client c WHERE LOWER(c.nom) = LOWER(:nom) AND c.farm.id = :farmId AND c.initialisation.removed = false")
     boolean existsByNomIgnoreCaseAndFarmId(@Param("nom") String nom, @Param("farmId") Long farmId);
 
+    // Téléphone obligatoire ET unique par ferme (voir ClientServiceImpl.create/update) —
+    // deux clients d'une même ferme ne peuvent pas partager le même numéro, mais deux
+    // fermes différentes le peuvent (pas de contrainte inter-tenant).
+    @Query("SELECT COUNT(c) > 0 FROM Client c WHERE c.telephone = :telephone AND c.farm.id = :farmId AND c.initialisation.removed = false")
+    boolean existsByTelephoneAndFarmId(@Param("telephone") String telephone, @Param("farmId") Long farmId);
+
+    @Query("SELECT COUNT(c) > 0 FROM Client c WHERE c.telephone = :telephone AND c.farm.id = :farmId AND c.uniqueId <> :excludeUniqueId AND c.initialisation.removed = false")
+    boolean existsByTelephoneAndFarmIdExcludingUniqueId(@Param("telephone") String telephone, @Param("farmId") Long farmId, @Param("excludeUniqueId") String excludeUniqueId);
+
     @Query("SELECT c FROM Client c WHERE c.farm.id = :farmId AND c.initialisation.removed = false ORDER BY c.nom")
     List<Client> findAllActiveByFarmId(@Param("farmId") Long farmId);
 

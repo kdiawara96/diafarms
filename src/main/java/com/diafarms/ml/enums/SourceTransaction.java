@@ -4,5 +4,11 @@ public enum SourceTransaction {
     MANUEL,
     VENTE_OEUFS,
     VENTE_REFORME,
-    SALAIRE
+    SALAIRE,
+    ALIMENTATION,
+    SOINS,
+    VACCINATION,
+    INVESTISSEMENT,
+    PROJET_ACHAT_SUJETS,
+    PROJET_CHARGES
 }

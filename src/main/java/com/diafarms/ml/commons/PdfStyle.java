@@ -114,6 +114,39 @@ public final class PdfStyle {
         return t;
     }
 
+    /** Bloc "qui envoie ce document" (nom de la ferme, adresse, contact) affiché à
+     * gauche de l'en-tête facture/bulletin, à côté du logo — prend des chaînes plutôt
+     * que l'entité Farm pour que ce module reste indépendant du package models. Une
+     * ligne n'est ajoutée que si non vide, pour ne pas laisser de lignes fantômes tant
+     * que la ferme n'a pas rempli ses coordonnées (voir Paramètres > Identité de la
+     * ferme côté web).
+     */
+    public static java.util.List<Paragraph> farmBlockLines(String nom, String quartier, String ville, String pays, String telephone1, String telephone2, String email) {
+        java.util.List<Paragraph> lignes = new java.util.ArrayList<>();
+        if (nonBlank(nom)) lignes.add(new Paragraph(nom, bold()));
+        String adresse = joinNonBlank(", ", quartier, ville, pays);
+        if (nonBlank(adresse)) lignes.add(new Paragraph(adresse, small()));
+        String telephones = joinNonBlank(" / ", telephone1, telephone2);
+        if (nonBlank(telephones)) lignes.add(new Paragraph("Tél : " + telephones, small()));
+        if (nonBlank(email)) lignes.add(new Paragraph(email, small()));
+        return lignes;
+    }
+
+    private static boolean nonBlank(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    private static String joinNonBlank(String separateur, String... valeurs) {
+        StringBuilder sb = new StringBuilder();
+        for (String v : valeurs) {
+            if (nonBlank(v)) {
+                if (sb.length() > 0) sb.append(separateur);
+                sb.append(v);
+            }
+        }
+        return sb.toString();
+    }
+
     /** Cellule sans bordure, pour composer un tableau de mise en page (en-tête
      * logo/titre, pied de page) sans que ça ressemble à un tableau de données. */
     public static PdfPCell layoutCell(Element... elements) {

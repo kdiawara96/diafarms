@@ -39,22 +39,49 @@ public class FarmController {
         }
         Map<String, String> result = new HashMap<>();
         result.put("uniqueId", farm.getUniqueId());
+        result.put("nom", farm.getNom() == null ? "" : farm.getNom());
+        result.put("quartier", farm.getQuartier() == null ? "" : farm.getQuartier());
         result.put("ville", farm.getVille() == null ? "" : farm.getVille());
+        result.put("pays", farm.getPays() == null ? "" : farm.getPays());
+        result.put("telephone1", farm.getTelephone1() == null ? "" : farm.getTelephone1());
+        result.put("telephone2", farm.getTelephone2() == null ? "" : farm.getTelephone2());
+        result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
         result.put("logoUrl", presignedUrlOrNull(farm.getLogoNomMinio()));
         result.put("tamponUrl", presignedUrlOrNull(farm.getTamponNomMinio()));
         return ApiResponse.createResponse("Ferme récupérée", HttpStatus.OK, result, null);
     }
 
-    @PutMapping("/me/ville")
-    public ResponseEntity<ApiResponse<String>> setMyFarmVille(@RequestBody Map<String, String> body) {
+    // Coordonnées de la ferme (nom, adresse, contact) — un seul formulaire côté web
+    // (Paramètres > Identité de la ferme), un seul endpoint ici plutôt qu'un par champ.
+    // Chaîne vide/blanche => retiré (null), pas conservé tel quel.
+    @PutMapping("/me/identite")
+    public ResponseEntity<ApiResponse<Map<String, String>>> setMyFarmIdentite(@RequestBody Map<String, String> body) {
         Farm farm = getCurrentUserFarm();
         if (farm == null) {
             return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.BAD_REQUEST, null, null);
         }
-        String ville = body.get("ville");
-        farm.setVille(ville == null || ville.isBlank() ? null : ville.trim());
+        farm.setNom(blankToNull(body.get("nom")));
+        farm.setQuartier(blankToNull(body.get("quartier")));
+        farm.setVille(blankToNull(body.get("ville")));
+        farm.setPays(blankToNull(body.get("pays")));
+        farm.setTelephone1(blankToNull(body.get("telephone1")));
+        farm.setTelephone2(blankToNull(body.get("telephone2")));
+        farm.setEmail(blankToNull(body.get("email")));
         farmsRepo.save(farm);
-        return ApiResponse.createResponse("Ville de la ferme mise à jour", HttpStatus.OK, farm.getVille(), null);
+
+        Map<String, String> result = new HashMap<>();
+        result.put("nom", farm.getNom() == null ? "" : farm.getNom());
+        result.put("quartier", farm.getQuartier() == null ? "" : farm.getQuartier());
+        result.put("ville", farm.getVille() == null ? "" : farm.getVille());
+        result.put("pays", farm.getPays() == null ? "" : farm.getPays());
+        result.put("telephone1", farm.getTelephone1() == null ? "" : farm.getTelephone1());
+        result.put("telephone2", farm.getTelephone2() == null ? "" : farm.getTelephone2());
+        result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
+        return ApiResponse.createResponse("Coordonnées de la ferme mises à jour", HttpStatus.OK, result, null);
+    }
+
+    private String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 
     @PostMapping("/me/logo")

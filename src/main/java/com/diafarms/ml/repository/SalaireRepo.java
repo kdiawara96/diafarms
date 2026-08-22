@@ -19,4 +19,10 @@ public interface SalaireRepo extends JpaRepository<Salaire, Long> {
     // Pas d'ORDER BY : le tri vient du Pageable, comme CommandeRepo/FactureRepo.search.
     @Query("SELECT s FROM Salaire s WHERE s.farm.id = :farmId AND s.initialisation.removed = false")
     Page<Salaire> search(@Param("farmId") Long farmId, Pageable pageable);
+
+    // Non paginé — voir ClientRepo.findAllByFarm_IdAndInitialisation_RemovedFalse,
+    // même usage : peupler un sélecteur (ici le picker employé/grille sur mobile,
+    // voir SalaireController.select) sans se soucier de la pagination.
+    @Query("SELECT s FROM Salaire s WHERE s.farm.id = :farmId AND s.initialisation.removed = false ORDER BY s.employe.nom ASC")
+    java.util.List<Salaire> findAllByFarmId(@Param("farmId") Long farmId);
 }

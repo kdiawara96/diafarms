@@ -61,6 +61,17 @@ public class TransactionServiceImpl implements TransactionService {
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
 
+    // Sentinelles "pas de filtre" pour les requêtes agrégat par date (voir
+    // TransactionRepo.countByProjetIdsAndStatut) — Postgres échoue à déterminer le
+    // type d'un paramètre comparé directement à NULL dans une requête COUNT/SUM
+    // ("could not determine data type of parameter", SQLState 42P18), quelle que soit
+    // la valeur réelle passée. deb()/fin() résolvent donc TOUJOURS une borne concrète
+    // avant d'appeler ces requêtes, jamais null.
+    private static final LocalDate DATE_MIN = LocalDate.of(1900, 1, 1);
+    private static final LocalDate DATE_MAX = LocalDate.of(2999, 12, 31);
+    private LocalDate deb(LocalDate d) { return d != null ? d : DATE_MIN; }
+    private LocalDate fin(LocalDate d) { return d != null ? d : DATE_MAX; }
+
     private Utilisateurs getCurrentUserSafe() {
         try {
             return otherService.getCurrentUser();
@@ -164,17 +175,21 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     /**
-     * Restriction par CRÉATEUR de la LISTE (page Ventes) : un COMPTABLE ou VENTE pur ne
-     * voit que ses propres ventes, quel que soit vendeurUniqueId reçu du client — jamais
-     * celui d'un collègue. Un ADMIN/SUPER_ADMIN peut choisir n'importe quel vendeur
-     * (ou aucun = tout le monde). Un RESPONSABLE/PRODUCTION (ou un cumul de rôles) n'est
-     * pas restreint par cet axe (le RESPONSABLE voit tout pour pouvoir valider/rejeter).
+     * Restriction par CRÉATEUR de la LISTE : un VENTE pur ne voit que ses propres
+     * ventes, quel que soit vendeurUniqueId reçu du client — jamais celui d'un
+     * collègue (page Ventes, route bloquée pour COMPTABLE côté front — voir
+     * App.tsx). Un ADMIN/SUPER_ADMIN ou un COMPTABLE pur peut choisir n'importe quel
+     * vendeur pour filtrer la page Comptabilité (ou aucun = ferme entière — COMPTABLE
+     * y voit tout par défaut, jamais auto-scopé à ses propres transactions ; avant ce
+     * correctif il l'était par erreur, en confondant avec la restriction VENTE
+     * ci-dessus). Un RESPONSABLE/PRODUCTION (ou un cumul de rôles) n'est pas
+     * restreint par cet axe (le RESPONSABLE voit tout pour pouvoir valider/rejeter).
      */
     private String resolveVendeurScopeForList(Utilisateurs currentUser, String vendeurUniqueId) {
-        if (isAdmin(currentUser)) {
+        if (isAdmin(currentUser) || isPureComptable(currentUser)) {
             return (vendeurUniqueId == null || vendeurUniqueId.isBlank()) ? null : vendeurUniqueId;
         }
-        if (isPureComptable(currentUser) || isPureVente(currentUser)) {
+        if (isPureVente(currentUser)) {
             return currentUser.getUniqueId();
         }
         return null;
@@ -301,6 +316,56 @@ public class TransactionServiceImpl implements TransactionService {
             t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
             transactionRepo.save(t);
         });
+    }
+
+    @Override
+    @Transactional
+    public void syncSortie(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
+                            String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar) {
+        var existante = transactionRepo.findBySourceUniqueId(sourceUniqueId);
+        boolean doitExister = montant != null && montant > 0;
+
+        if (!doitExister) {
+            existante.ifPresent(t -> {
+                if (!Boolean.TRUE.equals(t.getInitialisation().getRemoved())) {
+                    t.getInitialisation().setRemoved(true);
+                    transactionRepo.save(t);
+                }
+            });
+            return;
+        }
+
+        if (existante.isPresent()) {
+            Transaction t = existante.get();
+            t.setMontant(montant);
+            t.setDescription(description);
+            t.setProjet(projet);
+            if (Boolean.TRUE.equals(t.getInitialisation().getRemoved())) {
+                t.getInitialisation().setRemoved(false);
+            }
+            t.getInitialisation().setUpdatedAt(LocalDateTime.now());
+            transactionRepo.save(t);
+            return;
+        }
+
+        Transaction t = new Transaction();
+        t.setUniqueId(java.util.UUID.randomUUID().toString());
+        t.setRef(generateRef());
+        t.setType(TypeTransaction.SORTIE);
+        t.setDate(date != null ? date : LocalDate.now());
+        t.setDescription(description);
+        t.setMontant(montant);
+        t.setCategorie(categorie);
+        t.setStatut(StatutTransaction.VALIDE);
+        t.setValidateur(creePar);
+        t.setDateValidation(LocalDateTime.now());
+        t.setProjet(projet);
+        t.setSourceType(sourceType);
+        t.setSourceUniqueId(sourceUniqueId);
+        t.setFarm(farm);
+        t.setCreePar(creePar);
+        t.setInitialisation(Initialisation.init());
+        transactionRepo.save(t);
     }
 
     @Override
@@ -451,21 +516,37 @@ public class TransactionServiceImpl implements TransactionService {
         Utilisateurs currentUser = getCurrentUserSafe();
         Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;
 
-        String searchParam = (search == null || search.isBlank()) ? null : "%" + search.trim().toLowerCase() + "%";
-        String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
+        // hasX/valeurs factices quand absent — voir TransactionRepo.search() : jamais
+        // comparer un paramètre à NULL dans ces requêtes (Postgres ne peut pas en
+        // déterminer le type). Les valeurs factices (TypeTransaction.ENTREE,
+        // StatutTransaction.VALIDE, "") ne sont jamais évaluées utilement grâce au
+        // court-circuit "hasX = false OR ...".
+        boolean hasType = type != null;
+        TypeTransaction typeParam = type != null ? type : TypeTransaction.ENTREE;
+        boolean hasStatut = statut != null;
+        StatutTransaction statutParam = statut != null ? statut : StatutTransaction.VALIDE;
+        boolean hasSearch = search != null && !search.isBlank();
+        String searchParam = hasSearch ? "%" + search.trim().toLowerCase() + "%" : "";
+        boolean hasProjet = projetUniqueId != null && !projetUniqueId.isBlank();
+        String projetParam = hasProjet ? projetUniqueId : "";
+        LocalDate dDeb = deb(dateDebut);
+        LocalDate dFin = fin(dateFin);
 
         String vendeurScope = resolveVendeurScopeForList(currentUser, vendeurUniqueId);
         List<Long> scopedProjetIds = resolveProjetIdsScopeForList(currentUser, farmId, financierUniqueId);
 
         Page<Transaction> transactionsPage;
         if (vendeurScope != null) {
-            transactionsPage = transactionRepo.searchByCreePar(farmId, vendeurScope, type, statut, dateDebut, dateFin, searchParam, pageable);
+            transactionsPage = transactionRepo.searchByCreePar(farmId, vendeurScope, hasType, typeParam, hasStatut, statutParam,
+                    dDeb, dFin, hasSearch, searchParam, pageable);
         } else if (scopedProjetIds != null && scopedProjetIds.isEmpty()) {
             transactionsPage = Page.empty(pageable);
         } else if (scopedProjetIds != null) {
-            transactionsPage = transactionRepo.searchScoped(scopedProjetIds, type, statut, projetParam, dateDebut, dateFin, searchParam, pageable);
+            transactionsPage = transactionRepo.searchScoped(scopedProjetIds, hasType, typeParam, hasStatut, statutParam,
+                    hasProjet, projetParam, dDeb, dFin, hasSearch, searchParam, pageable);
         } else {
-            transactionsPage = transactionRepo.search(farmId, type, statut, projetParam, dateDebut, dateFin, searchParam, pageable);
+            transactionsPage = transactionRepo.search(farmId, hasType, typeParam, hasStatut, statutParam,
+                    hasProjet, projetParam, dDeb, dFin, hasSearch, searchParam, pageable);
         }
 
         List<TransactionDTO> dtoList = transactionsPage.getContent().stream()
@@ -549,23 +630,26 @@ public class TransactionServiceImpl implements TransactionService {
 
         long nbValide, nbAttente, nbRejete;
         Double totalEntrees, totalSorties, totalVenteOeufs, totalVenteReforme;
+        // Bornes toujours concrètes (jamais null) — voir deb()/fin().
+        LocalDate dDeb = deb(dateDebut);
+        LocalDate dFin = fin(dateFin);
 
         if (scopedProjetIds != null) {
-            nbValide = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.VALIDE, dateDebut, dateFin);
-            nbAttente = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.EN_ATTENTE, dateDebut, dateFin);
-            nbRejete = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.REJETE, dateDebut, dateFin);
-            totalEntrees = transactionRepo.sumMontantValideByProjetIdsAndType(scopedProjetIds, TypeTransaction.ENTREE, dateDebut, dateFin);
-            totalSorties = transactionRepo.sumMontantValideByProjetIdsAndType(scopedProjetIds, TypeTransaction.SORTIE, dateDebut, dateFin);
-            totalVenteOeufs = transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_OEUFS, dateDebut, dateFin);
-            totalVenteReforme = transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_REFORME, dateDebut, dateFin);
+            nbValide = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.VALIDE, dDeb, dFin);
+            nbAttente = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.EN_ATTENTE, dDeb, dFin);
+            nbRejete = transactionRepo.countByProjetIdsAndStatut(scopedProjetIds, StatutTransaction.REJETE, dDeb, dFin);
+            totalEntrees = transactionRepo.sumMontantValideByProjetIdsAndType(scopedProjetIds, TypeTransaction.ENTREE, dDeb, dFin);
+            totalSorties = transactionRepo.sumMontantValideByProjetIdsAndType(scopedProjetIds, TypeTransaction.SORTIE, dDeb, dFin);
+            totalVenteOeufs = transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_OEUFS, dDeb, dFin);
+            totalVenteReforme = transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_REFORME, dDeb, dFin);
         } else {
-            nbValide = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.VALIDE, dateDebut, dateFin);
-            nbAttente = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.EN_ATTENTE, dateDebut, dateFin);
-            nbRejete = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.REJETE, dateDebut, dateFin);
-            totalEntrees = transactionRepo.sumMontantValideByTypeAndDateRange(farmId, TypeTransaction.ENTREE, dateDebut, dateFin);
-            totalSorties = transactionRepo.sumMontantValideByTypeAndDateRange(farmId, TypeTransaction.SORTIE, dateDebut, dateFin);
-            totalVenteOeufs = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_OEUFS, dateDebut, dateFin);
-            totalVenteReforme = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_REFORME, dateDebut, dateFin);
+            nbValide = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.VALIDE, dDeb, dFin);
+            nbAttente = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.EN_ATTENTE, dDeb, dFin);
+            nbRejete = transactionRepo.countByFarmIdAndStatutAndDateRange(farmId, StatutTransaction.REJETE, dDeb, dFin);
+            totalEntrees = transactionRepo.sumMontantValideByTypeAndDateRange(farmId, TypeTransaction.ENTREE, dDeb, dFin);
+            totalSorties = transactionRepo.sumMontantValideByTypeAndDateRange(farmId, TypeTransaction.SORTIE, dDeb, dFin);
+            totalVenteOeufs = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_OEUFS, dDeb, dFin);
+            totalVenteReforme = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_REFORME, dDeb, dFin);
         }
 
         // Ferme entière, jamais scopé par projet/comptable (voir TransactionStatsDTO) —
@@ -574,8 +658,8 @@ public class TransactionServiceImpl implements TransactionService {
         // séparément (voir getVentesReelParProjet ci-dessous, consommée par
         // Reporting.tsx) : ces deux chiffres-ci restent volontairement un simple
         // complément global à "Total entrées", pas un rapport scopé.
-        double montantRecuVentes = nz(venteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin))
-                + nz(venteReformeRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dateDebut, dateFin));
+        double montantRecuVentes = nz(venteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dDeb, dFin))
+                + nz(venteReformeRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dDeb, dFin));
         double duParVendeurs = nz(soldeVendeurRepo.sumSoldePositifByFarmId(farmId));
         double duParClients = nz(soldeClientRepo.sumSoldePositifByFarmId(farmId));
 
@@ -601,8 +685,8 @@ public class TransactionServiceImpl implements TransactionService {
         if (farmId == null) return List.of();
 
         List<VenteRepartitionReelDTO> lignes = new java.util.ArrayList<>();
-        lignes.addAll(venteOeufsRepartitionRepo.findReelParProjet(farmId, dateDebut, dateFin));
-        lignes.addAll(venteReformeRepartitionRepo.findReelParProjet(farmId, dateDebut, dateFin));
+        lignes.addAll(venteOeufsRepartitionRepo.findReelParProjet(farmId, deb(dateDebut), fin(dateFin)));
+        lignes.addAll(venteReformeRepartitionRepo.findReelParProjet(farmId, deb(dateDebut), fin(dateFin)));
 
         java.util.Map<String, ProjetVenteReelDTO> parProjet = new java.util.LinkedHashMap<>();
         for (VenteRepartitionReelDTO ligne : lignes) {

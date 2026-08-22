@@ -151,8 +151,12 @@ public class NotificationServiceImpl implements NotificationService {
             // ni pour un PRODUCTION pur (jamais de pouvoir de validation).
             if (isPureResponsable(currentUser)) {
                 List<Long> projetIds = projets.stream().map(Projets::getId).toList();
+                // Bornes toujours concrètes (jamais null) — voir
+                // TransactionServiceImpl.deb()/fin() : Postgres échoue à déterminer le
+                // type d'un paramètre comparé directement à NULL dans cette requête agrégat.
                 long nbAttente = projetIds.isEmpty() ? 0
-                        : transactionRepo.countByProjetIdsAndStatut(projetIds, StatutTransaction.EN_ATTENTE, null, null);
+                        : transactionRepo.countByProjetIdsAndStatut(projetIds, StatutTransaction.EN_ATTENTE,
+                            java.time.LocalDate.of(1900, 1, 1), java.time.LocalDate.of(2999, 12, 31));
                 if (nbAttente > 0) {
                     result.add(NotificationDTO.builder()
                         .key("transactions-attente")
@@ -265,7 +269,7 @@ public class NotificationServiceImpl implements NotificationService {
             List<Long> contributeurs = collecteOeufsRepo.findDistinctProjetIdsByMagasinStockageId(m.getId());
             if (contributeurs.stream().noneMatch(mesProjetIds::contains)) continue;
 
-            int disponible = magasinTransfertService.disponibleATransfererDepuisMagasinStockage(m.getUniqueId());
+            int disponible = magasinTransfertService.disponibleATransfererDepuisMagasinStockage(m.getUniqueId(), "OEUFS");
             int seuilEnOeufs = m.getSeuilAlerteAlveoles() * OEUFS_PAR_ALVEOLE;
             if (disponible >= seuilEnOeufs) continue;
 

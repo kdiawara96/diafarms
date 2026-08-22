@@ -9,6 +9,7 @@ import com.diafarms.ml.DTO.MagasinDTO;
 import com.diafarms.ml.DTO.StockMagasinDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.enums.TypeVenteOeufs;
 import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Magasin.TypeMagasin;
 import com.diafarms.ml.models.Utilisateurs;
@@ -91,9 +92,22 @@ public class MagasinServiceImpl implements MagasinService {
         m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
         m.setFarm(currentUser.getFarm());
         m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
+        m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId()));
         m.setInitialisation(Initialisation.init());
 
         return MagasinDTO.fromEntity(magasinRepo.save(m));
+    }
+
+    // Pertinent seulement pour un magasin de STOCKAGE — pas de vérification stricte du
+    // type ici, même convention que seuilAlerteAlveoles (jamais imposé en base, juste
+    // sans effet si le magasin est de type VENTE, voir CollecteOeufsImpl).
+    private Magasin resolveMagasinVenteParDefaut(String uniqueId) {
+        if (uniqueId == null || uniqueId.isBlank()) return null;
+        Magasin cible = magasinRepo.findByUniqueId(uniqueId).orElse(null);
+        if (cible == null || cible.getType() != TypeMagasin.VENTE) {
+            throw new IllegalArgumentException("Le magasin de vente par défaut doit être un magasin de type VENTE existant.");
+        }
+        return cible;
     }
 
     @Override
@@ -114,6 +128,7 @@ public class MagasinServiceImpl implements MagasinService {
         m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
         m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
         if (data.getVendeurUniqueIds() != null) m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
+        m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId()));
         if (m.getInitialisation() != null) m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 
         return MagasinDTO.fromEntity(magasinRepo.save(m));
@@ -179,13 +194,16 @@ public class MagasinServiceImpl implements MagasinService {
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
 
         int oeufsRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.OEUFS));
-        int oeufsVendus = nz(venteOeufsRepartitionRepo.sumQuantiteByMagasinId(m.getId()));
+        int oeufsVendus = nz(venteOeufsRepartitionRepo.sumQuantiteByMagasinId(m.getId(), TypeVenteOeufs.BON));
         int reformeRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.REFORME));
         int reformeVendus = nz(venteReformeRepartitionRepo.sumSujetsByMagasinId(m.getId()));
+        int oeufsCassesRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.OEUFS_CASSES));
+        int oeufsCassesVendus = nz(venteOeufsRepartitionRepo.sumQuantiteByMagasinId(m.getId(), TypeVenteOeufs.CASSE));
 
         return StockMagasinDTO.builder()
                 .oeufsDisponible(oeufsRecus - oeufsVendus)
                 .reformeDisponible(reformeRecus - reformeVendus)
+                .oeufsCassesDisponible(oeufsCassesRecus - oeufsCassesVendus)
                 .build();
     }
 }

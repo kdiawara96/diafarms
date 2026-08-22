@@ -22,7 +22,7 @@ public class PingController {
     @GetMapping("/test")
     public ResponseEntity<ApiResponse<Map<String, Object>>> ping() {
         return ApiResponse.createResponse(
-                "Serveur Diafarms joignable",
+                "Serveur Cocorico joignable",
                 HttpStatus.OK,
                 Map.of("time", LocalDateTime.now().toString()),
                 null

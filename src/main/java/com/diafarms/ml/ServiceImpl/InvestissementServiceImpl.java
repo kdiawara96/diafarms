@@ -4,6 +4,7 @@ import com.diafarms.ml.DTO.InvestissementDTO;
 import com.diafarms.ml.DTO.InvestissementRepartitionDTO;
 import com.diafarms.ml.DTO.InvestissementStatsDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeAffectation;
 import com.diafarms.ml.models.Investissement;
 import com.diafarms.ml.models.InvestissementRepartition;
@@ -17,6 +18,7 @@ import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.InvestissementRequest;
 import com.diafarms.ml.request.update.InvestissementUpdateRequestDTO;
 import com.diafarms.ml.services.InvestissementService;
+import com.diafarms.ml.services.TransactionService;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.domain.Page;
@@ -38,9 +40,63 @@ public class InvestissementServiceImpl implements InvestissementService {
 
     private final InvestissementRepository investissementRepo;
     private final InvestissementRepartitionRepository repartitionRepo;
-    private final ProjetsRepo projetsRepo; 
+    private final ProjetsRepo projetsRepo;
     private final UtilisateursRepo utilisateursRepo;
-   
+    private final TransactionService transactionService;
+    private final OtherService otherService;
+
+    private Utilisateurs getCurrentUserSafe() {
+        try {
+            return otherService.getCurrentUser();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // Génère/synchronise la sortie comptable liée à cet achat — voir
+    // AlimentationImpl.syncTransaction pour le même principe. projetDedie = null pour
+    // un investissement COMMUN (dépense de ferme, comme un salaire) ; renseigné pour un
+    // investissement DÉDIÉ, afin que ce coût compte dans les sorties DU PROJET.
+    private void syncTransaction(Investissement inv, Projets projetDedie, Utilisateurs currentUser) {
+        if (currentUser == null || currentUser.getFarm() == null) return;
+        String description = "Achat investissement : " + inv.getNom() + " (" + inv.getCategorie() + ")"
+                + (inv.getFournisseur() != null && !inv.getFournisseur().isBlank() ? " — " + inv.getFournisseur() : "");
+        transactionService.syncSortie(projetDedie, currentUser.getFarm(), inv.getMontant(), "Investissement",
+                inv.getDateAchat(), description, SourceTransaction.INVESTISSEMENT, inv.getUniqueId(), currentUser);
+    }
+
+    // Recalcule montantAlloue de TOUTES les répartitions de cet investissement avec
+    // le taux mensuel ACTUEL (montant / dureeAmortissement) — indispensable dès que
+    // la durée de vie estimée change (ex : un actif dure finalement plus longtemps
+    // que prévu grâce à l'entretien) : chaque projet ayant utilisé l'actif doit
+    // refléter le coût mensuel réel une fois connu, pas l'ancien taux calculé avec
+    // une durée sous-estimée. moisUtilises (fait historique : combien de mois CE
+    // projet l'a utilisé) ne change jamais ici, seul le prix par mois est mis à
+    // jour. Plafonné en cumulé sur le montant total (ordre chronologique) pour ne
+    // jamais allouer plus que ce que l'actif a réellement coûté à l'achat — avant ce
+    // correctif, chaque répartition était plafonnée individuellement sur le montant
+    // TOTAL au lieu du reste réellement disponible, ce qui pouvait faire dépasser la
+    // somme de toutes les répartitions au-delà du montant payé. Purement analytique
+    // (jamais du cash, voir syncTransaction) : aucun risque de "réécrire" une sortie
+    // déjà comptée en Comptabilité.
+    private void recalculerRepartitions(Investissement inv) {
+        if (inv.getRepartitions() == null || inv.getRepartitions().isEmpty()) return;
+        double tauxMensuel = inv.getAmortissementMensuel();
+        double cumule = 0.0;
+        List<InvestissementRepartition> triees = inv.getRepartitions().stream()
+                .sorted(java.util.Comparator.comparing(InvestissementRepartition::getDateDebut,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .toList();
+        for (InvestissementRepartition r : triees) {
+            int mois = r.getMoisUtilises() != null ? r.getMoisUtilises() : 0;
+            double brut = mois * tauxMensuel;
+            double restant = Math.max(0.0, inv.getMontant() - cumule);
+            double alloue = Math.round(Math.min(brut, restant) * 100.0) / 100.0;
+            r.setMontantAlloue(alloue);
+            cumule += alloue;
+        }
+    }
+
 
         @Override
         @Transactional(readOnly = true)
@@ -122,6 +178,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         investissement.setRepartitions(new ArrayList<>());
 
         // 3. 🟢 CRÉATION DE LA RÉPARTITION DIRECTE SI L'AFFECTATION EST DÉDIÉE
+        Projets projetDedie = null;
         if (TypeAffectation.DEDIE.equals(investissement.getAffectation())) {
                 if (dto.getProjetId() == null || dto.getProjetId().trim().isEmpty()) {
                 throw new IllegalArgumentException("Le projetId est obligatoire pour un investissement dédié.");
@@ -130,6 +187,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 // Récupération du projet ciblé par son uniqueId
                 Projets projet = projetsRepo.findByUniqueId(dto.getProjetId())
                         .orElseThrow(() -> new IllegalArgumentException("Projet introuvable avec l'ID unique: " + dto.getProjetId()));
+                projetDedie = projet;
 
                 // Construction de la ligne pivot d'affectation initiale
                 InvestissementRepartition repartition = new InvestissementRepartition();
@@ -146,6 +204,7 @@ public class InvestissementServiceImpl implements InvestissementService {
 
     // 4. Une seule sauvegarde persistée en cascade (Investissement + Répartition)
     Investissement saved = investissementRepo.save(investissement);
+    syncTransaction(saved, projetDedie, u);
     return toDTO(saved);
 }
     
@@ -175,6 +234,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         }
 
         // 3. 🟢 Gestion de la répartition du projet si l'affectation est DÉDIÉE
+        Projets projetDedie = null;
         if (TypeAffectation.DEDIE.equals(inv.getAffectation())) {
         if (dto.getProjetId() == null || dto.getProjetId().trim().isEmpty()) {
                 throw new IllegalArgumentException("Le projetId est obligatoire pour un investissement dédié.");
@@ -182,6 +242,7 @@ public class InvestissementServiceImpl implements InvestissementService {
 
         Projets projet = projetsRepo.findByUniqueId(dto.getProjetId())
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable avec l'ID: " + dto.getProjetId()));
+        projetDedie = projet;
 
         // S'il y a déjà des répartitions, on vérifie si le projet a changé
         boolean projetExisteDeja = inv.getRepartitions().stream()
@@ -200,7 +261,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 nouvelleRepartition.setDateDebut(LocalDate.now()); // ou dto.getDateAchat() selon ta politique
                 nouvelleRepartition.setDateFin(null);
                 nouvelleRepartition.setMoisUtilises(dto.getDureeAmortissement());
-                nouvelleRepartition.setMontantAlloue(dto.getMontant());
+                // montantAlloue calculé juste après par recalculerRepartitions, pas ici.
 
                 inv.getRepartitions().add(nouvelleRepartition);
         }
@@ -216,7 +277,14 @@ public class InvestissementServiceImpl implements InvestissementService {
                 inv.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
 
+        // Recalcule la part de CHAQUE projet ayant utilisé cet investissement avec le
+        // taux mensuel actuel (montant/dureeAmortissement peuvent avoir changé
+        // ci-dessus) — voir recalculerRepartitions.
+        recalculerRepartitions(inv);
+        repartitionRepo.saveAll(inv.getRepartitions());
+
         Investissement saved = investissementRepo.save(inv);
+        syncTransaction(saved, projetDedie, getCurrentUserSafe());
         return toDTO(saved);
     }
 
@@ -227,9 +295,12 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 1. Récupérer l'investissement réel existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
-        
-        // 2. Suppression réelle et physique en BDD
-        // Grâce à cascade = CascadeType.ALL et orphanRemoval = true, 
+
+        // 2. Retire la sortie comptable liée (removed=true, conserve la trace d'audit)
+        transactionService.toggleRemovedBySource(inv.getUniqueId());
+
+        // 3. Suppression réelle et physique en BDD
+        // Grâce à cascade = CascadeType.ALL et orphanRemoval = true,
         // Hibernate va d'abord nettoyer la table 'investissement_repartitions' pour cet ID avant de supprimer l'investissement.
         investissementRepo.delete(inv);
     }
@@ -299,24 +370,28 @@ public class InvestissementServiceImpl implements InvestissementService {
                 }
                 
                 long jours = java.time.temporal.ChronoUnit.DAYS.between(repartition.getDateDebut(), repartition.getDateFin());
-                
+
                 // 🟢 CORRECTION : Si c'est au moins 1 jour, on prend le plafond (Math.ceil) au lieu de Math.round
                 double moisCalcul = Math.max(1.0, Math.ceil(jours / 30.4375));
-                
+
                 // Maintenant 10 jours donnera 1 mois complet au lieu de 0
                 repartition.setMoisUtilises((int) moisCalcul);
-                
-                double totalImpute = moisCalcul * inv.getAmortissementMensuel();
-                repartition.setMontantAlloue(Math.min(inv.getMontant(), Math.round(totalImpute * 100.0) / 100.0));
+                // montantAlloue calculé juste après par recalculerRepartitions, sur le
+                // reste réellement disponible — pas ici, pas sur le montant total brut.
         } else {
                 // Par défaut, sans date de fin (utilisation continue au sein de la ferme), les valeurs restent à 0
                 repartition.setDateFin(null);
                 repartition.setMoisUtilises(0);
-                repartition.setMontantAlloue(0.0);
         }
+        repartition.setMontantAlloue(0.0);
 
-        // 5. Sauvegarde de la répartition
-        InvestissementRepartition saved = repartitionRepo.save(repartition);
+        // 5. Sauvegarde de la répartition, puis recalcul de la part de CHAQUE projet
+        // ayant utilisé cet investissement (celle-ci comprise) sur le reste
+        // réellement disponible — voir recalculerRepartitions.
+        inv.getRepartitions().add(repartition);
+        recalculerRepartitions(inv);
+        repartitionRepo.saveAll(inv.getRepartitions());
+        InvestissementRepartition saved = repartition;
 
         // L'investissement est/devient partagé entre plusieurs entités
         inv.setAffectation(TypeAffectation.COMMUN);

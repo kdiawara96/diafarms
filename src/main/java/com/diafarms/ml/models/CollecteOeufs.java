@@ -46,6 +46,15 @@ public class CollecteOeufs {
     @Column(name = "oeufs_casses", nullable = false)
     private Integer oeufsCasses = 0;
 
+    // Œufs collectés mais impropres à la vente même à prix réduit (sales, contaminés,
+    // trop déformés...) — distinct des cassés (voir TypeStockMagasin.OEUFS_CASSES,
+    // vendables moins cher) : jamais transférés vers aucun magasin, perte pure. "Bon
+    // état" = oeufsCollectes - oeufsCasses - oeufsNonUtilisables, toujours dérivé,
+    // jamais saisi directement (voir CollecteOeufsImpl).
+    @Column(name = "oeufs_non_utilisables", nullable = false,
+            columnDefinition = "integer not null default 0")
+    private Integer oeufsNonUtilisables = 0;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;

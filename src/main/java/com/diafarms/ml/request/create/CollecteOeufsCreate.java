@@ -11,4 +11,5 @@ public class CollecteOeufsCreate {
     private String heure; // "HH:mm", optionnel
     private Integer oeufsCollectes;
     private Integer oeufsCasses;
+    private Integer oeufsNonUtilisables;
 }

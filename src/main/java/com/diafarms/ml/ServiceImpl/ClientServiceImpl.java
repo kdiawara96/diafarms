@@ -94,17 +94,23 @@ public class ClientServiceImpl implements ClientService {
         if (data.getNom() == null || data.getNom().isBlank()) {
             throw new IllegalArgumentException("Le nom du client est obligatoire.");
         }
+        if (data.getTelephone() == null || data.getTelephone().isBlank()) {
+            throw new IllegalArgumentException("Le numéro de téléphone du client est obligatoire.");
+        }
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Votre compte n'est rattaché à aucune ferme.");
         }
         if (clientRepo.existsByNomIgnoreCaseAndFarmId(data.getNom().trim(), currentUser.getFarm().getId())) {
             throw new IllegalArgumentException("Un client portant ce nom existe déjà.");
         }
+        if (clientRepo.existsByTelephoneAndFarmId(data.getTelephone().trim(), currentUser.getFarm().getId())) {
+            throw new IllegalArgumentException("Un client avec ce numéro de téléphone existe déjà.");
+        }
 
         Client c = new Client();
         c.setUniqueId(java.util.UUID.randomUUID().toString());
         c.setNom(data.getNom().trim());
-        c.setTelephone(data.getTelephone());
+        c.setTelephone(data.getTelephone().trim());
         c.setAdresse(data.getAdresse());
         c.setEmail(data.getEmail());
         c.setFarm(currentUser.getFarm());
@@ -127,7 +133,14 @@ public class ClientServiceImpl implements ClientService {
         }
 
         if (data.getNom() != null && !data.getNom().isBlank()) c.setNom(data.getNom().trim());
-        if (data.getTelephone() != null) c.setTelephone(data.getTelephone());
+        if (data.getTelephone() != null && !data.getTelephone().isBlank()) {
+            String telephone = data.getTelephone().trim();
+            if (!telephone.equals(c.getTelephone())
+                    && clientRepo.existsByTelephoneAndFarmIdExcludingUniqueId(telephone, c.getFarm().getId(), c.getUniqueId())) {
+                throw new IllegalArgumentException("Un client avec ce numéro de téléphone existe déjà.");
+            }
+            c.setTelephone(telephone);
+        }
         if (data.getAdresse() != null) c.setAdresse(data.getAdresse());
         if (data.getEmail() != null) c.setEmail(data.getEmail());
         if (c.getInitialisation() != null) c.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());

@@ -21,4 +21,15 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
         AND (o.dateSortie IS NULL OR o.dateSortie > CURRENT_DATE)
         """)
     boolean existsOccupationActive(@Param("batimentId") Long batimentId);
+
+    // Occupation active (en cours) d'un bâtiment — sert à lire nbSujetsDansBatiment
+    // pour calculer son effectif vivant (voir CollecteOeufsImpl.effectifVivantBatiment).
+    // S'il y en avait plusieurs (ne devrait pas arriver), la plus récente prime.
+    @Query("""
+        SELECT o FROM OccupationBatiment o
+        WHERE o.batiment.id = :batimentId
+        AND (o.dateSortie IS NULL OR o.dateSortie > CURRENT_DATE)
+        ORDER BY o.dateEntree DESC
+        """)
+    java.util.List<OccupationBatiment> findActiveByBatimentId(@Param("batimentId") Long batimentId);
 }

@@ -32,7 +32,8 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
         "FROM VenteReformeRepartition r, Transaction t " +
         "WHERE t.sourceUniqueId = r.uniqueId AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
         "AND r.projet.farm.id = :farmId AND r.venteReforme.initialisation.removed = false " +
-        "AND (:dateDebut IS NULL OR r.venteReforme.date >= :dateDebut) AND (:dateFin IS NULL OR r.venteReforme.date <= :dateFin)")
+        // dateDebut/dateFin ATTENDUS NON-NULS — voir TransactionRepo.countByProjetIdsAndStatut.
+        "AND r.venteReforme.date >= :dateDebut AND r.venteReforme.date <= :dateFin")
     List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
                                                       @Param("dateDebut") java.time.LocalDate dateDebut,
                                                       @Param("dateFin") java.time.LocalDate dateFin);

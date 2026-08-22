@@ -5,11 +5,14 @@ import java.time.LocalTime;
 import java.util.List;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.TypeVenteOeufs;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -98,6 +101,15 @@ public class VenteOeufs {
 
     @OneToMany(mappedBy = "venteOeufs", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteOeufsRepartition> repartitions;
+
+    // BON (défaut) ou CASSE — pool de stock par magasin totalement séparé, voir
+    // TypeVenteOeufs. columnDefinition avec DEFAULT explicite : indispensable pour que
+    // ddl-auto=update puisse ajouter cette colonne NOT NULL sur la table déjà peuplée
+    // (même raison que Transaction.sourceType).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_oeuf", nullable = false, length = 10,
+            columnDefinition = "varchar(10) not null default 'BON'")
+    private TypeVenteOeufs typeOeuf = TypeVenteOeufs.BON;
 
     @Embedded
     private Initialisation initialisation;

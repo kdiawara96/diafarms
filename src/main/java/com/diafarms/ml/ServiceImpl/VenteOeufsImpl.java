@@ -20,6 +20,7 @@ import com.diafarms.ml.DTO.VenteOeufsRepartitionDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.enums.TypeVenteOeufs;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Magasin;
@@ -94,15 +95,22 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
     }
 
-    /** Stock d'œufs vendables restant DANS ce magasin, projet par projet (ceux qui y
-     * ont transféré du stock) — sert de poids pour la répartition proportionnelle
-     * d'une vente entre les projets contributeurs de CE magasin précis. */
-    private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin) {
+    /** BON -> pool de transfert OEUFS, CASSE -> pool OEUFS_CASSES — deux pools de stock
+     * magasin totalement séparés (voir CollecteOeufsImpl, TypeStockMagasin). */
+    private TypeStockMagasin typeStock(TypeVenteOeufs typeOeuf) {
+        return typeOeuf == TypeVenteOeufs.CASSE ? TypeStockMagasin.OEUFS_CASSES : TypeStockMagasin.OEUFS;
+    }
+
+    /** Stock (bon OU cassé selon typeOeuf) restant DANS ce magasin, projet par projet
+     * (ceux qui y ont transféré du stock) — sert de poids pour la répartition
+     * proportionnelle d'une vente entre les projets contributeurs de CE magasin précis. */
+    private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin, TypeVenteOeufs typeOeuf) {
+        TypeStockMagasin type = typeStock(typeOeuf);
         Map<Long, Integer> disponible = new LinkedHashMap<>();
-        List<Long> projetIds = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(magasin.getId(), TypeStockMagasin.OEUFS);
+        List<Long> projetIds = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(magasin.getId(), type);
         for (Long projetId : projetIds) {
-            int transfere = nz(magasinTransfertRepo.sumQuantiteByMagasinAndProjetAndType(magasin.getId(), projetId, TypeStockMagasin.OEUFS));
-            int vendu = nz(repartitionRepo.sumQuantiteByProjetIdAndMagasinId(projetId, magasin.getId()));
+            int transfere = nz(magasinTransfertRepo.sumQuantiteByMagasinAndProjetAndType(magasin.getId(), projetId, type));
+            int vendu = nz(repartitionRepo.sumQuantiteByProjetIdAndMagasinId(projetId, magasin.getId(), typeOeuf));
             int restant = transfere - vendu;
             if (restant > 0) disponible.put(projetId, restant);
         }
@@ -113,7 +121,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
      * lignes de VenteOeufsRepartition et génère une Transaction par projet — factorisé
      * pour être appelé identiquement par create() et update(). */
     private List<VenteOeufsRepartition> repartirEtCreerTransactions(VenteOeufs saved, Farm farm, int quantite, double montant, Utilisateurs creePar) {
-        Map<Long, Integer> disponible = disponibleParProjetDansMagasin(saved.getMagasin());
+        Map<Long, Integer> disponible = disponibleParProjetDansMagasin(saved.getMagasin(), saved.getTypeOeuf());
         Map<Long, Projets> projetsParId = new LinkedHashMap<>();
         for (Long projetId : disponible.keySet()) {
             projetsRepo.findById(projetId).ifPresent(p -> projetsParId.put(projetId, p));
@@ -128,6 +136,8 @@ public class VenteOeufsImpl implements VenteOeufsService {
         // le solde vendeur ne permettait de retrouver AUCUNE ligne précise dans la table
         // des transactions. Voir aussi la carte Solde Vendeur (agrégée) sur Ventes.tsx.
         String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
+        boolean casse = saved.getTypeOeuf() == TypeVenteOeufs.CASSE;
+        String libelleOeufs = casse ? "œufs cassés" : "œufs";
 
         for (RepartitionUtil.Part part : parts) {
             Projets projet = projetsParId.get(part.projetId);
@@ -141,8 +151,8 @@ public class VenteOeufsImpl implements VenteOeufsService {
             lignes.add(repartitionRepo.save(r));
 
             transactionService.createFromSource(
-                    projet, farm, part.montant, "Vente œufs", saved.getDate(),
-                    "Vente de " + part.quantite + " œufs (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart,
+                    projet, farm, part.montant, casse ? "Vente œufs cassés" : "Vente œufs", saved.getDate(),
+                    "Vente de " + part.quantite + " " + libelleOeufs + " (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart,
                     SourceTransaction.VENTE_OEUFS, r.getUniqueId(), creePar
             );
         }
@@ -177,8 +187,25 @@ public class VenteOeufsImpl implements VenteOeufsService {
         if (data.getMontant() == null || data.getMontant() <= 0) {
             throw new IllegalArgumentException("Le montant de la vente doit être positif.");
         }
+        // Requis côté serveur en dernier ressort (déjà imposé côté web/mobile) : sans
+        // prix unitaire ni montant rapporté, le suivi réel/théorique (SoldeClient/
+        // SoldeVendeur) et le coût de revient par projet perdent toute fiabilité.
+        if (data.getPrixUnitaire() == null || data.getPrixUnitaire() <= 0) {
+            throw new IllegalArgumentException("Le prix unitaire est obligatoire.");
+        }
+        if (data.getMontantRapporte() == null || data.getMontantRapporte() < 0) {
+            throw new IllegalArgumentException("Le montant rapporté est obligatoire.");
+        }
         if (data.getMagasinUniqueId() == null || data.getMagasinUniqueId().isBlank()) {
             throw new IllegalArgumentException("Le magasin de vente est obligatoire.");
+        }
+
+        TypeVenteOeufs typeOeuf;
+        try {
+            typeOeuf = (data.getTypeOeuf() == null || data.getTypeOeuf().isBlank())
+                    ? TypeVenteOeufs.BON : TypeVenteOeufs.valueOf(data.getTypeOeuf().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Type de vente invalide (attendu BON ou CASSE) : " + data.getTypeOeuf());
         }
 
         Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
@@ -187,10 +214,11 @@ public class VenteOeufsImpl implements VenteOeufsService {
             throw new IllegalArgumentException("On ne peut vendre que depuis un magasin de type VENTE.");
         }
 
-        int restant = disponibleParProjetDansMagasin(magasin).values().stream().mapToInt(Integer::intValue).sum();
+        int restant = disponibleParProjetDansMagasin(magasin, typeOeuf).values().stream().mapToInt(Integer::intValue).sum();
         if (data.getQuantiteOeufs() > restant) {
             throw new IllegalArgumentException(
-                "Stock d'œufs insuffisant dans ce magasin (" + restant + " œuf(s) restants)."
+                (typeOeuf == TypeVenteOeufs.CASSE ? "Stock d'œufs cassés insuffisant" : "Stock d'œufs insuffisant")
+                        + " dans ce magasin (" + restant + " œuf(s) restants)."
             );
         }
 
@@ -214,6 +242,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         v.setPrixUnitaire(data.getPrixUnitaire());
         v.setMontant(data.getMontant());
         v.setMontantRapporte(data.getMontantRapporte());
+        v.setTypeOeuf(typeOeuf);
         v.setInitialisation(Initialisation.init());
 
         VenteOeufs saved = venteOeufsRepo.save(v);
@@ -259,7 +288,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
             if (v.getMagasin() == null) {
                 throw new IllegalArgumentException("Cette vente n'est rattachée à aucun magasin (ancienne vente farm-wide) : quantité non modifiable.");
             }
-            Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin());
+            Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin(), v.getTypeOeuf());
             int restantHorsCetteVente = disponible.values().stream().mapToInt(Integer::intValue).sum() + nz(v.getQuantiteOeufs());
             if (data.getQuantiteOeufs() > restantHorsCetteVente) {
                 throw new IllegalArgumentException(
@@ -334,9 +363,10 @@ public class VenteOeufsImpl implements VenteOeufsService {
             // chaque ligne existante, sans toucher réf/montant/statut de la transaction.
             if (ecartChange) {
                 String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
+                String libelleOeufs = saved.getTypeOeuf() == TypeVenteOeufs.CASSE ? "œufs cassés" : "œufs";
                 for (VenteOeufsRepartition ligne : lignesActuelles) {
                     transactionService.updateDescriptionBySource(ligne.getUniqueId(),
-                            "Vente de " + ligne.getQuantiteAttribuee() + " œufs (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart);
+                            "Vente de " + ligne.getQuantiteAttribuee() + " " + libelleOeufs + " (part de " + saved.getQuantiteOeufs() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart);
                 }
             }
         }
@@ -418,12 +448,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
         // (voir MagasinService.getStock), qui seul plafonne une vente précise.
         int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
         int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));
+        int totalNonUtilisable = nz(collecteOeufsRepo.sumOeufsNonUtilisablesByFarmId(farmId));
         int totalVendu = nz(venteOeufsRepo.sumQuantiteByFarmId(farmId));
-        int restant = (totalCollecte - totalCasse) - totalVendu;
+        int restant = (totalCollecte - totalCasse - totalNonUtilisable) - totalVendu;
 
         return StockOeufsDTO.builder()
                 .totalCollecte(totalCollecte)
                 .totalCasse(totalCasse)
+                .totalNonUtilisable(totalNonUtilisable)
                 .totalVendu(totalVendu)
                 .stockRestant(restant)
                 .statut(restant <= 0 ? "EPUISE" : "ACTIF")

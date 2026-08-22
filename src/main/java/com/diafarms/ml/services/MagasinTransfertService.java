@@ -14,7 +14,8 @@ public interface MagasinTransfertService {
     PaginatedResponse<MagasinTransfertDTO> list(String magasinUniqueId, int page, int size);
     // REFORME : stock du projet pas encore transféré vers aucun magasin — plafond d'un nouveau transfert.
     int disponibleATransfererDepuisProjet(String projetUniqueId, String type);
-    // OEUFS : stock du magasin de stockage (tous projets confondus) pas encore
-    // transféré vers aucun magasin de vente — plafond d'un nouveau transfert.
-    int disponibleATransfererDepuisMagasinStockage(String magasinStockageUniqueId);
+    // OEUFS/OEUFS_CASSES : stock du magasin de stockage (tous projets confondus) pas
+    // encore transféré vers aucun magasin de vente — plafond d'un nouveau transfert.
+    // type null/vide = OEUFS (comportement historique, compat clients existants).
+    int disponibleATransfererDepuisMagasinStockage(String magasinStockageUniqueId, String type);
 }

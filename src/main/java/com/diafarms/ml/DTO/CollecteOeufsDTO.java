@@ -24,6 +24,7 @@ public class CollecteOeufsDTO {
     private LocalTime heure;
     private Integer oeufsCollectes;
     private Integer oeufsCasses;
+    private Integer oeufsNonUtilisables;
     private String projetCode;
     private String projetUniqueId;
     private String batimentNom;
@@ -41,6 +42,7 @@ public class CollecteOeufsDTO {
                 .heure(c.getHeure())
                 .oeufsCollectes(c.getOeufsCollectes())
                 .oeufsCasses(c.getOeufsCasses())
+                .oeufsNonUtilisables(c.getOeufsNonUtilisables())
                 .projetCode(c.getProjet() != null ? c.getProjet().getCode() : null)
                 .projetUniqueId(c.getProjet() != null ? c.getProjet().getUniqueId() : null)
                 .batimentNom(c.getBatiment() != null ? c.getBatiment().getNom() : null)

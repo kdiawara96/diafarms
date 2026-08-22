@@ -32,4 +32,14 @@ public interface MortaliteRepo extends JpaRepository<Mortalite, Long> {
     @Query("SELECT COALESCE(SUM(m.nombreMorts), 0) FROM Mortalite m " +
         "WHERE m.projet.id = :projetId AND m.initialisation.removed = false")
     Integer sumMortsByProjetId(@Param("projetId") Long projetId);
+
+    // Mortalité PAR BÂTIMENT — sert à calculer l'effectif vivant d'un bâtiment précis
+    // (voir CollecteOeufsImpl.effectifVivantBatiment), distinct du total du projet.
+    @Query("SELECT COALESCE(SUM(m.nombreMorts), 0) FROM Mortalite m " +
+        "WHERE m.batiment.id = :batimentId AND m.initialisation.removed = false")
+    Integer sumMortsByBatimentId(@Param("batimentId") Long batimentId);
+
+    // Voir CollecteOeufsRepo.findAllByProjetId — même usage pour RapportJournalierServiceImpl.
+    @Query("SELECT m FROM Mortalite m WHERE m.projet.id = :projetId AND m.initialisation.removed = false")
+    java.util.List<Mortalite> findAllByProjetId(@Param("projetId") Long projetId);
 }

@@ -18,4 +18,5 @@ import lombok.Setter;
 public class StockMagasinDTO {
     private int oeufsDisponible;
     private int reformeDisponible;
+    private int oeufsCassesDisponible;
 }

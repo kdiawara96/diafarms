@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.VaccinationDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
@@ -18,6 +19,7 @@ import com.diafarms.ml.repository.VaccinationRepo;
 import com.diafarms.ml.request.create.VaccinCreate;
 import com.diafarms.ml.request.update.VaccinUpdate;
 import com.diafarms.ml.services.LogsServices;
+import com.diafarms.ml.services.TransactionService;
 import com.diafarms.ml.services.VaccinationService;
 
 import lombok.RequiredArgsConstructor;
@@ -31,10 +33,23 @@ public class VaccinationImpl implements VaccinationService {
     private final OtherService OtherService;
     private final ProjetsRepo projetsRepo;
     private final LogsServices logs;
+    private final TransactionService transactionService;
 
 
      private String generateUID() {
         return "VAC-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    // Voir AlimentationImpl.syncTransaction — même principe pour les vaccins. Pas de
+    // champ date propre à Vaccination, on prend la date de création de la saisie.
+    private void syncTransaction(Vaccination v, Utilisateurs currentUser) {
+        if (currentUser == null || currentUser.getFarm() == null) return;
+        String description = "Vaccin " + v.getNomVaccin() + " (" + v.getQuantite() + " doses) — projet "
+                + (v.getProjet() != null ? v.getProjet().getTitre() : "?");
+        java.time.LocalDate date = v.getInitialisation() != null && v.getInitialisation().getCreatedAt() != null
+                ? v.getInitialisation().getCreatedAt().toLocalDate() : java.time.LocalDate.now();
+        transactionService.syncSortie(v.getProjet(), currentUser.getFarm(), v.getCoutTotal(), "Vaccination",
+                date, description, SourceTransaction.VACCINATION, v.getUniqueId(), currentUser);
     }
 
     // ============================================================
@@ -85,6 +100,7 @@ public class VaccinationImpl implements VaccinationService {
 
         // 5. Sauvegarder
         Vaccination saved = vaccinationRepo.save(vaccination);
+        syncTransaction(saved, currentUser);
 
         // 6. Log
         if (currentUser != null) {
@@ -92,7 +108,7 @@ public class VaccinationImpl implements VaccinationService {
                 currentUser.getId(),
                 saved.getId(),
                 "Vaccination",
-                "Création du vaccin '" + saved.getNomVaccin() 
+                "Création du vaccin '" + saved.getNomVaccin()
                     + "' (" + saved.getQuantite() + " doses) pour le projet '" + projet.getTitre() 
                     + "' | Coût total : " + saved.getCoutTotal() + " FCFA"
             );
@@ -162,13 +178,14 @@ public class VaccinationImpl implements VaccinationService {
         } catch (Exception e) {
             System.err.println("Impossible de récupérer l'utilisateur connecté : " + e.getMessage());
         }
-        
+        syncTransaction(updated, currentUser);
+
         if (currentUser != null) {
             logs.addLogs(
                 currentUser.getId(),
                 updated.getId(),
                 "Vaccination",
-                "Modification du vaccin '" + ancienNom 
+                "Modification du vaccin '" + ancienNom
                     + "' → '" + updated.getNomVaccin() 
                     + "' | Quantité : " + ancienneQuantite + " → " + updated.getQuantite()
                     + " | Coût : " + ancienCout + " → " + updated.getCoutTotal() + " FCFA"
@@ -195,6 +212,7 @@ public class VaccinationImpl implements VaccinationService {
         vaccination.setInitialisation(Initialisation.updateDate(vaccination.getInitialisation()));
 
         Vaccination deleted = vaccinationRepo.save(vaccination);
+        transactionService.toggleRemovedBySource(deleted.getUniqueId());
 
         // 4. Log
         Utilisateurs currentUser = null;
@@ -203,13 +221,13 @@ public class VaccinationImpl implements VaccinationService {
         } catch (Exception e) {
             System.err.println("Impossible de récupérer l'utilisateur connecté : " + e.getMessage());
         }
-        
+
         if (currentUser != null) {
             logs.addLogs(
                 currentUser.getId(),
                 deleted.getId(),
                 "Vaccination",
-                "Suppression du vaccin '" + deleted.getNomVaccin() 
+                "Suppression du vaccin '" + deleted.getNomVaccin()
                     + "' (" + deleted.getQuantite() + " doses) du projet '" 
                     + deleted.getProjet().getTitre() + "'"
             );

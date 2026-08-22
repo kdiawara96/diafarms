@@ -465,3 +465,58 @@ départ créé pour chacun des 2 `Salaire` existants (dateEffective = aujourd'hu
 `modePaiementApplique`/`tauxApplique` rétro-remplis sur l'unique `PaiementSalaire`
 déjà enregistré à partir du taux de son `Salaire` — vérifié avant commit, comme les
 migrations précédentes de cette session.
+
+### Mise à jour — Rebrand Cocorico + corrections mobile en profondeur (2026-08-16)
+
+**Rebrand visuel** : nouveau logo/identité "Cocorico" adopté sur web (en-tête,
+connexion, favicon, titres de page) et mobile (icône d'appli — jusque-là encore
+l'icône par défaut Android jamais personnalisée, nom affiché, écran de connexion),
+et pied de page des PDF générés (factures/bulletins). Noms techniques internes
+(packages Java, dossiers de projet, base de données) volontairement inchangés —
+décision explicite avec l'utilisateur, trop risqué de renommer l'`applicationId`
+Android (casse l'identité de l'appli déjà installée) pour un gain invisible.
+
+**Bug réel trouvé en creusant "le projet ne vient pas" sur mobile** — voir mémoire
+persistante `jpql_implicit_join_or_nullable_assoc.md`. `ProjetsRepo.
+findAssignedToUser`/`findRecentAssignedToUser` combinaient en OR plusieurs
+associations nullable (`responsableProduction`/`responsableFinance`/`responsable`)
+via navigation implicite JPQL — qui génère un INNER JOIN par défaut. Dès qu'UNE des
+trois est null pour un projet (cas courant : "responsable" générique jamais
+renseigné), Hibernate éliminait le projet ENTIER de la requête, même si les deux
+autres associations matchaient. Confirmé en comparant une requête native (LEFT JOIN,
+1 résultat) à la JPQL équivalente (implicite, 0 résultat) sur les mêmes données.
+Corrigé avec des `LEFT JOIN` explicites sur les deux requêtes. Un audit du reste du
+repository layer (122 `@Query`) n'a trouvé aucune autre occurrence du même piège.
+
+**Correctifs mobile additionnels (même session)** :
+- Rotation verrouillée en portrait partout (`fullSensor` → `portrait` dans le
+  manifest, jamais configuré jusque-là).
+- Badge de rôles dans l'en-tête : 3 badges séparés qui débordaient dès 3 rôles
+  cumulés → un seul badge compact ("X · Y" ou "X +N").
+- Sections Comptable/Vente séparées sur l'accueil (titre + grille chacune) au lieu
+  d'un seul "Saisie comptable" mélangeant les deux rôles.
+- Accès mobile par rôle (Production/Comptable/Vente) : Production n'était JAMAIS
+  vérifié contre `productionMobileEnabled` — un compte multi-rôles pouvait se
+  connecter grâce à un autre rôle actif et voyait quand même les cartes Production
+  même désactivées par l'admin. Corrigé + mis en cache local (cache-first) pour que
+  le menu reste utilisable hors ligne au lieu de rester vide indéfiniment tant que
+  `/farm-settings` n'a pas répondu — la vraie cause du "aucun menu hors ligne"
+  signalé par l'utilisateur.
+- "Synchroniser" rafraîchit maintenant aussi les accès mobile, pas seulement les
+  projets/magasins/clients/salaires.
+- Vente œufs/réforme/fientes sur mobile : champ "Poulailler" retiré (n'a jamais
+  servi, ventes farm-scopées), "Montant rapporté" ajouté (mobile n'avait qu'un seul
+  champ montant, impossible d'enregistrer une vente à crédit depuis le terrain).
+- Client : téléphone obligatoire + unique par ferme, web et mobile, avec contrainte
+  DB (`ALTER TABLE ... SET NOT NULL` + `UNIQUE (farm_id, telephone)` — ddl-auto=
+  update n'altère jamais la nullabilité d'une colonne existante, migration manuelle
+  comme d'habitude).
+- Nouveau : paiement de salaire depuis mobile (rôle Comptable, paiement seulement,
+  pas de gestion de grille) — `GET /salaires/select` ajouté pour synchroniser la
+  grille salariale hors ligne.
+
+**MinIO** tournait en fait dans un conteneur Docker jamais réellement lancé sur
+cette machine de dev (Docker pas installé) — cause des 500 sur l'upload logo/tampon.
+Remplacé par un MinIO autonome (binaire direct, mêmes identifiants `.env`) : à
+relancer manuellement après un redémarrage de la machine tant que ce n'est pas
+transformé en vrai service système.

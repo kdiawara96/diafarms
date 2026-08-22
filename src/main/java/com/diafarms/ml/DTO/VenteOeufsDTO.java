@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
+import com.diafarms.ml.enums.TypeVenteOeufs;
 import com.diafarms.ml.models.VenteOeufs;
 
 import lombok.AllArgsConstructor;
@@ -31,6 +32,7 @@ public class VenteOeufsDTO {
     private Double prixUnitaire;
     private Double montant;
     private Double montantRapporte;
+    private TypeVenteOeufs typeOeuf;
     private String creeParNom;
     private LocalDateTime createdAt;
     // Part de chaque projet contributeur dans cette vente (voir VenteOeufsRepartition) —
@@ -53,6 +55,7 @@ public class VenteOeufsDTO {
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
                 .montantRapporte(v.getMontantRapporte())
+                .typeOeuf(v.getTypeOeuf())
                 .creeParNom(v.getCreePar() != null ? v.getCreePar().getFullName() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
                 .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()

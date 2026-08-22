@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.SoinsDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Soins;
 import com.diafarms.ml.models.Utilisateurs;
@@ -24,6 +25,7 @@ import com.diafarms.ml.request.create.SoinsCreate;
 import com.diafarms.ml.request.update.SoinsUpdate;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.SoinsService;
+import com.diafarms.ml.services.TransactionService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,6 +38,7 @@ public class SoinsImpl implements SoinsService {
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final TransactionService transactionService;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -44,6 +47,15 @@ public class SoinsImpl implements SoinsService {
             e.printStackTrace();
             return null;
         }
+    }
+
+    // Voir AlimentationImpl.syncTransaction — même principe pour les soins.
+    private void syncTransaction(Soins s, Utilisateurs currentUser) {
+        if (currentUser == null || currentUser.getFarm() == null) return;
+        String description = "Soins (" + s.getType() + " — " + s.getProduit() + ") — projet "
+                + (s.getProjet() != null ? s.getProjet().getTitre() : "?");
+        transactionService.syncSortie(s.getProjet(), currentUser.getFarm(), s.getCoutTotal(), "Soins",
+                s.getDate(), description, SourceTransaction.SOINS, s.getUniqueId(), currentUser);
     }
 
     @Override
@@ -74,6 +86,7 @@ public class SoinsImpl implements SoinsService {
         }
 
         Soins saved = soinsRepo.save(s);
+        syncTransaction(saved, currentUser);
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Soins",
@@ -106,6 +119,7 @@ public class SoinsImpl implements SoinsService {
         Soins saved = soinsRepo.save(s);
 
         Utilisateurs currentUser = getCurrentUserSafe();
+        syncTransaction(saved, currentUser);
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Soins", "Modification d'une saisie de soins");
         }
@@ -122,6 +136,7 @@ public class SoinsImpl implements SoinsService {
         s.getInitialisation().setRemoved(!s.getInitialisation().getRemoved());
         soinsRepo.save(s);
         boolean removed = s.getInitialisation().getRemoved();
+        transactionService.toggleRemovedBySource(s.getUniqueId());
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {

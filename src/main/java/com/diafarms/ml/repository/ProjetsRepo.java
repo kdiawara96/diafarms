@@ -46,17 +46,36 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false")
     List<Projets> findAllActiveByFarm(@Param("farmId") Long farmId);
 
-    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
-           "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId " +
-           "OR p.responsable.uniqueId = :userUniqueId)")
+    // LEFT JOIN explicites obligatoires ici — trouvé en creusant un bug réel de
+    // synchronisation mobile ("le projet ne vient pas") : une navigation implicite
+    // (p.responsableProduction.uniqueId) génère un INNER JOIN par défaut en JPQL. Avec
+    // 3 associations OPTIONNELLES combinées en OR (responsableProduction/Finance/
+    // responsable), dès qu'UNE SEULE des trois est NULL pour un projet (cas courant :
+    // "responsable" générique jamais renseigné), l'INNER JOIN correspondant élimine le
+    // projet ENTIER de la requête — même si responsableProduction/Finance matchaient
+    // bien. Confirmé : la requête native équivalente (LEFT JOIN) trouvait le projet,
+    // celle-ci (implicite) non. Voir aussi findRecentAssignedToUser, qui "marchait" par
+    // simple coïncidence (elle ne teste pas p.responsable, jamais concernée par ce bug).
+    @Query("SELECT p FROM Projets p " +
+           "LEFT JOIN p.responsableProduction rp " +
+           "LEFT JOIN p.responsableFinance rf " +
+           "LEFT JOIN p.responsable r " +
+           "WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
+           "AND (rp.uniqueId = :userUniqueId OR rf.uniqueId = :userUniqueId OR r.uniqueId = :userUniqueId)")
     List<Projets> findAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 
     // Variante triée/limitée de findAssignedToUser, pour la modale "Profil & Accès Mobile
     // Utilisateur" côté web (derniers projets associés) — actifs ET archivés inclus
     // volontairement (seul le soft-delete "removed" est exclu), le statut actif/inactif
     // étant affiché tel quel plutôt que filtré.
-    @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
-           "AND (p.responsableProduction.uniqueId = :userUniqueId OR p.responsableFinance.uniqueId = :userUniqueId) " +
+    // LEFT JOIN explicites — même raison que findAssignedToUser ci-dessus : sans ça, un
+    // projet avec responsableProduction OU responsableFinance null (mais pas les deux)
+    // disparaîtrait à tort de la liste malgré une correspondance sur l'autre champ.
+    @Query("SELECT p FROM Projets p " +
+           "LEFT JOIN p.responsableProduction rp " +
+           "LEFT JOIN p.responsableFinance rf " +
+           "WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
+           "AND (rp.uniqueId = :userUniqueId OR rf.uniqueId = :userUniqueId) " +
            "ORDER BY p.initialisation.createdAt DESC")
     List<Projets> findRecentAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId, Pageable pageable);
 

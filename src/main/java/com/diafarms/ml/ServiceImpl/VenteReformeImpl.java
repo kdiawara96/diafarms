@@ -165,6 +165,14 @@ public class VenteReformeImpl implements VenteReformeService {
         if (data.getMontant() == null || data.getMontant() <= 0) {
             throw new IllegalArgumentException("Le montant de la vente doit être positif.");
         }
+        // Requis côté serveur en dernier ressort — voir VenteOeufsImpl.create (même
+        // raisonnement).
+        if (data.getPrixUnitaire() == null || data.getPrixUnitaire() <= 0) {
+            throw new IllegalArgumentException("Le prix unitaire est obligatoire.");
+        }
+        if (data.getMontantRapporte() == null || data.getMontantRapporte() < 0) {
+            throw new IllegalArgumentException("Le montant rapporté est obligatoire.");
+        }
         if (data.getMagasinUniqueId() == null || data.getMagasinUniqueId().isBlank()) {
             throw new IllegalArgumentException("Le magasin de vente est obligatoire.");
         }

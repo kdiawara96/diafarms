@@ -18,6 +18,10 @@ public interface SalaireService {
     // de la période payée, pas le taux actuel de la grille (voir resolveTauxPourPeriode).
     PaiementSalaireDTO payer(SalairePayerRequest data);
     PaginatedResponse<SalaireDTO> list(int page, int size);
+    // Non paginé — toute la grille salariale de la ferme en un appel, pour le picker
+    // employé côté web ET pour le cache de synchronisation mobile (voir CachePrefetcher
+    // côté app Android : le comptable doit pouvoir payer un salaire hors ligne).
+    java.util.List<SalaireDTO> select();
     PaginatedResponse<PaiementSalaireDTO> listPaiements(String employeUniqueId, int page, int size);
     // Bulletin de paie PDF pour un paiement précis — voir SalaireServiceImpl, mirroir
     // de FactureServiceImpl.genererPdf (logo/tampon de la ferme insérés si présents).

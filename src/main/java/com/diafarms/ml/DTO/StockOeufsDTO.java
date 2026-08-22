@@ -14,6 +14,7 @@ import lombok.Setter;
 public class StockOeufsDTO {
     private Integer totalCollecte;
     private Integer totalCasse;
+    private Integer totalNonUtilisable;
     private Integer totalVendu;
     private Integer stockRestant;
     private String statut; // "ACTIF" | "EPUISE"

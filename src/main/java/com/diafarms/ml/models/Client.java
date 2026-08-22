@@ -32,7 +32,11 @@ public class Client {
     @Column(name = "nom", nullable = false, length = 150)
     private String nom;
 
-    @Column(name = "telephone", length = 30)
+    // Obligatoire et unique par ferme (voir ClientRepo.existsByTelephoneAndFarmId,
+    // ClientServiceImpl.create/update) — ddl-auto=update n'altère jamais la nullabilité
+    // d'une colonne existante, l'ALTER TABLE (SET NOT NULL + contrainte unique
+    // (farm_id, telephone)) a été appliqué manuellement en base.
+    @Column(name = "telephone", length = 30, nullable = false)
     private String telephone;
 
     @Column(name = "adresse", length = 300)

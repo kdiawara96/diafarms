@@ -291,6 +291,16 @@ public class SalaireServiceImpl implements SalaireService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<SalaireDTO> select() {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) return List.of();
+        return salaireRepo.findAllByFarmId(currentUser.getFarm().getId()).stream()
+                .map(s -> SalaireDTO.fromEntity(s, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(s.getId())))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PaginatedResponse<PaiementSalaireDTO> listPaiements(String employeUniqueId, int page, int size) {
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser == null || currentUser.getFarm() == null) {
@@ -345,18 +355,24 @@ public class SalaireServiceImpl implements SalaireService {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            // ===== En-tête : logo à gauche, titre + période à droite =====
+            // ===== En-tête : logo + identité de la ferme à gauche, titre + période à
+            // droite — voir Farm.nom/quartier/ville/pays/telephone1/telephone2/email,
+            // configurables depuis Paramètres > Identité de la ferme côté web.
             PdfPTable header = new PdfPTable(2);
             header.setWidthPercentage(100);
             header.setWidths(new float[]{1, 1});
 
+            java.util.List<Element> farmCellElements = new java.util.ArrayList<>();
             Image logo = farm != null ? chargerImage(farm.getLogoNomMinio()) : null;
             if (logo != null) {
                 logo.scaleToFit(140, 70);
-                header.addCell(PdfStyle.layoutCell(logo));
-            } else {
-                header.addCell(PdfStyle.layoutCell(new Paragraph(" ", PdfStyle.normal())));
+                farmCellElements.add(logo);
             }
+            if (farm != null) {
+                farmCellElements.addAll(PdfStyle.farmBlockLines(farm.getNom(), farm.getQuartier(), farm.getVille(), farm.getPays(), farm.getTelephone1(), farm.getTelephone2(), farm.getEmail()));
+            }
+            if (farmCellElements.isEmpty()) farmCellElements.add(new Paragraph(" ", PdfStyle.normal()));
+            header.addCell(PdfStyle.layoutCell(farmCellElements.toArray(new Element[0])));
 
             Paragraph title = new Paragraph("BULLETIN DE PAIE", PdfStyle.title());
             title.setAlignment(Element.ALIGN_RIGHT);
@@ -425,7 +441,7 @@ public class SalaireServiceImpl implements SalaireService {
                 document.add(new Paragraph(" "));
             }
 
-            Paragraph footer = new Paragraph("Diafarms — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            Paragraph footer = new Paragraph("Cocorico — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
             document.add(footer);
 
             document.close();

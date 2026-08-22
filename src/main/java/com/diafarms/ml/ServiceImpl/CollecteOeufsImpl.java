@@ -42,6 +42,8 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     private final MagasinRepo magasinRepo;
     private final MortaliteRepo mortaliteRepo;
     private final ReformeRepo reformeRepo;
+    private final com.diafarms.ml.repository.OccupationBatimentRepo occupationBatimentRepo;
+    private final com.diafarms.ml.repository.MagasinTransfertRepo magasinTransfertRepo;
     private final LogsServices logs;
     private final OtherService otherService;
 
@@ -58,18 +60,79 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         return v == null ? 0 : v;
     }
 
-    // Une poule ne pond qu'un œuf par collecte au plus : le nombre d'œufs collectés
-    // en une saisie ne peut donc pas dépasser l'effectif vivant du projet au moment
-    // de la saisie — même formule que ReformeImpl.effectifVivant (nbSujets - mortalité
-    // cumulée - déjà réformés, un sujet réformé ne pondant plus), mais sans soustraire
-    // les collectes précédentes : contrairement à un cheptel qu'on réforme (ressource
-    // qui s'épuise), la ponte se renouvelle à chaque collecte, ce n'est pas un stock
-    // qu'on consomme.
+    // Une poule ne pond qu'un œuf par JOUR au plus (pas par collecte) : le nombre
+    // d'œufs collectés ne peut donc pas dépasser l'effectif vivant — même formule que
+    // ReformeImpl.effectifVivant (nbSujets - mortalité cumulée - déjà réformés, un
+    // sujet réformé ne pondant plus). La ponte se renouvelle chaque jour (ce n'est pas
+    // un stock qu'on consomme, contrairement au cheptel qu'on réforme) donc rien à
+    // soustraire ici d'un jour sur l'autre — mais DEUX collectes le MÊME jour (matin +
+    // soir) doivent, elles, être cumulées avant comparaison : voir
+    // validerPlafondJournalier, appelé séparément par create/update.
     private int effectifVivant(Projets projet) {
         int nbSujets = projet.getNbSujets() == null ? 0 : projet.getNbSujets();
         int morts = nz(mortaliteRepo.sumMortsByProjetId(projet.getId()));
         int dejaReformes = nz(reformeRepo.sumSujetsByProjetId(projet.getId()));
         return nbSujets - morts - dejaReformes;
+    }
+
+    // Effectif vivant d'UN bâtiment précis, à partir de son occupation active
+    // (nbSujetsDansBatiment, saisi à l'assignation — voir OccupationBatiment) moins la
+    // mortalité/réforme attribuées à CE bâtiment. Retourne null si inconnu (aucune
+    // occupation active, ou nbSujetsDansBatiment jamais renseigné) : dans ce cas on
+    // retombe sur l'effectif du projet entier plutôt que de bloquer une saisie faute
+    // de donnée — voir plafondEffectif ci-dessous.
+    private Integer effectifVivantBatiment(Batiment batiment) {
+        List<com.diafarms.ml.models.OccupationBatiment> actives = occupationBatimentRepo.findActiveByBatimentId(batiment.getId());
+        if (actives.isEmpty() || actives.get(0).getNbSujetsDansBatiment() == null) return null;
+        int base = actives.get(0).getNbSujetsDansBatiment();
+        int morts = nz(mortaliteRepo.sumMortsByBatimentId(batiment.getId()));
+        int dejaReformes = nz(reformeRepo.sumSujetsByBatimentId(batiment.getId()));
+        return base - morts - dejaReformes;
+    }
+
+    // Plafond à appliquer pour CETTE saisie : celui du bâtiment sélectionné s'il est
+    // connu, sinon celui du projet entier (bâtiment non sélectionné, ou effectif du
+    // bâtiment inconnu faute de donnée d'occupation).
+    private int plafondEffectif(Projets projet, Batiment batiment) {
+        if (batiment != null) {
+            Integer effectifBatiment = effectifVivantBatiment(batiment);
+            if (effectifBatiment != null) return effectifBatiment;
+        }
+        return effectifVivant(projet);
+    }
+
+    // Cumule tout ce qui a déjà été collecté CE JOUR-LÀ (même périmètre que
+    // plafondEffectif : bâtiment si sélectionné, sinon tout le projet) et vérifie que
+    // ce cumul + la nouvelle saisie ne dépasse pas le plafond. excludeId : la collecte
+    // en cours d'édition ne doit pas se compter contre elle-même (update).
+    private void validerPlafondJournalier(Projets projet, Batiment batiment, LocalDate date, int oeufsCollectes, Long excludeId) {
+        int plafond = plafondEffectif(projet, batiment);
+        int dejaCollectes = batiment != null
+                ? nz(collecteOeufsRepo.sumOeufsByBatimentIdAndDateExcluding(batiment.getId(), date, excludeId))
+                : nz(collecteOeufsRepo.sumOeufsByProjetIdAndDateExcluding(projet.getId(), date, excludeId));
+        if (dejaCollectes + oeufsCollectes > plafond) {
+            String perimetre = batiment != null ? "ce bâtiment" : "le projet";
+            throw new IllegalArgumentException(
+                "Le cumul des œufs collectés aujourd'hui pour " + perimetre + " (" + dejaCollectes + " + " + oeufsCollectes
+                        + ") dépasserait l'effectif vivant (" + plafond + " poule(s))."
+            );
+        }
+    }
+
+    private com.diafarms.ml.models.MagasinTransfert nouveauTransfert(Magasin magasinStockage, Projets projet,
+            CollecteOeufs saved, Utilisateurs currentUser, com.diafarms.ml.enums.TypeStockMagasin type, int quantite) {
+        com.diafarms.ml.models.MagasinTransfert t = new com.diafarms.ml.models.MagasinTransfert();
+        t.setUniqueId(java.util.UUID.randomUUID().toString());
+        t.setMagasin(magasinStockage.getMagasinVenteParDefaut());
+        t.setProjet(projet);
+        t.setMagasinStockage(magasinStockage);
+        t.setType(type);
+        t.setQuantite(quantite);
+        t.setDate(saved.getDate());
+        t.setFarm(saved.getFarm());
+        t.setCreePar(currentUser);
+        t.setInitialisation(Initialisation.init());
+        return t;
     }
 
     @Override
@@ -78,13 +141,11 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
+        Batiment batiment = (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank())
+                ? batimentRepo.findByUniqueId(data.getBatimentUniqueId()) : null;
         int oeufsCollectes = data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0;
-        int effectif = effectifVivant(projet);
-        if (oeufsCollectes > effectif) {
-            throw new IllegalArgumentException(
-                "Le nombre d'œufs collectés ne peut pas dépasser l'effectif vivant du projet (" + effectif + " poule(s))."
-            );
-        }
+        LocalDate date = data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now();
+        validerPlafondJournalier(projet, batiment, date, oeufsCollectes, null);
 
         // Magasin de STOCKAGE obligatoire (pas le bâtiment/poulailler d'élevage,
         // optionnel lui) : c'est ce qui plafonne les transferts vers un magasin de
@@ -103,21 +164,42 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         CollecteOeufs c = new CollecteOeufs();
         c.setUniqueId(java.util.UUID.randomUUID().toString());
         c.setProjet(projet);
-        c.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
+        c.setDate(date);
         c.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
-        c.setOeufsCollectes(data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0);
+        c.setOeufsCollectes(oeufsCollectes);
         c.setOeufsCasses(data.getOeufsCasses() != null ? data.getOeufsCasses() : 0);
+        c.setOeufsNonUtilisables(data.getOeufsNonUtilisables() != null ? data.getOeufsNonUtilisables() : 0);
         c.setMagasinStockage(magasinStockage);
+        c.setBatiment(batiment);
         c.setInitialisation(Initialisation.init());
 
-        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
-            c.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
         if (currentUser != null) {
             c.setFarm(currentUser.getFarm());
         }
 
         CollecteOeufs saved = collecteOeufsRepo.save(c);
+
+        // Transfert automatique vers le magasin de vente par défaut de CE magasin de
+        // stockage (voir Magasin.magasinVenteParDefaut) — pour qu'une ferme sans
+        // admin/responsable disponible en permanence puisse quand même vendre sans
+        // attendre un transfert manuel (voir MagasinTransfertServiceImpl, réservé à
+        // ADMIN/RESPONSABLE). Rien ne se passe si non configuré (comportement inchangé).
+        // Deux transferts distincts, même magasin cible : le vendable/bon état (OEUFS)
+        // et les cassés (OEUFS_CASSES) — deux pools de stock totalement séparés, voir
+        // VenteOeufsImpl (une vente d'œufs cassés ne peut jamais puiser dans le stock
+        // vendable et inversement). Les non utilisables ne sont JAMAIS transférés nulle
+        // part (perte pure, voir CollecteOeufs.oeufsNonUtilisables).
+        if (magasinStockage.getMagasinVenteParDefaut() != null) {
+            int quantiteVendable = saved.getOeufsCollectes() - saved.getOeufsCasses() - saved.getOeufsNonUtilisables();
+            if (quantiteVendable > 0) {
+                magasinTransfertRepo.save(nouveauTransfert(magasinStockage, projet, saved, currentUser,
+                        com.diafarms.ml.enums.TypeStockMagasin.OEUFS, quantiteVendable));
+            }
+            if (saved.getOeufsCasses() > 0) {
+                magasinTransfertRepo.save(nouveauTransfert(magasinStockage, projet, saved, currentUser,
+                        com.diafarms.ml.enums.TypeStockMagasin.OEUFS_CASSES, saved.getOeufsCasses()));
+            }
+        }
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "CollecteOeufs",
@@ -136,19 +218,17 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
 
         if (data.getDate() != null) c.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
-        if (data.getOeufsCollectes() != null) {
-            int effectif = effectifVivant(c.getProjet());
-            if (data.getOeufsCollectes() > effectif) {
-                throw new IllegalArgumentException(
-                    "Le nombre d'œufs collectés ne peut pas dépasser l'effectif vivant du projet (" + effectif + " poule(s))."
-                );
-            }
-            c.setOeufsCollectes(data.getOeufsCollectes());
-        }
-        if (data.getOeufsCasses() != null) c.setOeufsCasses(data.getOeufsCasses());
         if (data.getBatimentUniqueId() != null) {
             c.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
         }
+        if (data.getOeufsCollectes() != null) {
+            // Validé avec la date/le bâtiment déjà à jour ci-dessus (au cas où l'un des
+            // deux change en même temps que la quantité) — voir validerPlafondJournalier.
+            validerPlafondJournalier(c.getProjet(), c.getBatiment(), c.getDate(), data.getOeufsCollectes(), c.getId());
+            c.setOeufsCollectes(data.getOeufsCollectes());
+        }
+        if (data.getOeufsCasses() != null) c.setOeufsCasses(data.getOeufsCasses());
+        if (data.getOeufsNonUtilisables() != null) c.setOeufsNonUtilisables(data.getOeufsNonUtilisables());
         if (data.getMagasinStockageUniqueId() != null) {
             if (data.getMagasinStockageUniqueId().isBlank()) {
                 throw new IllegalArgumentException("Le magasin de stockage est obligatoire.");

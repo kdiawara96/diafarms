@@ -59,13 +59,15 @@ public class MagasinTransfertController {
         }
     }
 
-    // OEUFS : disponible pour UN MAGASIN DE STOCKAGE (tous projets contributeurs confondus).
-    // Route conservée pour compat des clients existants (mobile), le paramètre a changé de sens.
+    // OEUFS/OEUFS_CASSES : disponible pour UN MAGASIN DE STOCKAGE (tous projets
+    // contributeurs confondus). type omis = OEUFS (compat clients existants, mobile
+    // notamment, qui n'envoient pas encore ce paramètre).
     @GetMapping("/disponible-batiment")
-    public ResponseEntity<ApiResponse<Integer>> disponibleBatiment(@RequestParam String magasinStockageUniqueId) {
+    public ResponseEntity<ApiResponse<Integer>> disponibleBatiment(@RequestParam String magasinStockageUniqueId,
+            @RequestParam(required = false) String type) {
         try {
             return ApiResponse.createResponse("Stock disponible à transférer récupéré", HttpStatus.OK,
-                    service.disponibleATransfererDepuisMagasinStockage(magasinStockageUniqueId), null);
+                    service.disponibleATransfererDepuisMagasinStockage(magasinStockageUniqueId, type), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import com.diafarms.ml.DTO.RepartitionRatioDTO;
 import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
+import com.diafarms.ml.enums.TypeVenteOeufs;
 import com.diafarms.ml.models.VenteOeufsRepartition;
 
 @Repository
@@ -39,7 +40,8 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
         "FROM VenteOeufsRepartition r, Transaction t " +
         "WHERE t.sourceUniqueId = r.uniqueId AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
         "AND r.projet.farm.id = :farmId AND r.venteOeufs.initialisation.removed = false " +
-        "AND (:dateDebut IS NULL OR r.venteOeufs.date >= :dateDebut) AND (:dateFin IS NULL OR r.venteOeufs.date <= :dateFin)")
+        // dateDebut/dateFin ATTENDUS NON-NULS — voir TransactionRepo.countByProjetIdsAndStatut.
+        "AND r.venteOeufs.date >= :dateDebut AND r.venteOeufs.date <= :dateFin")
     List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
                                                       @Param("dateDebut") java.time.LocalDate dateDebut,
                                                       @Param("dateFin") java.time.LocalDate dateFin);
@@ -53,17 +55,20 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
         "WHERE r.projet.id = :projetId AND r.venteOeufs.initialisation.removed = false")
     Integer sumQuantiteByProjetId(@Param("projetId") Long projetId);
 
-    // Déjà vendu POUR CE PROJET, DEPUIS CE MAGASIN précis — voir
-    // VenteOeufsImpl.disponibleParProjetDansMagasin (stock magasin-scopé, remplace
-    // l'ancien calcul farm-wide de sumQuantiteByProjetId ci-dessus pour une vente).
+    // Déjà vendu POUR CE PROJET, DEPUIS CE MAGASIN précis, POUR CE TYPE (BON/CASSE) —
+    // voir VenteOeufsImpl.disponibleParProjetDansMagasin (stock magasin-scopé ET
+    // type-scopé : une vente CASSE ne doit jamais réduire le disponible BON, et
+    // inversement, remplace l'ancien calcul farm-wide de sumQuantiteByProjetId ci-dessus).
     @Query("SELECT COALESCE(SUM(r.quantiteAttribuee), 0) FROM VenteOeufsRepartition r " +
         "WHERE r.projet.id = :projetId AND r.venteOeufs.magasin.id = :magasinId " +
-        "AND r.venteOeufs.initialisation.removed = false")
-    Integer sumQuantiteByProjetIdAndMagasinId(@Param("projetId") Long projetId, @Param("magasinId") Long magasinId);
+        "AND r.venteOeufs.typeOeuf = :typeOeuf AND r.venteOeufs.initialisation.removed = false")
+    Integer sumQuantiteByProjetIdAndMagasinId(@Param("projetId") Long projetId, @Param("magasinId") Long magasinId,
+                                               @Param("typeOeuf") TypeVenteOeufs typeOeuf);
 
-    // Total vendu DEPUIS ce magasin, tous projets contributeurs confondus — pour
-    // l'aperçu global de stock du magasin (StockMagasinDTO).
+    // Total vendu DEPUIS ce magasin, tous projets contributeurs confondus, POUR CE TYPE —
+    // pour l'aperçu global de stock du magasin (StockMagasinDTO).
     @Query("SELECT COALESCE(SUM(r.quantiteAttribuee), 0) FROM VenteOeufsRepartition r " +
-        "WHERE r.venteOeufs.magasin.id = :magasinId AND r.venteOeufs.initialisation.removed = false")
-    Integer sumQuantiteByMagasinId(@Param("magasinId") Long magasinId);
+        "WHERE r.venteOeufs.magasin.id = :magasinId AND r.venteOeufs.typeOeuf = :typeOeuf " +
+        "AND r.venteOeufs.initialisation.removed = false")
+    Integer sumQuantiteByMagasinId(@Param("magasinId") Long magasinId, @Param("typeOeuf") TypeVenteOeufs typeOeuf);
 }

@@ -26,6 +26,8 @@ public class MagasinDTO {
     private Integer seuilAlerteOeufs;
     private Integer seuilAlerteReforme;
     private Integer seuilAlerteAlveoles;
+    private String magasinVenteParDefautUniqueId;
+    private String magasinVenteParDefautNom;
     private List<VendeurRefDTO> vendeurs;
 
     @Getter
@@ -49,6 +51,8 @@ public class MagasinDTO {
                 .seuilAlerteOeufs(m.getSeuilAlerteOeufs())
                 .seuilAlerteReforme(m.getSeuilAlerteReforme())
                 .seuilAlerteAlveoles(m.getSeuilAlerteAlveoles())
+                .magasinVenteParDefautUniqueId(m.getMagasinVenteParDefaut() != null ? m.getMagasinVenteParDefaut().getUniqueId() : null)
+                .magasinVenteParDefautNom(m.getMagasinVenteParDefaut() != null ? m.getMagasinVenteParDefaut().getNom() : null)
                 .vendeurs(m.getVendeurs() == null ? List.of() : m.getVendeurs().stream()
                         .map(MagasinDTO::toVendeurRef)
                         .collect(Collectors.toList()))
