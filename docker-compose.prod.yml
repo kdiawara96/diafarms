@@ -17,43 +17,13 @@ services:
       - bati_network
     expose:
       - "9093"
-    environment:
-      APP_NAME: ${APP_NAME:-diafarms}
-      APP_PORT: 9093
-      ENVIRONMENT: PROD
-
-      # Postgres : conteneur atelierso_postgres existant, base/rôle dédiés à Diafarms.
-      DATABASE_HOST_NAME: atelierso_postgres
-      POSTGRES_PORT: 5432
-      DATABASES_NAME: ${DATABASES_NAME:-diafarms_databases}
-      POSTGRES_USER_NAME: ${POSTGRES_USER_NAME:-diafarms_user}
-      POSTGRES_USER_PASSWORD: ${POSTGRES_USER_PASSWORD}
-
-      # MinIO : conteneur atelierso-minio existant, bucket dédié à Diafarms.
-      MINIO_URL: http://atelierso-minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-diafarms-documents}
-
-      BASE_URL: ${BASE_URL}
-      BASE_PATH: /app/files
-      SECRET_KEY: ${SECRET_KEY}
-      AES_SECRET_KEY: ${AES_SECRET_KEY}
-      PROFIL_FOLDER: ${PROFIL_FOLDER:-profils}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@diafarms.local}
-      ADMIN_TELEPHONE: ${ADMIN_TELEPHONE:-00000000}
-      ADMIN_FULLNAME: ${ADMIN_FULLNAME:-Super Administrateur}
-
-      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
-      MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USERNAME: ${MAIL_USERNAME}
-      MAIL_PASSWORD: ${MAIL_PASSWORD}
+    # MlApplication charge un vrai fichier .env depuis le répertoire de travail du JVM
+    # (PropertySourcesPlaceholderConfigurer + loadEnv(), voir MlApplication.java) —
+    # mécanisme indépendant des variables d'environnement Docker classiques. On monte
+    # donc directement le .env du serveur (mêmes clés que .env.prod.example) à
+    # l'emplacement où le jar s'exécute (WORKDIR /app dans le Dockerfile).
     volumes:
+      - ./.env:/app/.env:ro
       - diafarms_files:/app/files
 
 networks:
