@@ -149,8 +149,9 @@ public class SecurityConfiguration {
                 "http://localhost:8080",
                 "http://192.168.1.40:8080",
                 "http://localhost:8081",
-                "http://192.168.1.40:8081",  
-                "https://api.diafarms.com"
+                "http://192.168.1.40:8081",
+                "https://api.diafarms.com",
+                "https://cocorico.batimanager.net"
             ));
 
             configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
