@@ -16,11 +16,16 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+if [ ! -f super-admin-seed.json ]; then
+  echo "❌ super-admin-seed.json introuvable. Lance : cp super-admin-seed.example.json super-admin-seed.json, remplis-le, puis relance ce script."
+  exit 1
+fi
+
 set -a
 source .env
 set +a
 
-for var in POSTGRES_USER_PASSWORD MINIO_SECRET_KEY SECRET_KEY AES_SECRET_KEY ADMIN_PASSWORD; do
+for var in POSTGRES_USER_PASSWORD MINIO_SECRET_KEY SECRET_KEY AES_SECRET_KEY; do
   if [ -z "${!var:-}" ]; then
     echo "❌ La variable $var est vide dans .env. Remplis-la avant de redéployer."
     exit 1

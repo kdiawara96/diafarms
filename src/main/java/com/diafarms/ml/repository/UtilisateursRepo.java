@@ -26,6 +26,13 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     boolean existsByEmail(String email);
     boolean existsByTelephone(String telephone);
     boolean existsByUsername(String username);
+
+    // Idempotence du bootstrap SUPER_ADMIN (voir MlApplication.run()) : vérifie qu'AU
+    // MOINS UN compte SUPER_ADMIN existe déjà, quel que soit son username — contrairement
+    // à existsByUsername(seedUsername), ne recrée pas un doublon quand la base restaurée
+    // a déjà un SUPER_ADMIN sous un autre nom que celui du JSON de seed.
+    @Query("SELECT COUNT(u) > 0 FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN'")
+    boolean existsSuperAdmin();
     Optional<Utilisateurs> findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);
     Utilisateurs findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String username);
     boolean existsByTelephoneAndFarmId(String telephone, Long farmId);

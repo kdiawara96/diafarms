@@ -24,6 +24,13 @@ services:
     # l'emplacement où le jar s'exécute (WORKDIR /app dans le Dockerfile).
     volumes:
       - ./.env:/app/.env:ro
+      # SUPER_ADMIN de bootstrap (voir MlApplication.loadSuperAdminSeed) : lu une
+      # seule fois, à la toute première mise en route (aucun SUPER_ADMIN en base) —
+      # cp super-admin-seed.example.json super-admin-seed.json sur le serveur avant
+      # le tout premier déploiement. Le fichier doit exister même s'il n'est jamais
+      # relu ensuite : Docker crée un dossier vide au montage sinon, ce que le code
+      # ne saurait pas lire.
+      - ./super-admin-seed.json:/app/super-admin-seed.json:ro
       - diafarms_files:/app/files
 
 networks:

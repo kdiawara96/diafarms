@@ -34,4 +34,5 @@ build/
 
 ### Secrets ###
 .env
+super-admin-seed.json
 backups/
