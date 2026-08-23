@@ -126,7 +126,7 @@ public class Transaction {
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
 
-    // Client concerné, si pertinent (typiquement une transaction "Paiement client",
+    // Client concerné, si pertinent (typiquement une transaction "Remboursement client",
     // voir ClientServiceImpl.payerDette) — nullable, la plupart des transactions n'ont
     // pas de client (dépenses, ventes directes...). Distinct du client d'une VenteOeufs/
     // VenteReforme (voir TransactionDTO.clientNom pour ces transactions-là, dérivé via

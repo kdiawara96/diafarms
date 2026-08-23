@@ -39,7 +39,7 @@ public class TransactionDTO {
     // transactions issues d'une vente, via un ratio par ligne de répartition.
     private Double montantReel;
     // Client concerné — soit directement rattaché à la transaction (Transaction.client,
-    // ex: "Paiement client", voir ClientServiceImpl.payerDette), soit dérivé de la vente
+    // ex: "Remboursement client", voir ClientServiceImpl.payerDette), soit dérivé de la vente
     // d'origine pour une transaction "Vente œufs"/"Vente réforme" avec client identifié
     // (voir VenteOeufs/VenteReforme.client, rempli par TransactionServiceImpl.
     // enrichMontantReel). Null = vente directe (sans client) ou transaction sans lien à

@@ -306,7 +306,7 @@ public class ClientServiceImpl implements ClientService {
         txData.setCommun(true);
         txData.setDate(java.time.LocalDate.now());
         txData.setMontant(montant);
-        txData.setCategorie("Paiement client");
+        txData.setCategorie("Remboursement client");
         txData.setClientUniqueId(client.getUniqueId());
         txData.setDescription((description != null && !description.isBlank())
                 ? description
