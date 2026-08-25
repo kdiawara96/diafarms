@@ -34,7 +34,10 @@ public class PaiementAbonnementDTO {
         return PaiementAbonnementDTO.builder()
                 .uniqueId(p.getUniqueId())
                 .farmNom(p.getAbonnement() != null && p.getAbonnement().getFarm() != null
-                        ? p.getAbonnement().getFarm().getNom() : null)
+                        ? (p.getAbonnement().getFarm().getNom() != null
+                                ? p.getAbonnement().getFarm().getNom()
+                                : p.getAbonnement().getFarm().getUniqueId())
+                        : null)
                 .montant(p.getMontant())
                 .periodicite(p.getPeriodicite() != null ? p.getPeriodicite().name() : null)
                 .moyenPaiement(p.getMoyenPaiement())

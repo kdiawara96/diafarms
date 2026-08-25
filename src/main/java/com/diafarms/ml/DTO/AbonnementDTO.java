@@ -34,7 +34,9 @@ public class AbonnementDTO {
         return AbonnementDTO.builder()
                 .uniqueId(a.getUniqueId())
                 .farmUniqueId(a.getFarm() != null ? a.getFarm().getUniqueId() : null)
-                .farmNom(a.getFarm() != null ? a.getFarm().getNom() : null)
+                .farmNom(a.getFarm() != null
+                        ? (a.getFarm().getNom() != null ? a.getFarm().getNom() : a.getFarm().getUniqueId())
+                        : null)
                 .statutEffectif(statutEffectif)
                 .enGrace(enGrace)
                 .dateFin(a.getDateFin())
