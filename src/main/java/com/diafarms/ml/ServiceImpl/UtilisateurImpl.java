@@ -29,6 +29,7 @@ import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.UserCreate;
 import com.diafarms.ml.request.update.UpdatePassResquest;
 import com.diafarms.ml.request.update.UserUpdate;
+import com.diafarms.ml.services.AbonnementService;
 import com.diafarms.ml.services.EmailService;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.UtilisateursServices;
@@ -54,6 +55,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final FarmsRepo farmsRepo;
     private final OtherService OtherService;
     private final EmailService emailService;
+    private final AbonnementService abonnementService;
 
     @Override
     @Transactional
@@ -89,7 +91,9 @@ public class UtilisateurImpl implements UtilisateursServices {
         
         // On sauvegarde d'abord la ferme pour générer son ID
         Farm savedFarm = farmsRepo.save(newFarm);
-        
+
+        abonnementService.creerEssaiPourFarm(savedFarm);
+
         // On lie la ferme à l'utilisateur (on suppose que votre entité Utilisateurs possède la méthode setFarm)
         user.setFarm(savedFarm); 
         // ==========================================
