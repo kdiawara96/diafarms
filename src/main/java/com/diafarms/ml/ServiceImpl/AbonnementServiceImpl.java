@@ -279,8 +279,12 @@ public class AbonnementServiceImpl implements AbonnementService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public AbonnementConfigDTO getConfig() {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null) {
+            throw new IllegalArgumentException("Utilisateur introuvable.");
+        }
         return AbonnementConfigDTO.fromEntity(getOuCreerConfig());
     }
 
