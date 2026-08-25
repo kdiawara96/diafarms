@@ -33,6 +33,13 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     // a déjà un SUPER_ADMIN sous un autre nom que celui du JSON de seed.
     @Query("SELECT COUNT(u) > 0 FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN'")
     boolean existsSuperAdmin();
+
+    // Destinataires de l'email "abonnement à valider" (voir
+    // AbonnementServiceImpl.declarerPaiement) — potentiellement plusieurs comptes
+    // SUPER_ADMIN sur la plateforme.
+    @Query("SELECT u FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN'")
+    List<Utilisateurs> findAllSuperAdmins();
+
     Optional<Utilisateurs> findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);
     Utilisateurs findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String username);
     boolean existsByTelephoneAndFarmId(String telephone, Long farmId);

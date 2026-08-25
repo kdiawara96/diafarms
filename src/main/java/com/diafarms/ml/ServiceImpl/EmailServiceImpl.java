@@ -1,5 +1,7 @@
 package com.diafarms.ml.ServiceImpl;
 
+import java.time.LocalDate;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -76,6 +78,47 @@ public class EmailServiceImpl implements EmailService {
             return true;
         } catch (Exception e) {
             log.error("Échec de l'envoi du mot de passe réinitialisé à {} : {}", to, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean sendAbonnementAValider(String to, String farmNom, Double montant,
+            String periodicite, String moyenPaiement, String reference) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setTo(to);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject("Abonnement à valider — " + farmNom);
+            helper.setText(
+                    buildAbonnementAValiderPlainTextBody(farmNom, montant, periodicite, moyenPaiement, reference),
+                    buildAbonnementAValiderHtmlBody(farmNom, montant, periodicite, moyenPaiement, reference));
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("Échec de l'envoi de l'email 'abonnement à valider' à {} : {}", to, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean sendAbonnementValide(String to, String fullName, String farmNom, LocalDate dateFin) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setTo(to);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject("Votre abonnement DiaFarms est activé");
+            helper.setText(
+                    buildAbonnementValidePlainTextBody(fullName, farmNom, dateFin),
+                    buildAbonnementValideHtmlBody(fullName, farmNom, dateFin));
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("Échec de l'envoi de l'email 'abonnement validé' à {} : {}", to, e.getMessage());
             return false;
         }
     }
@@ -176,5 +219,72 @@ public class EmailServiceImpl implements EmailService {
               <p>L'équipe DiaFarms</p>
             </div>
             """.formatted(fullName, username, password);
+    }
+
+    private String buildAbonnementAValiderPlainTextBody(String farmNom, Double montant,
+            String periodicite, String moyenPaiement, String reference) {
+        return """
+            Bonjour,
+
+            La ferme %s a déclaré avoir payé son abonnement DiaFarms.
+
+            Montant : %.0f FCFA
+            Périodicité : %s
+            Moyen de paiement : %s
+            Référence : %s
+
+            Connecte-toi à ton portail SUPER_ADMIN pour vérifier le paiement et valider.
+
+            L'équipe DiaFarms
+            """.formatted(farmNom, montant, periodicite, moyenPaiement,
+                    (reference == null || reference.isBlank()) ? "—" : reference);
+    }
+
+    private String buildAbonnementAValiderHtmlBody(String farmNom, Double montant,
+            String periodicite, String moyenPaiement, String reference) {
+        return """
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
+              <h2 style="color: #15803d;">Abonnement à valider</h2>
+              <p>La ferme <strong>%s</strong> a déclaré avoir payé son abonnement DiaFarms.</p>
+              <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 4px 0;"><strong>Montant :</strong> %.0f FCFA</p>
+                <p style="margin: 4px 0;"><strong>Périodicité :</strong> %s</p>
+                <p style="margin: 4px 0;"><strong>Moyen de paiement :</strong> %s</p>
+                <p style="margin: 4px 0;"><strong>Référence :</strong> %s</p>
+              </div>
+              <p>Connecte-toi à ton portail SUPER_ADMIN pour vérifier le paiement et valider.</p>
+              <p>L'équipe DiaFarms</p>
+            </div>
+            """.formatted(farmNom, montant, periodicite, moyenPaiement,
+                    (reference == null || reference.isBlank()) ? "—" : reference);
+    }
+
+    private String buildAbonnementValidePlainTextBody(String fullName, String farmNom, LocalDate dateFin) {
+        return """
+            Bonjour %s,
+
+            Le paiement de l'abonnement DiaFarms de %s a été validé.
+
+            Votre abonnement est actif jusqu'au %s.
+
+            Merci de votre confiance.
+
+            L'équipe DiaFarms
+            """.formatted(fullName, farmNom, dateFin);
+    }
+
+    private String buildAbonnementValideHtmlBody(String fullName, String farmNom, LocalDate dateFin) {
+        return """
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
+              <h2 style="color: #15803d;">Abonnement activé</h2>
+              <p>Bonjour %s,</p>
+              <p>Le paiement de l'abonnement DiaFarms de <strong>%s</strong> a été validé.</p>
+              <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="margin: 4px 0;">Abonnement actif jusqu'au <strong>%s</strong>.</p>
+              </div>
+              <p>Merci de votre confiance.</p>
+              <p>L'équipe DiaFarms</p>
+            </div>
+            """.formatted(fullName, farmNom, dateFin);
     }
 }

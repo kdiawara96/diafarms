@@ -23,4 +23,10 @@ public interface EmailService {
      * ne fait que le communiquer.
      */
     boolean sendPasswordResetByAdmin(String to, String fullName, String username, String newPassword);
+
+    boolean sendAbonnementAValider(String to, String farmNom, Double montant,
+            String periodicite, String moyenPaiement, String reference);
+
+    boolean sendAbonnementValide(String to, String fullName, String farmNom,
+            java.time.LocalDate dateFin);
 }
