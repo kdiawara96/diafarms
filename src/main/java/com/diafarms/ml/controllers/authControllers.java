@@ -6,6 +6,7 @@ import java.util.NoSuchElementException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -51,10 +52,17 @@ public class authControllers {
         @RequestParam("password") String password,
         @RequestParam(value = "ouiRefresh", defaultValue = "false") boolean ouiRefresh,
         @RequestParam(value = "refreshToken", required = false) String refreshToken,
+        // Le web ne peut jamais fournir refreshToken en paramètre (le cookie qui le
+        // porte est HttpOnly, donc invisible au JS) — pour grantType=refreshToken, on
+        // retombe sur le cookie envoyé automatiquement par le navigateur. Le mobile
+        // (sans jar de cookies) continue de passer le paramètre explicitement.
+        @CookieValue(value = CookieAuthUtils.REFRESH_COOKIE, required = false) String refreshTokenCookie,
         @RequestHeader(value = "X-Client-Type", required = false) String clientType,
         HttpServletResponse httpServletResponse){
         try {
-            ResponseEntity<Object> result = serives.jwt(grantType, identifiant, password, ouiRefresh, refreshToken, clientType);
+            String refreshTokenAUtiliser = (refreshToken != null && !refreshToken.isBlank())
+                    ? refreshToken : refreshTokenCookie;
+            ResponseEntity<Object> result = serives.jwt(grantType, identifiant, password, ouiRefresh, refreshTokenAUtiliser, clientType);
             Object body = result.getBody();
             boolean isMobileClient = "mobile".equalsIgnoreCase(clientType);
 

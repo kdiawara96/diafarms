@@ -110,8 +110,13 @@ public class AuthImpl implements AuthServices {
         }
 
         // =============================== ON RÉCUPÈRE LE USER ===============================
+        // Pour un refresh, "identifiant" n'est pas renseigné par l'appelant (le web ne
+        // connaît que le refresh token, pas l'identifiant de session) — on retrouve
+        // l'utilisateur par le "subject" décodé du refresh token lui-même, jamais par
+        // le paramètre "identifiant" dans ce cas.
+        String cleIdentification = grantType.equals("refreshToken") ? subject : identifiant;
         Utilisateurs currentUser = repo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                identifiant, identifiant, identifiant
+                cleIdentification, cleIdentification, cleIdentification
         ).orElseThrow(() -> new IllegalArgumentException("Identifiant incorrect"));
 
         // =============================== ACCÈS APP (PRODUCTEUR/FINANCIER) ===============================
