@@ -5,11 +5,14 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.AbonnementConfigDTO;
@@ -47,6 +50,21 @@ public class AbonnementServiceImpl implements AbonnementService {
     private final UtilisateursRepo utilisateursRepo;
     private final EmailService emailService;
     private final OtherService otherService;
+
+    // Auto-injection paresseuse : nécessaire pour que l'appel à
+    // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
+    // (voir plus bas) — un appel this.creerEssaiPourFarmIsole(...) ignorerait
+    // complètement son @Transactional et l'exécuterait dans la transaction ambiante
+    // de l'appelant, ce qui rendrait le rattrapage de la course de création (voir
+    // getOuCreerAbonnement) inefficace : Postgres avorte toute la transaction sur
+    // une violation de contrainte, donc la relecture qui suit échouerait elle
+    // aussi. Type concret (pas l'interface AbonnementService) car
+    // creerEssaiPourFarmIsole est un détail d'implémentation interne, pas exposé
+    // sur le contrat public du service. @Lazy évite la référence circulaire au
+    // moment de la construction du bean.
+    @Autowired
+    @Lazy
+    private AbonnementServiceImpl self;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -103,9 +121,7 @@ public class AbonnementServiceImpl implements AbonnementService {
         return configRepo.save(nouveau);
     }
 
-    @Override
-    @Transactional
-    public void creerEssaiPourFarm(Farm farm) {
+    private void construireEtSauvegarderAbonnementEssai(Farm farm) {
         AbonnementConfig config = getOuCreerConfig();
         Abonnement abonnement = new Abonnement();
         abonnement.setUniqueId(UUID.randomUUID().toString());
@@ -118,19 +134,45 @@ public class AbonnementServiceImpl implements AbonnementService {
         abonnementRepo.save(abonnement);
     }
 
+    // Appelé depuis UtilisateurImpl.save() à l'inscription d'une NOUVELLE ferme :
+    // doit rester dans la MÊME transaction que la création de la Farm elle-même
+    // (propagation par défaut, REQUIRED) — la ligne Farm n'est pas encore commitée
+    // tant que cette transaction n'a pas fini, donc une transaction isolée ici (comme
+    // pour le chemin paresseux ci-dessous) ne verrait pas encore cette Farm et
+    // échouerait sur la contrainte de clé étrangère.
+    @Override
+    @Transactional
+    public void creerEssaiPourFarm(Farm farm) {
+        construireEtSauvegarderAbonnementEssai(farm);
+    }
+
+    // Variante utilisée UNIQUEMENT par le chemin de création paresseuse ci-dessous,
+    // pour une ferme PRÉEXISTANTE (donc déjà commitée depuis longtemps) : isolée
+    // dans sa propre transaction (REQUIRES_NEW) pour qu'une violation de contrainte
+    // concurrente n'avorte que cette transaction-ci, jamais celle de l'appelant —
+    // voir le commentaire sur le champ `self` plus haut. Ne jamais appeler via
+    // `this.`, seulement `self.creerEssaiPourFarmIsole(...)`, sous peine de rendre
+    // ce @Transactional inerte.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void creerEssaiPourFarmIsole(Farm farm) {
+        construireEtSauvegarderAbonnementEssai(farm);
+    }
+
     // Création paresseuse pour les fermes créées avant ce déploiement (voir spec,
     // section "Erreurs et cas limites") — essai complet à partir d'AUJOURD'HUI,
     // jamais rétroactif à la vraie date d'inscription de la ferme.
     private Abonnement getOuCreerAbonnement(Farm farm) {
         return abonnementRepo.findByFarm_Id(farm.getId()).orElseGet(() -> {
             try {
-                creerEssaiPourFarm(farm);
+                self.creerEssaiPourFarmIsole(farm);
             } catch (DataIntegrityViolationException e) {
                 // Course entre deux requêtes concurrentes (ex. AbonnementGate et la page
                 // Abonnement.tsx qui appellent toutes les deux GET /abonnements/moi au
                 // même chargement de page) : l'autre thread a déjà inséré la ligne, la
-                // contrainte unique sur Abonnement.farm a rejeté celle-ci. On relit la
-                // ligne existante au lieu de propager un 500.
+                // contrainte unique sur Abonnement.farm a rejeté celle-ci dans SA PROPRE
+                // transaction (REQUIRES_NEW), qui a donc avorté seule — la transaction de
+                // cet appelant reste saine. On relit la ligne existante au lieu de
+                // propager un 500.
             }
             return abonnementRepo.findByFarm_Id(farm.getId())
                     .orElseThrow(() -> new IllegalStateException("Échec de création de l'abonnement."));
