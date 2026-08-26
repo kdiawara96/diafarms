@@ -2,7 +2,9 @@ package com.diafarms.ml.DTO;
 
 import java.time.LocalDateTime;
 
+import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.PaiementAbonnement;
+import com.diafarms.ml.models.Utilisateurs;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,14 +31,28 @@ public class PaiementAbonnementDTO {
     private String valideParNom;
     private String motifRejet;
 
+    // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
+    // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
+    // Farm tant que l'ADMIN n'a pas visité Paramètres → Identité de la ferme) — un
+    // UUID brut n'aide personne à identifier la ferme dans le portail SUPER_ADMIN,
+    // donc on retombe sur le nom saisi à l'inscription avant l'UUID en dernier
+    // recours. Même logique que AbonnementServiceImpl.resoudreFarmNom.
+    private static String resoudreFarmNom(Farm farm, Utilisateurs declarePar) {
+        if (farm.getNom() != null) {
+            return farm.getNom();
+        }
+        if (declarePar != null && declarePar.getFarmName() != null) {
+            return declarePar.getFarmName();
+        }
+        return farm.getUniqueId();
+    }
+
     public static PaiementAbonnementDTO fromEntity(PaiementAbonnement p) {
         if (p == null) return null;
         return PaiementAbonnementDTO.builder()
                 .uniqueId(p.getUniqueId())
                 .farmNom(p.getAbonnement() != null && p.getAbonnement().getFarm() != null
-                        ? (p.getAbonnement().getFarm().getNom() != null
-                                ? p.getAbonnement().getFarm().getNom()
-                                : p.getAbonnement().getFarm().getUniqueId())
+                        ? resoudreFarmNom(p.getAbonnement().getFarm(), p.getDeclarePar())
                         : null)
                 .montant(p.getMontant())
                 .periodicite(p.getPeriodicite() != null ? p.getPeriodicite().name() : null)

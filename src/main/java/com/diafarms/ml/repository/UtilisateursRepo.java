@@ -37,7 +37,8 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     // Destinataires de l'email "abonnement à valider" (voir
     // AbonnementServiceImpl.declarerPaiement) — potentiellement plusieurs comptes
     // SUPER_ADMIN sur la plateforme.
-    @Query("SELECT u FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN'")
+    @Query("SELECT u FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN' " +
+            "AND u.initialisation.removed = false AND u.initialisation.archive = false")
     List<Utilisateurs> findAllSuperAdmins();
 
     Optional<Utilisateurs> findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);

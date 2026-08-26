@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -71,17 +72,35 @@ public class AbonnementServiceImpl implements AbonnementService {
         }
     }
 
+    // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
+    // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
+    // Farm tant que l'ADMIN n'a pas visité Paramètres → Identité de la ferme) — un
+    // UUID brut n'aide personne à identifier la ferme dans le portail SUPER_ADMIN ou
+    // l'objet d'un email, donc on retombe sur le nom saisi à l'inscription avant
+    // l'UUID en dernier recours.
+    private String resoudreFarmNom(Farm farm, String nomUtilisateurFallback) {
+        if (farm.getNom() != null) {
+            return farm.getNom();
+        }
+        if (nomUtilisateurFallback != null) {
+            return nomUtilisateurFallback;
+        }
+        return farm.getUniqueId();
+    }
+
     // Ligne unique de config, créée avec des valeurs par défaut si absente — voir
     // AbonnementConfig.
     private AbonnementConfig getOuCreerConfig() {
-        return configRepo.findAll().stream().findFirst().orElseGet(() -> {
-            AbonnementConfig config = new AbonnementConfig();
-            config.setPrixMensuel(15000.0);
-            config.setPrixAnnuel(150000.0);
-            config.setDureeEssaiJours(14);
-            config.setDureeGraceHeures(24);
-            return configRepo.save(config);
-        });
+        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
+        if (config != null) {
+            return config;
+        }
+        AbonnementConfig nouveau = new AbonnementConfig();
+        nouveau.setPrixMensuel(15000.0);
+        nouveau.setPrixAnnuel(150000.0);
+        nouveau.setDureeEssaiJours(14);
+        nouveau.setDureeGraceHeures(24);
+        return configRepo.save(nouveau);
     }
 
     @Override
@@ -104,7 +123,15 @@ public class AbonnementServiceImpl implements AbonnementService {
     // jamais rétroactif à la vraie date d'inscription de la ferme.
     private Abonnement getOuCreerAbonnement(Farm farm) {
         return abonnementRepo.findByFarm_Id(farm.getId()).orElseGet(() -> {
-            creerEssaiPourFarm(farm);
+            try {
+                creerEssaiPourFarm(farm);
+            } catch (DataIntegrityViolationException e) {
+                // Course entre deux requêtes concurrentes (ex. AbonnementGate et la page
+                // Abonnement.tsx qui appellent toutes les deux GET /abonnements/moi au
+                // même chargement de page) : l'autre thread a déjà inséré la ligne, la
+                // contrainte unique sur Abonnement.farm a rejeté celle-ci. On relit la
+                // ligne existante au lieu de propager un 500.
+            }
             return abonnementRepo.findByFarm_Id(farm.getId())
                     .orElseThrow(() -> new IllegalStateException("Échec de création de l'abonnement."));
         });
@@ -194,7 +221,7 @@ public class AbonnementServiceImpl implements AbonnementService {
         paiement.setInitialisation(Initialisation.init());
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
 
-        String farmNom = currentUser.getFarm().getNom() != null ? currentUser.getFarm().getNom() : currentUser.getFarm().getUniqueId();
+        String farmNom = resoudreFarmNom(currentUser.getFarm(), currentUser.getFarmName());
         for (Utilisateurs superAdmin : utilisateursRepo.findAllSuperAdmins()) {
             emailService.sendAbonnementAValider(superAdmin.getEmail(), farmNom, montant,
                     periodicite.name(), request.getMoyenPaiement(), request.getReference());
@@ -251,7 +278,7 @@ public class AbonnementServiceImpl implements AbonnementService {
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
 
         if (paiement.getDeclarePar() != null) {
-            String farmNom = abonnement.getFarm().getNom() != null ? abonnement.getFarm().getNom() : abonnement.getFarm().getUniqueId();
+            String farmNom = resoudreFarmNom(abonnement.getFarm(), paiement.getDeclarePar().getFarmName());
             emailService.sendAbonnementValide(paiement.getDeclarePar().getEmail(),
                     paiement.getDeclarePar().getFullName(), farmNom, abonnement.getDateFin());
         }
