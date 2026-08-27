@@ -31,6 +31,8 @@ public class VenteReformeDTO {
     private Double prixUnitaire;
     private Double montant;
     private Double montantRapporte;
+    private String typeVente;
+    private Double poidsTotalKg;
     private String creeParNom;
     private LocalDateTime createdAt;
     private List<VenteReformeRepartitionDTO> repartitions;
@@ -50,6 +52,8 @@ public class VenteReformeDTO {
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
                 .montantRapporte(v.getMontantRapporte())
+                .typeVente(v.getTypeVente() != null ? v.getTypeVente().name() : null)
+                .poidsTotalKg(v.getPoidsTotalKg())
                 .creeParNom(v.getCreePar() != null ? v.getCreePar().getFullName() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
                 .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()

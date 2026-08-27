@@ -20,6 +20,7 @@ import com.diafarms.ml.DTO.VenteReformeRepartitionDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.enums.TypeVenteReforme;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Magasin;
@@ -78,6 +79,17 @@ public class VenteReformeImpl implements VenteReformeService {
 
     private double nz(Double v) {
         return v == null ? 0.0 : v;
+    }
+
+    private TypeVenteReforme parseTypeVente(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return TypeVenteReforme.TETE;
+        }
+        try {
+            return TypeVenteReforme.valueOf(raw.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Type de vente invalide (attendu TETE ou KILO) : " + raw);
+        }
     }
 
     /** Route l'écart théorique/rapporté vers le solde du CLIENT si la vente en a un
@@ -170,6 +182,10 @@ public class VenteReformeImpl implements VenteReformeService {
         if (data.getPrixUnitaire() == null || data.getPrixUnitaire() <= 0) {
             throw new IllegalArgumentException("Le prix unitaire est obligatoire.");
         }
+        TypeVenteReforme typeVente = parseTypeVente(data.getTypeVente());
+        if (typeVente == TypeVenteReforme.KILO && (data.getPoidsTotalKg() == null || data.getPoidsTotalKg() <= 0)) {
+            throw new IllegalArgumentException("Le poids total (kg) est obligatoire pour une vente au kilo.");
+        }
         if (data.getMontantRapporte() == null || data.getMontantRapporte() < 0) {
             throw new IllegalArgumentException("Le montant rapporté est obligatoire.");
         }
@@ -210,6 +226,8 @@ public class VenteReformeImpl implements VenteReformeService {
         v.setPrixUnitaire(data.getPrixUnitaire());
         v.setMontant(data.getMontant());
         v.setMontantRapporte(data.getMontantRapporte());
+        v.setTypeVente(typeVente);
+        v.setPoidsTotalKg(typeVente == TypeVenteReforme.KILO ? data.getPoidsTotalKg() : null);
         v.setInitialisation(Initialisation.init());
 
         VenteReforme saved = venteReformeRepo.save(v);
@@ -242,6 +260,18 @@ public class VenteReformeImpl implements VenteReformeService {
         if (data.getDate() != null) v.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
+
+        if (data.getTypeVente() != null) {
+            TypeVenteReforme nouveauType = parseTypeVente(data.getTypeVente());
+            Double poids = data.getPoidsTotalKg() != null ? data.getPoidsTotalKg() : v.getPoidsTotalKg();
+            if (nouveauType == TypeVenteReforme.KILO && (poids == null || poids <= 0)) {
+                throw new IllegalArgumentException("Le poids total (kg) est obligatoire pour une vente au kilo.");
+            }
+            v.setTypeVente(nouveauType);
+            v.setPoidsTotalKg(nouveauType == TypeVenteReforme.KILO ? poids : null);
+        } else if (data.getPoidsTotalKg() != null && v.getTypeVente() == TypeVenteReforme.KILO) {
+            v.setPoidsTotalKg(data.getPoidsTotalKg());
+        }
 
         boolean redistribuer = data.getNombreSujets() != null || data.getMontant() != null;
 

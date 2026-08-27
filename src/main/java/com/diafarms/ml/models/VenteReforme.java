@@ -5,11 +5,14 @@ import java.time.LocalTime;
 import java.util.List;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.TypeVenteReforme;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -84,6 +87,21 @@ public class VenteReforme {
 
     @OneToMany(mappedBy = "venteReforme", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteReformeRepartition> repartitions;
+
+    // TETE (défaut) ou KILO — voir TypeVenteReforme. columnDefinition avec DEFAULT
+    // explicite : indispensable pour que ddl-auto=update puisse ajouter cette colonne
+    // NOT NULL sur la table déjà peuplée (même raison que VenteOeufs.typeOeuf).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_vente", nullable = false, length = 10,
+            columnDefinition = "varchar(10) not null default 'TETE'")
+    private TypeVenteReforme typeVente = TypeVenteReforme.TETE;
+
+    // Poids total pesé de la vente, en kg — renseigné uniquement si typeVente=KILO,
+    // sert alors avec prixUnitaire (réinterprété comme prix/kg) à calculer montant
+    // côté client. Jamais utilisé par la répartition entre projets (toujours par
+    // nombreSujets).
+    @Column(name = "poids_total_kg")
+    private Double poidsTotalKg;
 
     @Embedded
     private Initialisation initialisation;
