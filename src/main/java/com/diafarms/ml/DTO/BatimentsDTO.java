@@ -27,6 +27,8 @@ public class BatimentsDTO {
 	private LocalDateTime createdAt;
 	private LocalDate dateDerniereMaintenance;
 	private Double superficieM2;
+	private String siteUniqueId;
+	private String siteNom;
 
 	public static BatimentsDTO toDTO(Batiment batiment) {
 		if (batiment == null) return null;
@@ -45,6 +47,8 @@ public class BatimentsDTO {
 				)
 				.dateDerniereMaintenance(batiment.getDateDerniereMaintenance())
 				.superficieM2(batiment.getSuperficieM2())
+				.siteUniqueId(batiment.getSite() != null ? batiment.getSite().getUniqueId() : null)
+				.siteNom(batiment.getSite() != null ? batiment.getSite().getNom() : null)
 				.build();
 	}
 

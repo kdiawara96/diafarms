@@ -6,9 +6,11 @@ import org.springframework.stereotype.Service;
 import com.diafarms.ml.DTO.BatimentsDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Batiment;
+import com.diafarms.ml.models.Site;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.BatimentRepo;
+import com.diafarms.ml.repository.SiteRepo;
 import com.diafarms.ml.services.BatimentServices;
 import com.diafarms.ml.services.LogsServices;
 
@@ -29,14 +31,22 @@ import java.util.stream.Collectors;
 public class BatimentImpl implements BatimentServices {
 
     private final BatimentRepo batimentRepo;
+    private final SiteRepo siteRepo;
     private final LogsServices logs;
     private final OtherService OtherService;
-    
+
+    private Site resolveSite(String siteUniqueId) {
+        if (siteUniqueId == null || siteUniqueId.isBlank()) return null;
+        return siteRepo.findByUniqueId(siteUniqueId)
+                .orElseThrow(() -> new RuntimeException("Site introuvable : " + siteUniqueId));
+    }
+
     @Override
     public BatimentsDTO create(Batiment batiment) {
 
         batiment.setUniqueId(UUID.randomUUID().toString());
         batiment.setInitialisation(Initialisation.init());
+        batiment.setSite(resolveSite(batiment.getSiteUniqueId()));
 
         Utilisateurs currentUser = null;
         try {
@@ -115,6 +125,7 @@ public class BatimentImpl implements BatimentServices {
         existingBatiment.setDescription(batiment.getDescription());
         existingBatiment.setDateDerniereMaintenance(batiment.getDateDerniereMaintenance());
         existingBatiment.setSuperficieM2(batiment.getSuperficieM2());
+        existingBatiment.setSite(resolveSite(batiment.getSiteUniqueId()));
 
         existingBatiment.setInitialisation(Initialisation.updateDate(existingBatiment.getInitialisation()));
 

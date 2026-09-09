@@ -58,6 +58,19 @@ public class Batiment {
     @JoinColumn(name = "farm_id")
     private Farm farm;
 
+    // Emplacement (optionnel) où se trouve ce poulailler — voir Site.java.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "site_id")
+    private Site site;
+
+    // Non persisté : le contrôleur/service lie directement l'entité Batiment au JSON
+    // reçu (voir BatimentController), donc ce champ transporte le uniqueId envoyé par
+    // le front pour que BatimentImpl puisse résoudre le vrai Site avant sauvegarde —
+    // écrire directement dans "site" ne marcherait pas, Jackson n'aurait que le
+    // uniqueId, pas l'id numérique nécessaire à la clé étrangère.
+    @Transient
+    private String siteUniqueId;
+
     @OneToMany(mappedBy = "batiment", fetch = FetchType.LAZY)
     private List<OccupationBatiment> historiqueOccupations = new ArrayList<>();
 

@@ -89,6 +89,11 @@ public class Magasin {
             inverseJoinColumns = @JoinColumn(name = "vendeur_id"))
     private List<Utilisateurs> vendeurs = new ArrayList<>();
 
+    // Emplacement (optionnel) où se trouve ce magasin — voir Site.java.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "site_id")
+    private Site site;
+
     @Embedded
     private Initialisation initialisation;
 
