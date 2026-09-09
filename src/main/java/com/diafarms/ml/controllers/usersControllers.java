@@ -362,6 +362,54 @@ public class usersControllers {
     }
 
     /**
+     * Supprime réellement le compte s'il n'a jamais rien créé dans le système, sinon
+     * l'archive (corbeille) — voir UtilisateurImpl.supprimerOuArchiverUtilisateur.
+     */
+    @PutMapping("/delete-or-archive/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> deleteOrArchiveUser(@PathVariable String uniqueId) {
+        try {
+            String message = services.supprimerOuArchiverUtilisateur(uniqueId);
+            return ApiResponse.createResponse(message, HttpStatus.OK, message, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    /**
+     * Restaure un compte archivé (corbeille) vers la liste active.
+     */
+    @PutMapping("/restaurer/{uniqueId}")
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> restaurerUser(@PathVariable String uniqueId) {
+        try {
+            UtilisateursDTO dto = services.restaurerUtilisateur(uniqueId);
+            return ApiResponse.createResponse("Compte restauré avec succès", HttpStatus.OK, dto, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    /**
+     * Liste paginée des comptes archivés (corbeille) de la ferme.
+     */
+    @GetMapping("/corbeille")
+    public ResponseEntity<ApiResponse<PaginatedResponse<UtilisateursDTO>>> getCorbeille(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
+        try {
+            PaginatedResponse<UtilisateursDTO> result = services.getCorbeille(page, size);
+            return ApiResponse.createResponse("Corbeille récupérée", HttpStatus.OK, result, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    /**
      * Récupère la liste paginée et filtrée des utilisateurs de la ferme.
      * Exemple : /diafarms/api/v1/users/all?search=karim&page=0&size=10
      */

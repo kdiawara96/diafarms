@@ -39,6 +39,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.domain.Sort;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -56,6 +60,18 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final OtherService OtherService;
     private final EmailService emailService;
     private final AbonnementService abonnementService;
+
+    // Auto-injection paresseuse : nécessaire pour que l'appel à
+    // tenterSuppressionReelle passe par le proxy Spring (un appel this.xxx()
+    // ignorerait complètement son @Transactional(REQUIRES_NEW)) — voir
+    // AbonnementServiceImpl pour le même principe déjà utilisé ailleurs dans ce
+    // projet. Sans l'isolation REQUIRES_NEW, un échec de suppression (contrainte de
+    // clé étrangère) avorterait TOUTE la transaction appelante et empêcherait le
+    // repli sur l'archivage. Type concret car tenterSuppressionReelle est un détail
+    // d'implémentation interne, pas exposé sur UtilisateursServices.
+    @Autowired
+    @Lazy
+    private UtilisateurImpl self;
 
     @Override
     @Transactional
@@ -515,6 +531,95 @@ public class UtilisateurImpl implements UtilisateursServices {
 
         Utilisateurs revokedUser = utilisateursRepo.save(u);
         return UtilisateursDTO.fromEntity(revokedUser);
+    }
+
+    // Isolée dans sa propre transaction : si la suppression échoue (le compte a créé
+    // des transactions/ventes/saisies — contrainte de clé étrangère), seule CETTE
+    // transaction avorte, jamais celle de l'appelant, qui peut alors se replier sur
+    // l'archivage (voir supprimerOuArchiverUtilisateur). Ne tente de recenser aucune
+    // table manuellement (fragile, se périmerait à chaque nouvelle fonctionnalité) —
+    // laisse simplement la base répondre.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean tenterSuppressionReelle(Long id) {
+        try {
+            utilisateursRepo.deleteById(id);
+            utilisateursRepo.flush();
+            return true;
+        } catch (DataIntegrityViolationException e) {
+            return false;
+        }
+    }
+
+    @Override
+    @Transactional
+    public String supprimerOuArchiverUtilisateur(String uniqueId) {
+        try {
+            if (uniqueId.equals(SecurityUtils.getCurrentUserUniqueId())) {
+                throw new RuntimeException("Vous ne pouvez pas supprimer votre propre compte.");
+            }
+        } catch (IllegalStateException e) {
+            // Pas d'utilisateur authentifié résolu — voir revoquerUtilisateur.
+        }
+
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+        if (self.tenterSuppressionReelle(u.getId())) {
+            return "Compte supprimé définitivement.";
+        }
+
+        // Le compte a déjà créé des données (transactions, ventes, saisies...) —
+        // suppression réelle impossible sans casser la traçabilité : on archive à la
+        // place (même convention que RolesImpl.archive() : archive=true), invisible
+        // dans les listes actives mais récupérable, voir restaurerUtilisateur.
+        if (u.getInitialisation() != null) {
+            u.getInitialisation().setArchive(true);
+            u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+        utilisateursRepo.save(u);
+        return "Compte archivé (il a déjà des données liées) — récupérable depuis la corbeille.";
+    }
+
+    @Override
+    @Transactional
+    public UtilisateursDTO restaurerUtilisateur(String uniqueId) {
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        if (u.getInitialisation() != null) {
+            u.getInitialisation().setArchive(false);
+            u.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+        return UtilisateursDTO.fromEntity(utilisateursRepo.save(u));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<UtilisateursDTO> getCorbeille(int page, int size) {
+        Utilisateurs currentUser;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Erreur de récupération du contexte utilisateur.");
+        }
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new RuntimeException("Aucune exploitation associée à votre compte.");
+        }
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
+        Page<Utilisateurs> usersPage = utilisateursRepo.findArchivedByFarm(currentUser.getFarm().getId(), pageable);
+
+        List<UtilisateursDTO> dtos = usersPage.getContent().stream()
+                .map(UtilisateursDTO::fromEntity)
+                .collect(Collectors.toList());
+
+        return new PaginatedResponse<>(
+                dtos,
+                usersPage.getNumber(),
+                usersPage.getTotalPages(),
+                usersPage.getTotalElements(),
+                usersPage.getSize()
+        );
     }
 
     @Override

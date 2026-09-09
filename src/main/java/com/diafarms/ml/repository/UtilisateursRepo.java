@@ -66,16 +66,25 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
         "ORDER BY u.initialisation.createdAt DESC")
     List<Utilisateurs> searchUsers(@Param("search") String search);
 
+    // Liste active (page Utilisateurs) : exclut les comptes archivés (corbeille, voir
+    // findArchivedByFarm) — avant ce correctif, un compte archivé restait visible ici
+    // indéfiniment, la corbeille et la liste active affichant les mêmes comptes.
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND " +
+           "u.initialisation.removed = false AND u.initialisation.archive = false AND " +
            "(:searchTerm IS NULL OR :searchTerm = '' OR " +
            "LOWER(u.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(u.telephone) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(u.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
     Page<Utilisateurs> searchUsersByFarm(
-            @Param("farmId") Long farmId, 
-            @Param("searchTerm") String searchTerm, 
+            @Param("farmId") Long farmId,
+            @Param("searchTerm") String searchTerm,
             Pageable pageable
     );
+
+    // Corbeille (page Utilisateurs) : comptes archivés faute de suppression réelle
+    // possible — voir UtilisateurImpl.supprimerOuArchiverUtilisateur.
+    @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND u.initialisation.archive = true")
+    Page<Utilisateurs> findArchivedByFarm(@Param("farmId") Long farmId, Pageable pageable);
 
     // 1. Par farm + non supprimé
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND u.initialisation.removed = false")
