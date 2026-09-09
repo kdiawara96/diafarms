@@ -120,7 +120,26 @@ public class MagasinServiceImpl implements MagasinService {
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
 
         if (data.getNom() != null && !data.getNom().isBlank()) m.setNom(data.getNom());
-        if (data.getType() != null && !data.getType().isBlank()) m.setType(parseType(data.getType()));
+        if (data.getType() != null && !data.getType().isBlank()) {
+            TypeMagasin nouveauType = parseType(data.getType());
+            // Un magasin VENTE qui passe en STOCKAGE devient inutilisable pour tout
+            // stock qu'il contient encore : on ne peut transférer QUE vers un magasin
+            // VENTE (jamais en sens inverse), et on ne peut vendre que depuis un
+            // magasin VENTE — un stock non vendu resterait donc définitivement coincé.
+            // Voir aussi resolveMagasinVenteParDefaut ci-dessus (même famille de
+            // contrainte : "type" a des conséquences concrètes, pas juste un label).
+            if (m.getType() == TypeMagasin.VENTE && nouveauType != TypeMagasin.VENTE) {
+                StockMagasinDTO stock = getStock(uniqueId);
+                if (stock.getOeufsDisponible() > 0 || stock.getOeufsCassesDisponible() > 0 || stock.getReformeDisponible() > 0) {
+                    throw new IllegalArgumentException(
+                        "Ce magasin contient encore du stock non vendu (" +
+                        stock.getOeufsDisponible() + " œuf(s), " + stock.getOeufsCassesDisponible() + " œuf(s) cassé(s), " +
+                        stock.getReformeDisponible() + " sujet(s) réformé(s)) — videz-le d'abord (vente ou transfert) avant de changer son type."
+                    );
+                }
+            }
+            m.setType(nouveauType);
+        }
         if (data.getDescription() != null) m.setDescription(data.getDescription());
         // Toujours écrasé (pas de "null = inchangé" ici) : c'est le seul moyen de
         // pouvoir désactiver une alerte déjà configurée en renvoyant explicitement null.
