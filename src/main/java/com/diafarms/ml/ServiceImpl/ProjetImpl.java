@@ -25,6 +25,7 @@ import com.diafarms.ml.models.InvestissementRepartition;
 import com.diafarms.ml.models.OccupationBatiment;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Race;
+import com.diafarms.ml.models.Site;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.Vaccination;
 import com.diafarms.ml.models.Batiment.StatutBatiment;
@@ -41,6 +42,7 @@ import com.diafarms.ml.repository.MortaliteRepo;
 import com.diafarms.ml.repository.OccupationBatimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.RaceRepo;
+import com.diafarms.ml.repository.SiteRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.repository.VaccinationRepo;
 import com.diafarms.ml.request.create.OccupationCreate;
@@ -60,7 +62,38 @@ public class ProjetImpl implements ProjetServices {
 
     private final ProjetsRepo projetsRepo;
     private final RaceRepo raceRepo;
+    private final SiteRepo siteRepo;
     private final UtilisateursRepo utilisateursRepo;
+
+    private Site resolveSite(String siteUniqueId) {
+        if (siteUniqueId == null || siteUniqueId.isBlank()) return null;
+        return siteRepo.findByUniqueId(siteUniqueId)
+                .orElseThrow(() -> new RuntimeException("Site introuvable : " + siteUniqueId));
+    }
+
+    // Libère les poulaillers encore occupés par ce projet (suppression ou clôture) —
+    // sans ça, un projet supprimé/clôturé bloquait indéfiniment son poulailler pour
+    // tout nouveau projet, même une fois le lot terminé (voir OccupationBatimentRepo/
+    // BatimentRepo.findAvailableByFarmId, qui ne regardent QUE dateSortie, jamais
+    // Batiment.statut). Même mécanisme que OccupationBatimentServiceImpl.libererBatiment,
+    // appliqué à toutes les occupations actives du projet d'un coup. Ne s'applique
+    // jamais à une restauration/réouverture : une occupation déjà libérée ne doit pas
+    // ressusciter automatiquement.
+    private void libererOccupationsActives(Projets projet) {
+        if (projet.getOccupations() == null) return;
+        LocalDate aujourdHui = LocalDate.now();
+        for (OccupationBatiment occupation : projet.getOccupations()) {
+            boolean active = occupation.getDateSortie() == null || occupation.getDateSortie().isAfter(aujourdHui);
+            if (!active) continue;
+            occupation.setDateSortie(aujourdHui);
+            occupationBatimentRepo.save(occupation);
+            Batiment batiment = occupation.getBatiment();
+            if (batiment != null) {
+                batiment.setStatut(StatutBatiment.DISPONIBLE);
+                batimentRepo.save(batiment);
+            }
+        }
+    }
     private final AlimentationRepo alimentationRepo;
     private final ConsommationAlimentRepo consommationAlimentRepo;
     private final TransactionRepo transactionRepo;
@@ -321,6 +354,7 @@ public class ProjetImpl implements ProjetServices {
         projet.setResponsableProduction(responsableProduction);
         projet.setResponsableFinance(responsableFinance);
         projet.setFarm(farm);
+        projet.setSite(resolveSite(data.getSiteUniqueId()));
 
         double caTotalSujets = (data.getNbSujets() != null ? data.getNbSujets() : 0) * (data.getPuSujet() != null ? data.getPuSujet() : 0) + (data.getAutresDepense() != null ? data.getAutresDepense() : 0);
         projet.setCaTotalSujets(caTotalSujets);
@@ -470,6 +504,7 @@ public class ProjetImpl implements ProjetServices {
                 r.figerLaVentilation(LocalDate.now());
             }
             investissementRepartitionRepo.saveAll(repartitionsActives);
+            libererOccupationsActives(projet);
         }
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -529,6 +564,7 @@ public class ProjetImpl implements ProjetServices {
             r.figerLaVentilation(LocalDate.now());
         }
         investissementRepartitionRepo.saveAll(repartitionsActives);
+        libererOccupationsActives(projet);
 
         logCloture(projet, "Clôture");
 
@@ -709,6 +745,9 @@ public class ProjetImpl implements ProjetServices {
         }
         if (data.getFournisseursPoussins() != null) {
             projet.setFournisseurs_poussins(data.getFournisseursPoussins());
+        }
+        if (data.getSiteUniqueId() != null) {
+            projet.setSite(resolveSite(data.getSiteUniqueId()));
         }
 
         // 4. Recalculer le CA total si nbSujets, puSujet ou autresDepense ont changé

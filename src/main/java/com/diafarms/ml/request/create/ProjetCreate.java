@@ -20,6 +20,7 @@ public class ProjetCreate {
     private Long responsableFinanceId;    // Changé en Long pour form.responsableFinanceId
     private String fournisseursPoussins;
     private Double autresDepense;
+    private String siteUniqueId; // optionnel — voir Projets.site
 
     // Étape 2 : Alimentation (Initiale)
     private String alimentNom;

@@ -17,4 +17,6 @@ public class ProjetUpdate {
     private Long responsableFinanceId;
     private String fournisseursPoussins;
     private Double autresDepense;
+    // optionnel — voir Projets.site. Chaîne vide/blanche = retire le rattachement.
+    private String siteUniqueId;
 }

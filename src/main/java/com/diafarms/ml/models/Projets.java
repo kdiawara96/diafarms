@@ -95,6 +95,11 @@ public class Projets {
     @JoinColumn(name = "race_id", nullable = false)
     private Race race;
 
+    // Emplacement (optionnel) où se déroule ce projet — voir Site.java.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "site_id")
+    private Site site;
+
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OccupationBatiment> occupations = new ArrayList<>();
 

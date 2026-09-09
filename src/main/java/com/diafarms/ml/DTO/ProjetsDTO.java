@@ -36,6 +36,8 @@ public class ProjetsDTO {
      private Long responsableFinanceId;
      private String responsableFinanceNom;
      private String fournisseursPoussins;
+     private String siteUniqueId;
+     private String siteNom;
      private LocalDate debut;
      private LocalDate finPrevue;
      private Integer nbSujets;
@@ -107,6 +109,8 @@ public class ProjetsDTO {
                 .responsableFinanceId(data.getResponsableFinance() != null ? data.getResponsableFinance().getId() : null)
                 .responsableFinanceNom(data.getResponsableFinance() != null ? data.getResponsableFinance().getFullName() : null)
                 .fournisseursPoussins(data.getFournisseurs_poussins())
+                .siteUniqueId(data.getSite() != null ? data.getSite().getUniqueId() : null)
+                .siteNom(data.getSite() != null ? data.getSite().getNom() : null)
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
                 .nbSujets(data.getNbSujets())
@@ -163,6 +167,8 @@ public class ProjetsDTO {
                 .responsableFinanceId(data.getResponsableFinance() != null ? data.getResponsableFinance().getId() : null)
                 .responsableFinanceNom(data.getResponsableFinance() != null ? data.getResponsableFinance().getFullName() : null)
                 .fournisseursPoussins(data.getFournisseurs_poussins())
+                .siteUniqueId(data.getSite() != null ? data.getSite().getUniqueId() : null)
+                .siteNom(data.getSite() != null ? data.getSite().getNom() : null)
                 .debut(data.getDebut())
                 .finPrevue(data.getFinPrevue())
                 .nbSujets(data.getNbSujets())
