@@ -52,6 +52,24 @@ public interface TransactionService {
     void toggleRemovedBySource(String sourceUniqueId);
 
     /**
+     * Demande la suppression d'une transaction (ADMIN/RESPONSABLE/COMPTABLE) — ne
+     * supprime rien tout de suite, marque juste la ligne comme "en attente de
+     * suppression" jusqu'à ce qu'un admin/responsable du projet confirme (voir
+     * confirmerSuppression) ou refuse (voir annulerDemandeSuppression).
+     */
+    TransactionDTO demanderSuppression(String uniqueId);
+
+    /** Confirme une demande de suppression en attente — même autorité que
+     * valider/rejeter (ADMIN ou responsable du projet). Supprime réellement
+     * (removed=true) mais garde qui/quand a demandé, pour la traçabilité. */
+    TransactionDTO confirmerSuppression(String uniqueId);
+
+    /** Refuse une demande de suppression en attente — la transaction reste
+     * inchangée, la demande est simplement annulée. Même autorité que
+     * confirmerSuppression. */
+    TransactionDTO annulerDemandeSuppression(String uniqueId);
+
+    /**
      * Crée, met à jour ou retire la transaction "sortie" liée à une source
      * (Alimentation/Soins/Vaccination/Investissement) — point d'entrée unique appelé
      * aussi bien à la création qu'à la modification de la source, pour que le coût

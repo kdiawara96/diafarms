@@ -98,6 +98,27 @@ public class TransactionServiceImpl implements TransactionService {
                 .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
     }
 
+    private boolean hasRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
+    // Peut DEMANDER une suppression — même population que SalaireServiceImpl/
+    // PersonnelServiceImpl.ensureCanManage.
+    private void ensureCanDemanderSuppression(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour demander la suppression d'une transaction.");
+        }
+    }
+
+    // Peut CONFIRMER/REFUSER une demande, ou supprimer/restaurer directement — même
+    // autorité que valider/rejeter : ADMIN, ou responsable DU PROJET concerné.
+    private void ensureCanConfirmerSuppression(Utilisateurs u, Projets projet) {
+        if (!isAdmin(u) && !isResponsableDuProjet(u, projet)) {
+            throw new IllegalArgumentException("Seul un administrateur ou le responsable de ce projet peut confirmer ou refuser cette suppression.");
+        }
+    }
+
     /**
      * Restriction du RAPPORT (/transactions/stats, qui alimente les cartes KPI et le
      * "Rapport général" de Comptabilité) : null = pas de restriction (vue ferme entière) ;
@@ -431,20 +452,99 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public String deleteOrRecover(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+
+        // Même autorité que valider/rejeter/confirmerSuppression — plus de
+        // suppression/restauration directe sans passer par une demande, voir
+        // demanderSuppression/confirmerSuppression.
+        ensureCanConfirmerSuppression(currentUser, t.getProjet());
 
         t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
         transactionRepo.save(t);
         boolean removed = t.getInitialisation().getRemoved();
 
-        Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), t.getId(), "Transaction",
                     (removed ? "Suppression" : "Restauration") + " de la transaction '" + t.getRef() + "'");
         }
 
         return removed ? "Transaction supprimée." : "Transaction récupérée.";
+    }
+
+    @Override
+    @Transactional
+    public TransactionDTO demanderSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanDemanderSuppression(currentUser);
+
+        Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        if (t.getDemandeSuppressionPar() != null) {
+            throw new IllegalArgumentException("Une demande de suppression est déjà en attente pour cette transaction.");
+        }
+
+        t.setDemandeSuppressionPar(currentUser);
+        t.setDateDemandeSuppression(LocalDateTime.now());
+        Transaction saved = transactionRepo.save(t);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Transaction",
+                    "Demande de suppression de la transaction '" + saved.getRef() + "' — en attente de validation");
+        }
+
+        return TransactionDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public TransactionDTO confirmerSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+
+        Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        ensureCanConfirmerSuppression(currentUser, t.getProjet());
+        if (t.getDemandeSuppressionPar() == null) {
+            throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette transaction.");
+        }
+
+        // demandeSuppressionPar/dateDemandeSuppression volontairement conservés
+        // (pas remis à null) : trace de qui a demandé, même après confirmation.
+        t.getInitialisation().setRemoved(true);
+        Transaction saved = transactionRepo.save(t);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Transaction",
+                    "Suppression confirmée pour la transaction '" + saved.getRef() + "'");
+        }
+
+        return TransactionDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public TransactionDTO annulerDemandeSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+
+        Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        ensureCanConfirmerSuppression(currentUser, t.getProjet());
+        if (t.getDemandeSuppressionPar() == null) {
+            throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette transaction.");
+        }
+
+        t.setDemandeSuppressionPar(null);
+        t.setDateDemandeSuppression(null);
+        Transaction saved = transactionRepo.save(t);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Transaction",
+                    "Demande de suppression refusée pour la transaction '" + saved.getRef() + "'");
+        }
+
+        return TransactionDTO.fromEntity(saved);
     }
 
     @Override

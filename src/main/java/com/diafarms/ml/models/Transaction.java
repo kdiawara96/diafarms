@@ -92,6 +92,20 @@ public class Transaction {
 
     private LocalDateTime dateValidation;
 
+    // Demande de suppression (pas une suppression directe) — voir
+    // TransactionServiceImpl.demanderSuppression/confirmerSuppression. Non null =
+    // une suppression est en attente de validation par un admin/responsable, même
+    // principe que statut/validateur mais sur une dimension différente (une
+    // transaction déjà VALIDE peut avoir une suppression en attente). removed=true
+    // une fois confirmée (Initialisation), ces deux champs restent renseignés pour
+    // la traçabilité — jamais remis à null après confirmation, seulement après un
+    // refus (la demande est alors annulée).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "demande_suppression_par_id")
+    private Utilisateurs demandeSuppressionPar;
+
+    private LocalDateTime dateDemandeSuppression;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id")
     private Farm farm;

@@ -56,6 +56,10 @@ public class TransactionDTO {
     // Qui a initié la transaction (saisie manuelle ou vente à l'origine) — affiché sur
     // la page Ventes quand un ADMIN regarde "tous les vendeurs", voir Ventes.tsx.
     private String creeParNom;
+    // Non null = suppression en attente de validation par un admin/responsable —
+    // voir TransactionServiceImpl.demanderSuppression.
+    private String demandeSuppressionParNom;
+    private LocalDateTime dateDemandeSuppression;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -83,6 +87,8 @@ public class TransactionDTO {
                 .sourceType(t.getSourceType())
                 .sourceUniqueId(t.getSourceUniqueId())
                 .creeParNom(t.getCreePar() != null ? t.getCreePar().getFullName() : null)
+                .demandeSuppressionParNom(t.getDemandeSuppressionPar() != null ? t.getDemandeSuppressionPar().getFullName() : null)
+                .dateDemandeSuppression(t.getDateDemandeSuppression())
                 .build();
     }
 }

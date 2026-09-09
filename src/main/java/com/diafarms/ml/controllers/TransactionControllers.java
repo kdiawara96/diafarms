@@ -128,6 +128,39 @@ public class TransactionControllers {
         }
     }
 
+    @PutMapping("/demander-suppression/{uniqueId}")
+    public ResponseEntity<ApiResponse<TransactionDTO>> demanderSuppression(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Demande de suppression envoyée — en attente de validation", HttpStatus.OK, service.demanderSuppression(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/confirmer-suppression/{uniqueId}")
+    public ResponseEntity<ApiResponse<TransactionDTO>> confirmerSuppression(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Suppression confirmée", HttpStatus.OK, service.confirmerSuppression(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/annuler-demande-suppression/{uniqueId}")
+    public ResponseEntity<ApiResponse<TransactionDTO>> annulerDemandeSuppression(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Demande de suppression refusée", HttpStatus.OK, service.annulerDemandeSuppression(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PutMapping("/valider/{uniqueId}")
     public ResponseEntity<ApiResponse<TransactionDTO>> valider(@PathVariable String uniqueId) {
         try {
