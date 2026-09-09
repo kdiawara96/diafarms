@@ -15,6 +15,7 @@ import com.diafarms.ml.DTO.TauxSalaireDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.SalaireDefinirRequest;
+import com.diafarms.ml.request.others.SalairePaiementUpdateRequest;
 import com.diafarms.ml.request.others.SalairePayerRequest;
 import com.diafarms.ml.services.SalaireService;
 
@@ -42,6 +43,31 @@ public class SalaireController {
     public ResponseEntity<ApiResponse<PaiementSalaireDTO>> payer(@RequestBody SalairePayerRequest request) {
         try {
             return ApiResponse.createResponse("Salaire payé avec succès", HttpStatus.CREATED, service.payer(request), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/paiements/{paiementUniqueId}")
+    public ResponseEntity<ApiResponse<PaiementSalaireDTO>> modifierPaiement(
+            @PathVariable String paiementUniqueId,
+            @RequestBody SalairePaiementUpdateRequest request) {
+        try {
+            return ApiResponse.createResponse("Paiement corrigé", HttpStatus.OK, service.modifierPaiement(paiementUniqueId, request), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @DeleteMapping("/paiements/{paiementUniqueId}")
+    public ResponseEntity<ApiResponse<String>> supprimerPaiement(@PathVariable String paiementUniqueId) {
+        try {
+            service.supprimerPaiement(paiementUniqueId);
+            return ApiResponse.createResponse("Paiement supprimé", HttpStatus.OK, "OK", null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

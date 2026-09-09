@@ -2,6 +2,7 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -31,6 +32,7 @@ import com.diafarms.ml.repository.PersonnelRepo;
 import com.diafarms.ml.repository.SalaireHistoriqueRepo;
 import com.diafarms.ml.repository.SalaireRepo;
 import com.diafarms.ml.request.create.SalaireDefinirRequest;
+import com.diafarms.ml.request.others.SalairePaiementUpdateRequest;
 import com.diafarms.ml.request.others.SalairePayerRequest;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.MinioService;
@@ -297,6 +299,63 @@ public class SalaireServiceImpl implements SalaireService {
         return salaireRepo.findAllByFarmId(currentUser.getFarm().getId()).stream()
                 .map(s -> SalaireDTO.fromEntity(s, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(s.getId())))
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public PaiementSalaireDTO modifierPaiement(String paiementUniqueId, SalairePaiementUpdateRequest data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
+
+        PaiementSalaire p = paiementSalaireRepo.findByUniqueId(paiementUniqueId);
+        if (p == null) {
+            throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
+        }
+        if (data.getMontant() == null || data.getMontant() <= 0) {
+            throw new IllegalArgumentException("Le montant corrigé doit être positif.");
+        }
+
+        p.setMontantPaye(data.getMontant());
+        if (p.getInitialisation() != null) {
+            p.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+        PaiementSalaire saved = paiementSalaireRepo.save(p);
+
+        // Répercute la correction sur la Transaction déjà créée pour ce paiement —
+        // voir payer() : sourceUniqueId = uniqueId du paiement.
+        transactionService.updateMontantBySource(saved.getUniqueId(), data.getMontant());
+
+        logs.addLogs(currentUser.getId(), saved.getId(), "PaiementSalaire",
+                "Correction du montant payé à " + saved.getSalaire().getEmploye().getNom()
+                        + " pour " + saved.getPeriode() + " → " + data.getMontant() + " FCFA");
+
+        return PaiementSalaireDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public void supprimerPaiement(String paiementUniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
+
+        PaiementSalaire p = paiementSalaireRepo.findByUniqueId(paiementUniqueId);
+        if (p == null) {
+            throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
+        }
+
+        String employeNom = p.getSalaire().getEmploye().getNom();
+        String periode = p.getPeriode();
+
+        // Masque (ne supprime pas) la Transaction liée pour garder la trace
+        // comptable, mais supprime réellement le paiement lui-même pour libérer la
+        // période (un nouveau "Payer" redevient possible pour ce même mois).
+        transactionService.toggleRemovedBySource(p.getUniqueId());
+        paiementSalaireRepo.delete(p);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), p.getId(), "PaiementSalaire",
+                    "Suppression du paiement de " + employeNom + " pour " + periode);
+        }
     }
 
     @Override
