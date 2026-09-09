@@ -42,6 +42,17 @@ public class PersonnelController {
         }
     }
 
+    @PutMapping("/deleteOrRecover/{uniqueId}")
+    public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, service.deleteOrRecover(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/select")
     public ResponseEntity<ApiResponse<List<PersonnelDTO>>> select() {
         try {

@@ -9,8 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.PersonnelDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.models.Personnel;
+import com.diafarms.ml.models.Salaire;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.PersonnelRepo;
+import com.diafarms.ml.repository.SalaireRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.PersonnelCreate;
 import com.diafarms.ml.services.LogsServices;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class PersonnelServiceImpl implements PersonnelService {
 
     private final PersonnelRepo personnelRepo;
+    private final SalaireRepo salaireRepo;
     private final UtilisateursRepo utilisateursRepo;
     private final LogsServices logs;
     private final OtherService otherService;
@@ -107,6 +110,42 @@ public class PersonnelServiceImpl implements PersonnelService {
 
         Personnel saved = personnelRepo.save(p);
         return PersonnelDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public String deleteOrRecover(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
+
+        Personnel p = personnelRepo.findByUniqueId(uniqueId);
+        if (p == null) {
+            throw new IllegalArgumentException("Personnel introuvable : " + uniqueId);
+        }
+
+        p.getInitialisation().setRemoved(!p.getInitialisation().getRemoved());
+        boolean removed = p.getInitialisation().getRemoved();
+        personnelRepo.save(p);
+
+        // Archive/restaure la grille salariale en même temps, pour qu'elle
+        // disparaisse (ou réapparaisse) des listes actives avec l'employé — sans
+        // ça, la fiche Salaire resterait visible en référençant un Personnel
+        // archivé. Ne touche jamais à l'historique des paiements déjà effectués.
+        if (p.getFarm() != null) {
+            Salaire s = salaireRepo.findByEmploye_UniqueIdAndFarm_Id(p.getUniqueId(), p.getFarm().getId());
+            if (s != null && s.getInitialisation() != null
+                    && !s.getInitialisation().getRemoved().equals(removed)) {
+                s.getInitialisation().setRemoved(removed);
+                salaireRepo.save(s);
+            }
+        }
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), p.getId(), "Personnel",
+                    (removed ? "Suppression" : "Restauration") + " du personnel : " + p.getNom());
+        }
+
+        return removed ? "Personnel supprimé." : "Personnel récupéré.";
     }
 
     @Override
