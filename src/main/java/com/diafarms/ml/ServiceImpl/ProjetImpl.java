@@ -71,6 +71,42 @@ public class ProjetImpl implements ProjetServices {
                 .orElseThrow(() -> new RuntimeException("Site introuvable : " + siteUniqueId));
     }
 
+    // Poulailler obligatoire à la création + couverture de capacité — voir
+    // createProjet. Ne vérifie PAS l'occupation active des bâtiments ici (fait plus
+    // loin, au moment de la création réelle des occupations) : cette étape ne
+    // contrôle que la cohérence des chiffres saisis, avant toute résolution d'entité.
+    private void validerOccupationsPourCreation(List<OccupationCreate> occupations, Integer nbSujetsTotal) {
+        List<OccupationCreate> lignesRenseignees = occupations == null ? List.of()
+                : occupations.stream().filter(o -> o.getBatimentId() != null).toList();
+
+        if (lignesRenseignees.isEmpty()) {
+            throw new RuntimeException("Au moins un poulailler est obligatoire : les sujets doivent être hébergés quelque part.");
+        }
+
+        int total = nbSujetsTotal != null ? nbSujetsTotal : 0;
+        int sommeAffectee = 0;
+        for (OccupationCreate occ : lignesRenseignees) {
+            int nbSujets = occ.getNbSujets() != null ? occ.getNbSujets() : 0;
+            Batiment batiment = batimentRepo.findById(occ.getBatimentId())
+                    .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + occ.getBatimentId()));
+            if (batiment.getCapacite() != null && nbSujets > batiment.getCapacite()) {
+                throw new RuntimeException(
+                    "Le poulailler '" + batiment.getNom() + "' a une capacité de " + batiment.getCapacite() +
+                    " têtes, ne peut pas en accueillir " + nbSujets + ". Répartissez sur plusieurs poulaillers."
+                );
+            }
+            sommeAffectee += nbSujets;
+        }
+
+        if (sommeAffectee != total) {
+            throw new RuntimeException(
+                "La répartition des sujets entre poulaillers (" + sommeAffectee +
+                ") ne correspond pas au nombre total de sujets du projet (" + total +
+                "). Ajustez le nombre de sujets par poulailler."
+            );
+        }
+    }
+
     // Libère les poulaillers encore occupés par ce projet (suppression ou clôture) —
     // sans ça, un projet supprimé/clôturé bloquait indéfiniment son poulailler pour
     // tout nouveau projet, même une fois le lot terminé (voir OccupationBatimentRepo/
@@ -305,7 +341,14 @@ public class ProjetImpl implements ProjetServices {
         // 1. Récupérer l'utilisateur connecté et sa ferme
         Utilisateurs currentUser = getCurrentUserSafe();
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
-        
+
+        // Un poulailler est désormais obligatoire (les poussins doivent physiquement
+        // être quelque part) et la répartition doit couvrir tout l'effectif — sur
+        // plusieurs poulaillers si un seul n'a pas la capacité (ex: 12 000 sujets à
+        // répartir sur 3 poulaillers de 4 000 places). Validé AVANT toute écriture en
+        // base pour échouer proprement sans laisser de projet à moitié créé.
+        validerOccupationsPourCreation(data.getOccupations(), data.getNbSujets());
+
         Long raceId = data.getRaceId();
         Race race = null;
         // 2. Vérifier et récupérer la race

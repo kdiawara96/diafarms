@@ -61,6 +61,12 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         if (occupationRepository.existsOccupationActive(batiment.getId())) {
             throw new RuntimeException("Le bâtiment " + batiment.getNom() + " est déjà occupé.");
         }
+        if (nbSujets != null && batiment.getCapacite() != null && nbSujets > batiment.getCapacite()) {
+            throw new RuntimeException(
+                "Le poulailler '" + batiment.getNom() + "' a une capacité de " + batiment.getCapacite() +
+                " têtes, ne peut pas en accueillir " + nbSujets + "."
+            );
+        }
 
         // 3. Création de la liaison (Occupation)
         OccupationBatiment occupation = new OccupationBatiment();
