@@ -18,8 +18,7 @@ public class MagasinCreate {
     // Chaîne vide/blanche = désactive l'automatisation (même convention que les
     // seuils d'alerte ci-dessus, toujours écrasé, pas de "null = inchangé").
     private String magasinVenteParDefautUniqueId;
-    // Emplacement (optionnel) où se trouve ce magasin — voir Magasin.site. Chaîne
-    // vide/blanche = pas de site, même convention "toujours écrasé" que les autres
-    // champs optionnels ci-dessus.
-    private String siteUniqueId;
+    // Coordonnées GPS directes (optionnelles) — voir Magasin.latitude/longitude.
+    private Double latitude;
+    private Double longitude;
 }

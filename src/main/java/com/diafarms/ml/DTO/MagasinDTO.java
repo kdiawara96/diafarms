@@ -28,8 +28,8 @@ public class MagasinDTO {
     private Integer seuilAlerteAlveoles;
     private String magasinVenteParDefautUniqueId;
     private String magasinVenteParDefautNom;
-    private String siteUniqueId;
-    private String siteNom;
+    private Double latitude;
+    private Double longitude;
     private List<VendeurRefDTO> vendeurs;
 
     @Getter
@@ -55,8 +55,8 @@ public class MagasinDTO {
                 .seuilAlerteAlveoles(m.getSeuilAlerteAlveoles())
                 .magasinVenteParDefautUniqueId(m.getMagasinVenteParDefaut() != null ? m.getMagasinVenteParDefaut().getUniqueId() : null)
                 .magasinVenteParDefautNom(m.getMagasinVenteParDefaut() != null ? m.getMagasinVenteParDefaut().getNom() : null)
-                .siteUniqueId(m.getSite() != null ? m.getSite().getUniqueId() : null)
-                .siteNom(m.getSite() != null ? m.getSite().getNom() : null)
+                .latitude(m.getLatitude())
+                .longitude(m.getLongitude())
                 .vendeurs(m.getVendeurs() == null ? List.of() : m.getVendeurs().stream()
                         .map(MagasinDTO::toVendeurRef)
                         .collect(Collectors.toList()))

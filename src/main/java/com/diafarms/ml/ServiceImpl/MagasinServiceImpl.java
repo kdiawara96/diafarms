@@ -12,11 +12,9 @@ import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.enums.TypeVenteOeufs;
 import com.diafarms.ml.models.Magasin;
 import com.diafarms.ml.models.Magasin.TypeMagasin;
-import com.diafarms.ml.models.Site;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
 import com.diafarms.ml.repository.MagasinRepo;
-import com.diafarms.ml.repository.SiteRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
 import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
@@ -34,14 +32,7 @@ public class MagasinServiceImpl implements MagasinService {
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
     private final UtilisateursRepo utilisateursRepo;
-    private final SiteRepo siteRepo;
     private final OtherService otherService;
-
-    private Site resolveSite(String siteUniqueId) {
-        if (siteUniqueId == null || siteUniqueId.isBlank()) return null;
-        return siteRepo.findByUniqueId(siteUniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Site introuvable : " + siteUniqueId));
-    }
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -102,7 +93,8 @@ public class MagasinServiceImpl implements MagasinService {
         m.setFarm(currentUser.getFarm());
         m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
         m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId()));
-        m.setSite(resolveSite(data.getSiteUniqueId()));
+        m.setLatitude(data.getLatitude());
+        m.setLongitude(data.getLongitude());
         m.setInitialisation(Initialisation.init());
 
         return MagasinDTO.fromEntity(magasinRepo.save(m));
@@ -158,7 +150,8 @@ public class MagasinServiceImpl implements MagasinService {
         m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
         if (data.getVendeurUniqueIds() != null) m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
         m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId()));
-        m.setSite(resolveSite(data.getSiteUniqueId()));
+        m.setLatitude(data.getLatitude());
+        m.setLongitude(data.getLongitude());
         if (m.getInitialisation() != null) m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 
         return MagasinDTO.fromEntity(magasinRepo.save(m));

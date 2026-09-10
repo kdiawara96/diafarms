@@ -89,10 +89,14 @@ public class Magasin {
             inverseJoinColumns = @JoinColumn(name = "vendeur_id"))
     private List<Utilisateurs> vendeurs = new ArrayList<>();
 
-    // Emplacement (optionnel) où se trouve ce magasin — voir Site.java.
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "site_id")
-    private Site site;
+    // Coordonnées GPS directes (optionnelles) — contrairement au poulailler, un
+    // magasin de vente peut être en pleine ville, sans rapport avec un Site de la
+    // ferme : pas de notion de Site ici, juste sa position propre.
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
 
     @Embedded
     private Initialisation initialisation;
