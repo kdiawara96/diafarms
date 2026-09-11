@@ -11,8 +11,14 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class CookieAuthUtils {
 
-    public static final String ACCESS_COOKIE = "access_token";
-    public static final String REFRESH_COOKIE = "refresh_token";
+    // Préfixés "diafarms_" : "access_token"/"refresh_token" sont des noms trop
+    // génériques, entrés en collision avec une autre application partageant le
+    // domaine parent batimanager.net (nom de cookie identique, portée large côté
+    // navigateur) — le navigateur envoyait alors le jeton de CETTE AUTRE appli à la
+    // place du nôtre, provoquant des 401 aléatoires ("Compte suspendu ou
+    // introuvable" : le JWT décodait, mais avec des claims d'une tout autre appli).
+    public static final String ACCESS_COOKIE = "diafarms_access_token";
+    public static final String REFRESH_COOKIE = "diafarms_refresh_token";
 
     @Value("${app.cookie.secure:true}")
     private boolean cookieSecure;
