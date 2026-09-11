@@ -53,6 +53,23 @@ public class InvestissementServiceImpl implements InvestissementService {
         }
     }
 
+    private boolean hasRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
+    // Gestion des investissements réservée à ADMIN/SUPER_ADMIN, même périmètre que
+    // le masquage de la page web (voir DashboardLayout.tsx navItems "Investissements"
+    // : hideFor RESPONSABLE/COMPTABLE/VENTE/PRODUCTION) — jusqu'ici aucune
+    // vérification n'existait côté serveur, n'importe quel compte connecté pouvait
+    // créer/modifier/supprimer un investissement ou une répartition via l'API, le
+    // masquage du menu ne protégeant rien.
+    private void ensureCanManage(Utilisateurs u) {
+        if (!hasRole(u, "ADMIN") && !hasRole(u, "SUPER_ADMIN")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour gérer les investissements.");
+        }
+    }
+
     // Génère/synchronise la sortie comptable liée à cet achat — voir
     // AlimentationImpl.syncTransaction pour le même principe. projetDedie = null pour
     // un investissement COMMUN (dépense de ferme, comme un salaire) ; renseigné pour un
@@ -145,6 +162,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 1. Récupération de l'utilisateur et de sa ferme
         Utilisateurs u = utilisateursRepo.findByUniqueId(utilisateurUniqueId)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        ensureCanManage(u);
 
         // 2. Création et hydratation de l'entité Investissement principale
         Investissement investissement = new Investissement();
@@ -212,6 +230,8 @@ public class InvestissementServiceImpl implements InvestissementService {
     @Override
     @Transactional
     public InvestissementDTO modifierInvestissement(String uniqueId, InvestissementUpdateRequestDTO dto) {
+        ensureCanManage(getCurrentUserSafe());
+
         // 1. Récupération de l'investissement existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
@@ -292,6 +312,8 @@ public class InvestissementServiceImpl implements InvestissementService {
     @Override
     @Transactional
     public void supprimerInvestissement(String uniqueId) {
+        ensureCanManage(getCurrentUserSafe());
+
         // 1. Récupérer l'investissement réel existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
@@ -326,6 +348,8 @@ public class InvestissementServiceImpl implements InvestissementService {
      @Override
      @Transactional
      public InvestissementRepartitionDTO ajouterRepartition(String invUniqueId, String projetUniqueId, InvestissementRepartition repartition) {
+        ensureCanManage(getCurrentUserSafe());
+
         // 1. Récupération des entités fortes
         Investissement inv = investissementRepo.findByUniqueId(invUniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + invUniqueId));
@@ -466,6 +490,8 @@ public class InvestissementServiceImpl implements InvestissementService {
 
     @Transactional
     public String supprimerRepartition(Long id) {
+        ensureCanManage(getCurrentUserSafe());
+
         // 1. On vérifie si l'affectation existe bien
         if (!repartitionRepo.existsById(id)) {
             throw new IllegalArgumentException("L'affectation avec l'ID " + id + " n'existe pas.");
