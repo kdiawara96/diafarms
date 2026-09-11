@@ -533,6 +533,16 @@ public class UtilisateurImpl implements UtilisateursServices {
         return UtilisateursDTO.fromEntity(revokedUser);
     }
 
+    @Override
+    @Transactional
+    public void revoquerSessionsWeb(String uniqueId) {
+        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId).orElse(null);
+        if (u == null) return;
+        int versionActuelle = u.getTokenVersion() != null ? u.getTokenVersion() : 0;
+        u.setTokenVersion(versionActuelle + 1);
+        utilisateursRepo.save(u);
+    }
+
     // Isolée dans sa propre transaction : si la suppression échoue (le compte a créé
     // des transactions/ventes/saisies — contrainte de clé étrangère), seule CETTE
     // transaction avorte, jamais celle de l'appelant, qui peut alors se replier sur

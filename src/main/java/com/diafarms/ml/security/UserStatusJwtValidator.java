@@ -52,7 +52,23 @@ public class UserStatusJwtValidator implements OAuth2TokenValidator<Jwt> {
                     new OAuth2Error("invalid_token", "Compte suspendu ou introuvable", null));
         }
 
-        if ("QR_CODE".equals(token.getClaimAsString("type")) && user.getFarm() != null) {
+        boolean isQrCode = "QR_CODE".equals(token.getClaimAsString("type"));
+
+        // Révocation immédiate à la déconnexion (voir Utilisateurs.tokenVersion /
+        // authControllers.logout) — ne s'applique jamais à un token QR mobile,
+        // mécanisme distinct et volontairement persistant (pas de "déconnexion" côté
+        // mobile qui doive le couper).
+        if (!isQrCode) {
+            Integer tokenVersionDuToken = token.getClaim("tokenVersion");
+            int versionActuelle = user.getTokenVersion() != null ? user.getTokenVersion() : 0;
+            int versionDuToken = tokenVersionDuToken != null ? tokenVersionDuToken : 0;
+            if (versionDuToken != versionActuelle) {
+                return OAuth2TokenValidatorResult.failure(
+                        new OAuth2Error("invalid_token", "Session expirée, veuillez vous reconnecter.", null));
+            }
+        }
+
+        if (isQrCode && user.getFarm() != null) {
             Set<String> roles = user.getRoles() == null ? Set.of()
                     : user.getRoles().stream().map(r -> r.getRole()).collect(Collectors.toSet());
             FarmAppSettings settings = farmAppSettingsRepo.findByFarm_Id(user.getFarm().getId()).orElse(null);

@@ -43,6 +43,7 @@ public class authControllers {
     private final CookieAuthUtils cookieAuthUtils;
     private final UtilisateursServices utilisateursServices;
     private final PasswordResetService passwordResetService;
+    private final org.springframework.security.oauth2.jwt.JwtDecoder jwtDecoder;
 
 
   @PostMapping("/auth")
@@ -103,8 +104,26 @@ public class authControllers {
         }
     }
 
+    // Route publique (voir SecurityConfiguration.publicFilterChain) : un cookie
+    // access_token périmé/déjà révoqué ne doit jamais empêcher la déconnexion, donc
+    // pas de validation JWT automatique ici — on décode le cookie nous-mêmes,
+    // uniquement pour savoir QUI se déconnecte (voir revoquerSessionsWeb), sans
+    // bloquer si le décodage échoue (cookie absent, expiré, invalide) : les
+    // cookies sont de toute façon effacés dans tous les cas.
     @PostMapping("/auth/logout")
-    public ResponseEntity<ApiResponse<String>> logout(HttpServletResponse httpServletResponse) {
+    public ResponseEntity<ApiResponse<String>> logout(
+            HttpServletResponse httpServletResponse,
+            @CookieValue(name = CookieAuthUtils.ACCESS_COOKIE, required = false) String accessToken) {
+        if (accessToken != null && !accessToken.isBlank()) {
+            try {
+                String uniqueId = jwtDecoder.decode(accessToken).getClaimAsString("uniqueId");
+                if (uniqueId != null) {
+                    utilisateursServices.revoquerSessionsWeb(uniqueId);
+                }
+            } catch (Exception e) {
+                // Token déjà expiré/invalide : rien à révoquer, la déconnexion continue.
+            }
+        }
         cookieAuthUtils.clearAuthCookies(httpServletResponse);
         return ApiResponse.createResponse("Déconnexion réussie", HttpStatus.OK, "OK", null);
     }

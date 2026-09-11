@@ -54,4 +54,9 @@ public interface UtilisateursServices {
     /** Réservé à un ADMIN/SUPER_ADMIN : génère et envoie par email un nouveau mot de
      * passe, jamais retourné en clair dans la réponse. */
     UtilisateursDTO resetPasswordAndNotify(String uniqueId);
+
+    /** Invalide immédiatement tous les tokens web (mot de passe) déjà émis pour ce
+     * compte — appelé à la déconnexion (voir authControllers.logout). N'affecte
+     * jamais les tokens QR mobile, voir Utilisateurs.tokenVersion. */
+    void revoquerSessionsWeb(String uniqueId);
 }

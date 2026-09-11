@@ -65,6 +65,10 @@ public class AuthImpl implements AuthServices {
 
         String subject = null;
         String scope = null;
+        // tokenVersion embarqué dans le refresh token décodé (null pour un login mot
+        // de passe classique, comparé plus bas à celui en base uniquement pour un
+        // refresh — voir Utilisateurs.tokenVersion).
+        Integer refreshTokenVersion = null;
 
         // =============================== LOGIN NORMAL ===============================
         if (grantType.equals("password")) {
@@ -107,6 +111,7 @@ public class AuthImpl implements AuthServices {
             scope = userDetails.getAuthorities()
                     .stream().map(GrantedAuthority::getAuthority)
                     .collect(Collectors.joining(" "));
+            refreshTokenVersion = decodeJWT.getClaim("tokenVersion");
         }
 
         // =============================== ON RÉCUPÈRE LE USER ===============================
@@ -118,6 +123,19 @@ public class AuthImpl implements AuthServices {
         Utilisateurs currentUser = repo.findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
                 cleIdentification, cleIdentification, cleIdentification
         ).orElseThrow(() -> new IllegalArgumentException("Identifiant incorrect"));
+
+        // Refresh token émis avant la dernière déconnexion ("Déconnexion" incrémente
+        // tokenVersion, voir authControllers.logout) : rejeté plutôt que de laisser
+        // une session soi-disant terminée continuer à générer de nouveaux access
+        // tokens valables jusqu'à 7 jours.
+        if (grantType.equals("refreshToken")) {
+            int versionEnBase = currentUser.getTokenVersion() != null ? currentUser.getTokenVersion() : 0;
+            int versionDuToken = refreshTokenVersion != null ? refreshTokenVersion : 0;
+            if (versionDuToken != versionEnBase) {
+                return new ResponseEntity<>(Map.of("errorMessage", "Session expirée, veuillez vous reconnecter."),
+                        HttpStatus.UNAUTHORIZED);
+            }
+        }
 
         // =============================== ACCÈS APP (PRODUCTEUR/FINANCIER) ===============================
         // Ne s'applique qu'au login mot de passe (web ou mobile), pas au refresh d'une
@@ -140,6 +158,8 @@ public class AuthImpl implements AuthServices {
         // =============================== CREATION DU JWT ===============================
         Instant now = Instant.now();
 
+        int tokenVersionActuel = currentUser.getTokenVersion() != null ? currentUser.getTokenVersion() : 0;
+
         JwtClaimsSet jwtClaimsSet = JwtClaimsSet.builder()
                 .subject(subject)
                 .issuedAt(now)
@@ -147,6 +167,7 @@ public class AuthImpl implements AuthServices {
                 .issuer("diafarms")
                 .claim("scope", scope)
                 .claim("uniqueId", currentUser.getUniqueId())
+                .claim("tokenVersion", tokenVersionActuel)
                 .build();
 
         String accessToken = jwtEncoder.encode(JwtEncoderParameters.from(jwtClaimsSet)).getTokenValue();
@@ -172,6 +193,7 @@ public class AuthImpl implements AuthServices {
                     .issuedAt(now)
                     .expiresAt(now.plus(7, ChronoUnit.DAYS))
                     .issuer("diafarms")
+                    .claim("tokenVersion", tokenVersionActuel)
                     .build();
             String refreshTk = jwtEncoder.encode(JwtEncoderParameters.from(refreshClaims)).getTokenValue();
             authModel.setRefreshToken(refreshTk);

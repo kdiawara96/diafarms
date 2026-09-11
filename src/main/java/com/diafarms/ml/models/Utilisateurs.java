@@ -82,6 +82,21 @@ public class Utilisateurs {
     @Column(name = "must_change_password")
     private Boolean mustChangePassword = false;
 
+    // Révocation immédiate des sessions web (déconnexion "réelle") : embarqué comme
+    // claim dans chaque access/refresh token émis par mot de passe (voir AuthImpl.jwt),
+    // incrémenté à la déconnexion (voir authControllers.logout). Un token web déjà
+    // émis dont le tokenVersion ne correspond plus à celui en base devient invalide
+    // immédiatement, plutôt que de rester valable jusqu'à son expiration naturelle
+    // (7 jours) même après clic sur "Déconnexion". Ne concerne QUE les tokens web
+    // (mot de passe) : les tokens QR mobile (type=QR_CODE, voir QRCodeService) n'ont
+    // pas ce claim et ne sont jamais affectés — une déconnexion web ne doit pas
+    // couper l'accès mobile déjà distribué. Boolean (pas Integer) évité ici
+    // volontairement : Integer, jamais NULL en pratique après ddl-auto=update grâce
+    // au défaut Java, mais traité comme 0 si NULL par sécurité côté code (lignes
+    // existantes restées NULL après l'ALTER TABLE).
+    @Column(name = "token_version")
+    private Integer tokenVersion = 0;
+
     // Mot de passe oublié : code à 6 chiffres envoyé par email, à usage unique
     // et à courte durée de vie (voir PasswordResetServiceImpl). String (pas
     // int) pour ne pas perdre les zéros en tête du code.
