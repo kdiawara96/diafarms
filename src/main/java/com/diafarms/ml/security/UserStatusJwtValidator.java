@@ -59,9 +59,13 @@ public class UserStatusJwtValidator implements OAuth2TokenValidator<Jwt> {
         // mécanisme distinct et volontairement persistant (pas de "déconnexion" côté
         // mobile qui doive le couper).
         if (!isQrCode) {
-            Integer tokenVersionDuToken = token.getClaim("tokenVersion");
+            // Number (pas Integer) : Nimbus décode les claims numériques du JWT en
+            // Long, un cast direct vers Integer levait une ClassCastException à
+            // chaque requête authentifiée — bug bloquant introduit avec ce mécanisme,
+            // corrigé ici.
+            Number tokenVersionDuToken = token.getClaim("tokenVersion");
             int versionActuelle = user.getTokenVersion() != null ? user.getTokenVersion() : 0;
-            int versionDuToken = tokenVersionDuToken != null ? tokenVersionDuToken : 0;
+            int versionDuToken = tokenVersionDuToken != null ? tokenVersionDuToken.intValue() : 0;
             if (versionDuToken != versionActuelle) {
                 return OAuth2TokenValidatorResult.failure(
                         new OAuth2Error("invalid_token", "Session expirée, veuillez vous reconnecter.", null));

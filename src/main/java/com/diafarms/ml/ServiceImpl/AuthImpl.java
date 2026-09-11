@@ -67,8 +67,10 @@ public class AuthImpl implements AuthServices {
         String scope = null;
         // tokenVersion embarqué dans le refresh token décodé (null pour un login mot
         // de passe classique, comparé plus bas à celui en base uniquement pour un
-        // refresh — voir Utilisateurs.tokenVersion).
-        Integer refreshTokenVersion = null;
+        // refresh — voir Utilisateurs.tokenVersion). Number (pas Integer) : Nimbus
+        // décode les claims numériques du JWT en Long, un cast direct vers Integer
+        // levait une ClassCastException à chaque refresh.
+        Number refreshTokenVersion = null;
 
         // =============================== LOGIN NORMAL ===============================
         if (grantType.equals("password")) {
@@ -130,7 +132,7 @@ public class AuthImpl implements AuthServices {
         // tokens valables jusqu'à 7 jours.
         if (grantType.equals("refreshToken")) {
             int versionEnBase = currentUser.getTokenVersion() != null ? currentUser.getTokenVersion() : 0;
-            int versionDuToken = refreshTokenVersion != null ? refreshTokenVersion : 0;
+            int versionDuToken = refreshTokenVersion != null ? refreshTokenVersion.intValue() : 0;
             if (versionDuToken != versionEnBase) {
                 return new ResponseEntity<>(Map.of("errorMessage", "Session expirée, veuillez vous reconnecter."),
                         HttpStatus.UNAUTHORIZED);
