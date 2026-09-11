@@ -1,5 +1,7 @@
 package com.diafarms.ml.services;
 
+import java.util.List;
+
 import com.diafarms.ml.DTO.AbonnementConfigDTO;
 import com.diafarms.ml.DTO.AbonnementDTO;
 import com.diafarms.ml.DTO.PaiementAbonnementDTO;
@@ -42,4 +44,10 @@ public interface AbonnementService {
 
     // SUPER_ADMIN uniquement. Mise à jour partielle (champs non-null seulement).
     AbonnementConfigDTO updateConfig(AbonnementConfigUpdateRequest request);
+
+    // Historique complet des déclarations de paiement de la ferme courante (toutes
+    // statuts confondus, plus récentes d'abord) — pour la page Abonnement (liste +
+    // petit rapport + filtres, faits côté web sur ce volume trivial). Retourne une
+    // liste vide si l'utilisateur courant n'a pas de ferme (SUPER_ADMIN).
+    List<PaiementAbonnementDTO> getHistorique();
 }

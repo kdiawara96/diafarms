@@ -34,6 +34,15 @@ public class AbonnementController {
         }
     }
 
+    @GetMapping("/historique")
+    public ResponseEntity<ApiResponse<List<PaiementAbonnementDTO>>> historique() {
+        try {
+            return ApiResponse.createResponse("Historique récupéré", HttpStatus.OK, service.getHistorique(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PostMapping("/declarer-paiement")
     public ResponseEntity<ApiResponse<PaiementAbonnementDTO>> declarerPaiement(@RequestBody DeclarerPaiementAbonnementRequest request) {
         try {

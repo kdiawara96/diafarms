@@ -1,5 +1,6 @@
 package com.diafarms.ml.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -25,4 +26,11 @@ public interface PaiementAbonnementRepo extends JpaRepository<PaiementAbonnement
     // confondues — voir AbonnementServiceImpl.listEnAttente.
     @Query("SELECT p FROM PaiementAbonnement p WHERE p.statut = :statut ORDER BY p.dateDeclaration ASC")
     Page<PaiementAbonnement> findByStatutOrderByDateDeclarationAsc(@Param("statut") StatutPaiementAbonnement statut, Pageable pageable);
+
+    // Historique complet des déclarations de paiement d'une ferme (voir
+    // AbonnementServiceImpl.getHistorique) — volume trivial (au plus quelques
+    // dizaines de lignes sur toute la vie d'un abonnement), filtrage/pagination
+    // faits côté service en Java plutôt qu'en JPQL avec paramètre optionnel
+    // (évite le bug Postgres "(:param IS NULL OR ...)" sur un type énuméré).
+    List<PaiementAbonnement> findByAbonnement_Farm_IdOrderByDateDeclarationDesc(Long farmId);
 }

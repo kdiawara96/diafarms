@@ -3,6 +3,7 @@ package com.diafarms.ml.ServiceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -219,6 +220,19 @@ public class AbonnementServiceImpl implements AbonnementService {
 
         return AbonnementDTO.of(abonnement, effectif.statut(), effectif.enGrace(), effectif.joursRestants(),
                 PaiementAbonnementDTO.fromEntity(enAttente));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaiementAbonnementDTO> getHistorique() {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) {
+            return List.of();
+        }
+        return paiementAbonnementRepo.findByAbonnement_Farm_IdOrderByDateDeclarationDesc(currentUser.getFarm().getId())
+                .stream()
+                .map(PaiementAbonnementDTO::fromEntity)
+                .toList();
     }
 
     @Override
