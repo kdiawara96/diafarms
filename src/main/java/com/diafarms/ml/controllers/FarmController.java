@@ -6,12 +6,17 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.repository.FarmsRepo;
 import com.diafarms.ml.services.MinioService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +37,7 @@ public class FarmController {
     private final MinioService minioService;
 
     @GetMapping("/me")
-    public ResponseEntity<ApiResponse<Map<String, String>>> getMyFarm() {
+    public ResponseEntity<ApiResponse<Map<String, String>>> getMyFarm(HttpServletRequest request) {
         Farm farm = getCurrentUserFarm();
         if (farm == null) {
             return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.OK, null, null);
@@ -46,9 +51,69 @@ public class FarmController {
         result.put("telephone1", farm.getTelephone1() == null ? "" : farm.getTelephone1());
         result.put("telephone2", farm.getTelephone2() == null ? "" : farm.getTelephone2());
         result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
-        result.put("logoUrl", presignedUrlOrNull(farm.getLogoNomMinio()));
-        result.put("tamponUrl", presignedUrlOrNull(farm.getTamponNomMinio()));
+        result.put("logoUrl", brandingUrlOrNull(request, farm, farm.getLogoNomMinio(), "logo"));
+        result.put("tamponUrl", brandingUrlOrNull(request, farm, farm.getTamponNomMinio(), "tampon"));
         return ApiResponse.createResponse("Ferme récupérée", HttpStatus.OK, result, null);
+    }
+
+    // Les URLs pré-signées MinIO pointent vers un hostname interne au réseau Docker
+    // (MINIO_URL), injoignable depuis le navigateur — d'où le logo/tampon qui ne
+    // s'affichaient jamais en production. On sert donc les octets nous-mêmes via un
+    // endpoint public (voir logo()/tampon() ci-dessous), construit ici en URL absolue
+    // à partir de la requête entrante plutôt que d'un BASE_URL statique.
+    private String brandingUrlOrNull(HttpServletRequest request, Farm farm, String nomMinio, String type) {
+        if (nomMinio == null) return null;
+        return UriComponentsBuilder.fromHttpUrl(publicBaseUrl(request))
+                .path("/diafarms/api/v1/farms/")
+                .path(farm.getUniqueId())
+                .path("/" + type)
+                .toUriString();
+    }
+
+    // Derrière le reverse-proxy de prod, le back ne voit que du HTTP interne : on
+    // force https en prod pour ne pas générer une URL http:// que le navigateur
+    // bloquerait (mixed content) depuis le site servi en https.
+    private String publicBaseUrl(HttpServletRequest request) {
+        String host = request.getServerName();
+        boolean local = "localhost".equals(host) || "127.0.0.1".equals(host);
+        String scheme = local ? request.getScheme() : "https";
+        StringBuilder url = new StringBuilder(scheme).append("://").append(host);
+        int port = request.getServerPort();
+        boolean defaultPort = ("http".equals(scheme) && port == 80) || ("https".equals(scheme) && port == 443);
+        if (local && !defaultPort) url.append(":").append(port);
+        return url.toString();
+    }
+
+    // Publics (pas d'authentification) : un <img src="..."> ne transmet pas les
+    // cookies cross-site en SameSite=Lax, il faut donc que ces routes soient
+    // accessibles sans session — voir SecurityConfiguration.publicFilterChain.
+    // Identifiées par uniqueId de ferme (pas par utilisateur courant) précisément
+    // pour pouvoir rester publiques sans exposer de données sensibles.
+    @GetMapping("/{farmUniqueId}/logo")
+    public ResponseEntity<?> logo(@PathVariable String farmUniqueId) {
+        return streamBranding(farmUniqueId, true);
+    }
+
+    @GetMapping("/{farmUniqueId}/tampon")
+    public ResponseEntity<?> tampon(@PathVariable String farmUniqueId) {
+        return streamBranding(farmUniqueId, false);
+    }
+
+    private ResponseEntity<?> streamBranding(String farmUniqueId, boolean isLogo) {
+        Farm farm = farmsRepo.findByUniqueId(farmUniqueId);
+        String nomMinio = farm == null ? null : (isLogo ? farm.getLogoNomMinio() : farm.getTamponNomMinio());
+        if (nomMinio == null) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            InputStream stream = minioService.downloadFile(nomMinio);
+            String contentType = minioService.getContentType(nomMinio);
+            return ResponseEntity.ok()
+                    .contentType(contentType != null ? MediaType.parseMediaType(contentType) : MediaType.APPLICATION_OCTET_STREAM)
+                    .body(new InputStreamResource(stream));
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     // Coordonnées de la ferme (nom, adresse, contact) — un seul formulaire côté web
@@ -85,8 +150,8 @@ public class FarmController {
     }
 
     @PostMapping("/me/logo")
-    public ResponseEntity<ApiResponse<String>> uploadLogo(@RequestParam("file") MultipartFile file) {
-        return uploadBranding(file, true);
+    public ResponseEntity<ApiResponse<String>> uploadLogo(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
+        return uploadBranding(file, true, request);
     }
 
     @DeleteMapping("/me/logo")
@@ -95,8 +160,8 @@ public class FarmController {
     }
 
     @PostMapping("/me/tampon")
-    public ResponseEntity<ApiResponse<String>> uploadTampon(@RequestParam("file") MultipartFile file) {
-        return uploadBranding(file, false);
+    public ResponseEntity<ApiResponse<String>> uploadTampon(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
+        return uploadBranding(file, false, request);
     }
 
     @DeleteMapping("/me/tampon")
@@ -104,7 +169,7 @@ public class FarmController {
         return removeBranding(false);
     }
 
-    private ResponseEntity<ApiResponse<String>> uploadBranding(MultipartFile file, boolean isLogo) {
+    private ResponseEntity<ApiResponse<String>> uploadBranding(MultipartFile file, boolean isLogo, HttpServletRequest request) {
         try {
             Utilisateurs currentUser = ensureAdmin();
             Farm farm = getCurrentUserFarm();
@@ -122,7 +187,7 @@ public class FarmController {
                 try { minioService.deleteFile(ancien); } catch (Exception ignored) { }
             }
             return ApiResponse.createResponse((isLogo ? "Logo" : "Tampon") + " mis à jour", HttpStatus.OK,
-                    minioService.getPresignedUrl(nomMinio), null);
+                    brandingUrlOrNull(request, farm, nomMinio, isLogo ? "logo" : "tampon"), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -148,15 +213,6 @@ public class FarmController {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
-        }
-    }
-
-    private String presignedUrlOrNull(String nomMinio) {
-        if (nomMinio == null) return null;
-        try {
-            return minioService.getPresignedUrl(nomMinio);
-        } catch (Exception e) {
-            return null;
         }
     }
 

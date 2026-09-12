@@ -104,6 +104,8 @@ public class SecurityConfiguration {
                     "/v3/api-docs/**",
                     "/templates/**",
                     "/diafarms/files/**",
+                    "/diafarms/api/v1/farms/*/logo",
+                    "/diafarms/api/v1/farms/*/tampon",
                     "/webjars/**",
                     "/swagger-resources/**",
                     "/api-docs/**",

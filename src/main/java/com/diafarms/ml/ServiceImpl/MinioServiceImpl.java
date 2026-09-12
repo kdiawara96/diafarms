@@ -83,6 +83,19 @@ public class MinioServiceImpl  implements MinioService{
     }
 
     /**
+     * Type MIME stocké lors de l'upload (voir putObject ci-dessus) — utile pour
+     * renvoyer le bon Content-Type en re-streamant un fichier côté back.
+     */
+    public String getContentType(String nomMinio) throws Exception {
+        return minioClient.statObject(
+            StatObjectArgs.builder()
+                .bucket(VariableEnv.get("MINIO_BUCKET_NAME"))
+                .object(nomMinio)
+                .build()
+        ).contentType();
+    }
+
+    /**
      * Supprimer un fichier
      */
     public void deleteFile(String nomMinio) throws Exception {

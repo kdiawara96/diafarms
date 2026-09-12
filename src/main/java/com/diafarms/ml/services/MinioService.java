@@ -10,5 +10,6 @@ public interface MinioService {
     String uploadFile(MultipartFile file, String dossier) throws Exception;
     String getPresignedUrl(String nomMinio) throws Exception;
     InputStream downloadFile(String nomMinio) throws Exception;
+    String getContentType(String nomMinio) throws Exception;
     void deleteFile(String nomMinio) throws Exception;
 }
