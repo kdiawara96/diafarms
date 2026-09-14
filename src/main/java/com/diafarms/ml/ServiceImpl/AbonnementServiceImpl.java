@@ -38,6 +38,7 @@ import com.diafarms.ml.request.others.DeclarerPaiementAbonnementRequest;
 import com.diafarms.ml.request.others.RejeterPaiementAbonnementRequest;
 import com.diafarms.ml.services.AbonnementService;
 import com.diafarms.ml.services.EmailService;
+import com.diafarms.ml.services.LogsServices;
 
 import lombok.RequiredArgsConstructor;
 
@@ -51,6 +52,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     private final UtilisateursRepo utilisateursRepo;
     private final EmailService emailService;
     private final OtherService otherService;
+    private final LogsServices logs;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
@@ -276,6 +278,8 @@ public class AbonnementServiceImpl implements AbonnementService {
         paiement.setDeclarePar(currentUser);
         paiement.setInitialisation(Initialisation.init());
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
+        logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
+                "Déclaration d'un paiement d'abonnement : " + montant + " FCFA (" + periodicite + ")");
 
         String farmNom = resoudreFarmNom(currentUser.getFarm(), currentUser.getFarmName());
         for (Utilisateurs superAdmin : utilisateursRepo.findAllSuperAdmins()) {
@@ -332,6 +336,8 @@ public class AbonnementServiceImpl implements AbonnementService {
         paiement.setDateValidation(LocalDateTime.now());
         paiement.setValidePar(currentUser);
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
+        logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
+                "Validation du paiement d'abonnement de la ferme " + resoudreFarmNom(abonnement.getFarm(), null));
 
         if (paiement.getDeclarePar() != null) {
             String farmNom = resoudreFarmNom(abonnement.getFarm(), paiement.getDeclarePar().getFarmName());
@@ -358,7 +364,10 @@ public class AbonnementServiceImpl implements AbonnementService {
         paiement.setDateValidation(LocalDateTime.now());
         paiement.setValidePar(currentUser);
         paiement.setMotifRejet(request != null ? request.getMotif() : null);
-        return PaiementAbonnementDTO.fromEntity(paiementAbonnementRepo.save(paiement));
+        PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
+        logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
+                "Rejet du paiement d'abonnement de la ferme " + resoudreFarmNom(paiement.getAbonnement().getFarm(), null));
+        return PaiementAbonnementDTO.fromEntity(saved);
     }
 
     @Override
@@ -382,6 +391,8 @@ public class AbonnementServiceImpl implements AbonnementService {
         if (request.getPrixAnnuel() != null) config.setPrixAnnuel(request.getPrixAnnuel());
         if (request.getDureeEssaiJours() != null) config.setDureeEssaiJours(request.getDureeEssaiJours());
         if (request.getDureeGraceHeures() != null) config.setDureeGraceHeures(request.getDureeGraceHeures());
-        return AbonnementConfigDTO.fromEntity(configRepo.save(config));
+        AbonnementConfig saved = configRepo.save(config);
+        logs.addLogs(currentUser.getId(), saved.getId(), "AbonnementConfig", "Mise à jour de la configuration des abonnements");
+        return AbonnementConfigDTO.fromEntity(saved);
     }
 }

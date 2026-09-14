@@ -25,6 +25,7 @@ import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.ReformeRepo;
 import com.diafarms.ml.request.create.MagasinTransfertCreate;
+import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.MagasinTransfertService;
 
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final ReformeRepo reformeRepo;
     private final OtherService otherService;
+    private final LogsServices logs;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -183,7 +185,10 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             t.setCreePar(currentUser);
             t.setInitialisation(Initialisation.init());
 
-            return List.of(MagasinTransfertDTO.fromEntity(magasinTransfertRepo.save(t)));
+            MagasinTransfert saved = magasinTransfertRepo.save(t);
+            logs.addLogs(currentUser.getId(), saved.getId(), "MagasinTransfert",
+                    "Transfert de " + data.getQuantite() + " " + type + " vers le magasin " + magasin.getNom());
+            return List.of(MagasinTransfertDTO.fromEntity(saved));
         }
 
         // Œufs (bons ou cassés) : la source est un magasin de stockage, pas un projet —
@@ -219,6 +224,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
         }
 
         List<MagasinTransfertDTO> resultats = new java.util.ArrayList<>();
+        Long premierId = null;
         for (RepartitionUtil.Part part : parts) {
             Projets projet = projetsParId.get(part.projetId);
 
@@ -234,8 +240,15 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             t.setCreePar(currentUser);
             t.setInitialisation(Initialisation.init());
 
-            resultats.add(MagasinTransfertDTO.fromEntity(magasinTransfertRepo.save(t)));
+            MagasinTransfert saved = magasinTransfertRepo.save(t);
+            if (premierId == null) premierId = saved.getId();
+            resultats.add(MagasinTransfertDTO.fromEntity(saved));
         }
+        // Une seule entrée de log pour tout l'appel (pas une par projet contributeur) —
+        // ce sont des lignes techniques de répartition, pas des actions distinctes du
+        // point de vue de l'utilisateur qui a lancé UN transfert.
+        logs.addLogs(currentUser.getId(), premierId, "MagasinTransfert",
+                "Transfert de " + data.getQuantite() + " " + type + " depuis " + magasinStockage.getNom() + " vers le magasin " + magasin.getNom());
         return resultats;
     }
 

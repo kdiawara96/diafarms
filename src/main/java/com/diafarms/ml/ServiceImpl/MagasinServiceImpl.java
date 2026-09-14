@@ -19,6 +19,7 @@ import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.repository.VenteOeufsRepartitionRepo;
 import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
 import com.diafarms.ml.request.create.MagasinCreate;
+import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.MagasinService;
 
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class MagasinServiceImpl implements MagasinService {
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
     private final UtilisateursRepo utilisateursRepo;
     private final OtherService otherService;
+    private final LogsServices logs;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -97,7 +99,11 @@ public class MagasinServiceImpl implements MagasinService {
         m.setLongitude(data.getLongitude());
         m.setInitialisation(Initialisation.init());
 
-        return MagasinDTO.fromEntity(magasinRepo.save(m));
+        Magasin saved = magasinRepo.save(m);
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Magasin", "Ajout d'un magasin : " + saved.getNom());
+        }
+        return MagasinDTO.fromEntity(saved);
     }
 
     // Pertinent seulement pour un magasin de STOCKAGE — pas de vérification stricte du
@@ -154,7 +160,11 @@ public class MagasinServiceImpl implements MagasinService {
         m.setLongitude(data.getLongitude());
         if (m.getInitialisation() != null) m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 
-        return MagasinDTO.fromEntity(magasinRepo.save(m));
+        Magasin saved = magasinRepo.save(m);
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Magasin", "Mise à jour du magasin : " + saved.getNom());
+        }
+        return MagasinDTO.fromEntity(saved);
     }
 
     private List<Utilisateurs> resolveVendeurs(List<String> uniqueIds) {
@@ -177,6 +187,10 @@ public class MagasinServiceImpl implements MagasinService {
         m.getInitialisation().setRemoved(!m.getInitialisation().getRemoved());
         magasinRepo.save(m);
         boolean removed = m.getInitialisation().getRemoved();
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), m.getId(), "Magasin",
+                    (removed ? "Suppression" : "Restauration") + " du magasin : " + m.getNom());
+        }
         return removed ? "Magasin supprimé." : "Magasin récupéré.";
     }
 

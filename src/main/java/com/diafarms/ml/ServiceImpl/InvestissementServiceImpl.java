@@ -18,6 +18,7 @@ import com.diafarms.ml.repository.UtilisateursRepo;
 import com.diafarms.ml.request.create.InvestissementRequest;
 import com.diafarms.ml.request.update.InvestissementUpdateRequestDTO;
 import com.diafarms.ml.services.InvestissementService;
+import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.TransactionService;
 import lombok.RequiredArgsConstructor;
 
@@ -44,6 +45,7 @@ public class InvestissementServiceImpl implements InvestissementService {
     private final UtilisateursRepo utilisateursRepo;
     private final TransactionService transactionService;
     private final OtherService otherService;
+    private final LogsServices logs;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -223,6 +225,7 @@ public class InvestissementServiceImpl implements InvestissementService {
     // 4. Une seule sauvegarde persistée en cascade (Investissement + Répartition)
     Investissement saved = investissementRepo.save(investissement);
     syncTransaction(saved, projetDedie, u);
+    logs.addLogs(u.getId(), saved.getId(), "Investissement", "Ajout d'un investissement : " + saved.getNom());
     return toDTO(saved);
 }
     
@@ -230,7 +233,8 @@ public class InvestissementServiceImpl implements InvestissementService {
     @Override
     @Transactional
     public InvestissementDTO modifierInvestissement(String uniqueId, InvestissementUpdateRequestDTO dto) {
-        ensureCanManage(getCurrentUserSafe());
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
 
         // 1. Récupération de l'investissement existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
@@ -304,7 +308,10 @@ public class InvestissementServiceImpl implements InvestissementService {
         repartitionRepo.saveAll(inv.getRepartitions());
 
         Investissement saved = investissementRepo.save(inv);
-        syncTransaction(saved, projetDedie, getCurrentUserSafe());
+        syncTransaction(saved, projetDedie, currentUser);
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Investissement", "Mise à jour de l'investissement : " + saved.getNom());
+        }
         return toDTO(saved);
     }
 
@@ -312,7 +319,8 @@ public class InvestissementServiceImpl implements InvestissementService {
     @Override
     @Transactional
     public void supprimerInvestissement(String uniqueId) {
-        ensureCanManage(getCurrentUserSafe());
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
 
         // 1. Récupérer l'investissement réel existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
@@ -321,10 +329,18 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 2. Retire la sortie comptable liée (removed=true, conserve la trace d'audit)
         transactionService.toggleRemovedBySource(inv.getUniqueId());
 
+        // Capturés avant la suppression physique (plus rien à lire sur inv après).
+        Long id = inv.getId();
+        String nom = inv.getNom();
+
         // 3. Suppression réelle et physique en BDD
         // Grâce à cascade = CascadeType.ALL et orphanRemoval = true,
         // Hibernate va d'abord nettoyer la table 'investissement_repartitions' pour cet ID avant de supprimer l'investissement.
         investissementRepo.delete(inv);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), id, "Investissement", "Suppression de l'investissement : " + nom);
+        }
     }
 
     @Override
@@ -348,7 +364,8 @@ public class InvestissementServiceImpl implements InvestissementService {
      @Override
      @Transactional
      public InvestissementRepartitionDTO ajouterRepartition(String invUniqueId, String projetUniqueId, InvestissementRepartition repartition) {
-        ensureCanManage(getCurrentUserSafe());
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
 
         // 1. Récupération des entités fortes
         Investissement inv = investissementRepo.findByUniqueId(invUniqueId)
@@ -421,6 +438,11 @@ public class InvestissementServiceImpl implements InvestissementService {
         inv.setAffectation(TypeAffectation.COMMUN);
         investissementRepo.save(inv);
 
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "InvestissementRepartition",
+                    "Ajout d'une répartition sur l'investissement " + inv.getNom() + " pour le projet " + projet.getTitre());
+        }
+
         return InvestissementRepartitionDTO.builder()
                 .id(saved.getId())
                 .codeProjet(projet.getUniqueId())
@@ -490,15 +512,20 @@ public class InvestissementServiceImpl implements InvestissementService {
 
     @Transactional
     public String supprimerRepartition(Long id) {
-        ensureCanManage(getCurrentUserSafe());
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManage(currentUser);
 
         // 1. On vérifie si l'affectation existe bien
         if (!repartitionRepo.existsById(id)) {
             throw new IllegalArgumentException("L'affectation avec l'ID " + id + " n'existe pas.");
         }
-        
+
         // 2. Suppression physique en BDD
         repartitionRepo.deleteById(id);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), id, "InvestissementRepartition", "Suppression d'une répartition d'investissement");
+        }
 
         return "Répartition supprimée avec succès.";
     }

@@ -9,6 +9,7 @@ import com.diafarms.ml.models.FarmAppSettings;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.FarmAppSettingsRepo;
 import com.diafarms.ml.services.FarmAppSettingsService;
+import com.diafarms.ml.services.LogsServices;
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,6 +19,7 @@ public class FarmAppSettingsServiceImpl implements FarmAppSettingsService {
 
     private final FarmAppSettingsRepo repo;
     private final OtherService otherService;
+    private final LogsServices logs;
 
     private boolean isAdmin(Utilisateurs u) {
         return u != null && u.getRoles() != null && u.getRoles().stream()
@@ -62,7 +64,9 @@ public class FarmAppSettingsServiceImpl implements FarmAppSettingsService {
         settings.setVenteWebEnabled(data.isVenteWebEnabled());
         settings.setResponsableWebEnabled(data.isResponsableWebEnabled());
 
-        return FarmAppSettingsDTO.fromEntity(repo.save(settings));
+        FarmAppSettings saved = repo.save(settings);
+        logs.addLogs(currentUser.getId(), saved.getId(), "FarmAppSettings", "Mise à jour des paramètres d'accès de l'application");
+        return FarmAppSettingsDTO.fromEntity(saved);
     }
 
     private FarmAppSettings findOrCreate(Farm farm) {
