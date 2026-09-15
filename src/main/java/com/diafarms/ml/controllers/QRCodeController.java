@@ -68,7 +68,8 @@ public class QRCodeController {
                     user.getFullName(),
                     rolesPipe,
                     expiresAt,
-                    now
+                    now,
+                    duration.isPermanent()
             );
 
             // Hydratation conforme à ton modèle de données

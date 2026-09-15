@@ -12,7 +12,6 @@ import com.diafarms.ml.repository.UtilisateursRepo;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +23,7 @@ public class QRCodeService {
     private final AESService aesService;
 
     public String generateAndEncryptQRCode(String username, String uniqueId, String fullName,
-                                          String rolesPipe, Instant expiresAt, Instant now) {
+                                          String rolesPipe, Instant expiresAt, Instant now, boolean permanent) {
 
         // 1. JWT Token génération — le subject DOIT être le username, pas le uniqueId :
         // OtherService.getCurrentUser() (utilisé par la quasi-totalité des endpoints, dont
@@ -50,10 +49,17 @@ public class QRCodeService {
 
         // 2. Objet d'échange chiffré : volontairement minimal (voir QrCodeEncrypte) pour
         // que le QR reste scannable — fullName/role restent disponibles via les claims du JWT.
+        // permanent (calculé par l'appelant depuis TokenDuration.isPermanent(), pas
+        // redérivé ici) : null = "pas de date à vérifier côté mobile" (voir
+        // QrCodeEncrypte/QrPayload.isExpired). Auparavant redérivé en comparant
+        // expiresAt à "now + 36500 jours" avec un ">" au lieu d'un ">=" — comme les deux
+        // valeurs sont calculées à l'identique (voir TokenDuration.calculateExpiry),
+        // cette comparaison stricte ne se déclenchait JAMAIS : un QR "permanent" se
+        // retrouvait avec une vraie date ~100 ans dans le futur, formatée en année sur
+        // 2 chiffres (dd-MM-yy) — donc identique à l'année en cours une fois relue par
+        // le mobile, qui la voyait alors comme déjà expirée.
         QrCodeEncrypte qrCode = QrCodeEncrypte.builder()
-                .qrExpiresAt(expiresAt.getEpochSecond() > now.plus(36500, ChronoUnit.DAYS).getEpochSecond()
-                        ? null
-                        : LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault()))
+                .qrExpiresAt(permanent ? null : LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault()))
                 .uniqueIdUser(uniqueId)
                 .token(token)
                 .build();
