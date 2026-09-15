@@ -16,6 +16,9 @@ public interface ClientService {
     ClientReportDTO getReport(String uniqueId);
     // Enregistre un paiement du client sur sa dette en cours (SoldeClient) — génère
     // aussi une Transaction "entrée" (l'argent rentre vraiment dans la caisse à ce
-    // moment-là), voir ClientServiceImpl.payerDette.
+    // moment-là), voir ClientServiceImpl.payerDette. Catégorie "Remboursement client"
+    // par défaut (voir la surcharge ci-dessous pour une autre catégorie, ex: un acompte
+    // de commande — CommandeServiceImpl).
     ClientDTO payerDette(String uniqueId, Double montant, String description);
+    ClientDTO payerDette(String uniqueId, Double montant, String categorie, String description);
 }

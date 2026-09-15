@@ -27,6 +27,7 @@ import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.request.create.CommandeCreate;
 import com.diafarms.ml.request.create.VenteOeufsCreate;
 import com.diafarms.ml.request.create.VenteReformeCreate;
+import com.diafarms.ml.services.ClientService;
 import com.diafarms.ml.services.CommandeService;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.VenteOeufsService;
@@ -48,6 +49,7 @@ public class CommandeServiceImpl implements CommandeService {
     private final MagasinRepo magasinRepo;
     private final VenteOeufsService venteOeufsService;
     private final VenteReformeService venteReformeService;
+    private final ClientService clientService;
     private final LogsServices logs;
     private final OtherService otherService;
 
@@ -142,6 +144,17 @@ public class CommandeServiceImpl implements CommandeService {
         Commande saved = commandeRepo.save(c);
         logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
                 "Nouvelle commande de " + saved.getQuantite() + " (" + type + ") pour " + client.getNom());
+
+        // L'acompte est de l'argent RÉELLEMENT encaissé dès maintenant, pas seulement
+        // un nombre théorique sur la commande — sans ça, ce paiement reste invisible du
+        // solde/historique du client jusqu'à la facturation (voire jamais si la
+        // commande n'est ni convertie en vente ni facturée), voir ClientServiceImpl.
+        // getReport() et le signalement qui a révélé ce trou.
+        if (nz(saved.getMontantAcompte()) > 0) {
+            clientService.payerDette(client.getUniqueId(), saved.getMontantAcompte(), "Acompte client",
+                    "Acompte sur commande — " + saved.getQuantite() + " (" + type + ")");
+        }
+
         return CommandeDTO.fromEntity(saved);
     }
 
@@ -168,7 +181,14 @@ public class CommandeServiceImpl implements CommandeService {
             if (data.getMontantEstime() <= 0) throw new IllegalArgumentException("Le montant estimé doit être positif.");
             c.setMontantEstime(data.getMontantEstime());
         }
+        // Delta seulement (pas le nouveau montant en entier) : l'ancien acompte a déjà
+        // été encaissé/enregistré lors de la création ou d'une modif précédente — voir
+        // create() ci-dessus. Ignoré si le nouvel acompte est inférieur ou égal à
+        // l'ancien (une vraie diminution ne se rembourse pas ici automatiquement).
+        double ancienAcompte = nz(c.getMontantAcompte());
         if (data.getMontantAcompte() != null) c.setMontantAcompte(data.getMontantAcompte());
+        double deltaAcompte = nz(c.getMontantAcompte()) - ancienAcompte;
+
         if (data.getDateLivraisonPrevue() != null) {
             c.setDateLivraisonPrevue(data.getDateLivraisonPrevue().isBlank() ? null : LocalDate.parse(data.getDateLivraisonPrevue()));
         }
@@ -183,6 +203,12 @@ public class CommandeServiceImpl implements CommandeService {
         if (c.getInitialisation() != null) c.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 
         Commande saved = commandeRepo.save(c);
+
+        if (deltaAcompte > 0) {
+            clientService.payerDette(c.getClient().getUniqueId(), deltaAcompte, "Acompte client",
+                    "Acompte complémentaire sur commande — " + saved.getQuantite() + " (" + saved.getType() + ")");
+        }
+
         return CommandeDTO.fromEntity(saved);
     }
 

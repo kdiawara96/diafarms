@@ -307,6 +307,12 @@ public class ClientServiceImpl implements ClientService {
     @Override
     @Transactional
     public ClientDTO payerDette(String uniqueId, Double montant, String description) {
+        return payerDette(uniqueId, montant, "Remboursement client", description);
+    }
+
+    @Override
+    @Transactional
+    public ClientDTO payerDette(String uniqueId, Double montant, String categorie, String description) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanRecordPayment(currentUser);
         if (currentUser == null || currentUser.getFarm() == null) {
@@ -325,7 +331,7 @@ public class ClientServiceImpl implements ClientService {
         txData.setCommun(true);
         txData.setDate(java.time.LocalDate.now());
         txData.setMontant(montant);
-        txData.setCategorie("Remboursement client");
+        txData.setCategorie(categorie != null && !categorie.isBlank() ? categorie : "Remboursement client");
         txData.setClientUniqueId(client.getUniqueId());
         txData.setDescription((description != null && !description.isBlank())
                 ? description
