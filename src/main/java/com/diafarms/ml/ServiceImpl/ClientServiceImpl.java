@@ -21,7 +21,9 @@ import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.repository.ClientRepo;
+import com.diafarms.ml.repository.TransactionRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.ClientCreate;
@@ -43,6 +45,7 @@ public class ClientServiceImpl implements ClientService {
     private final ClientRepo clientRepo;
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
+    private final TransactionRepo transactionRepo;
     private final SoldeClientServiceImpl soldeClientService;
     private final TransactionService transactionService;
     private final LogsServices logs;
@@ -263,6 +266,22 @@ public class ClientServiceImpl implements ClientService {
                     .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
                     .montant(v.getMontant())
                     .montantRapporte(v.getMontantRapporte())
+                    .build());
+        }
+        // Paiements/avances directs (voir payerDette) : pas de vente associée, donc
+        // absents de venteOeufsRepo/venteReformeRepo, mais ils affectent bien le solde
+        // ci-dessous — sans ça, le solde du client change sans qu'aucune ligne de
+        // l'historique n'explique pourquoi (ce que remontait l'utilisateur : un client
+        // avec un solde non nul mais "aucun achat pour l'instant").
+        for (Transaction t : transactionRepo.findByClient_UniqueIdAndFarm_IdAndInitialisation_RemovedFalse(uniqueId, farmId)) {
+            totalPaye += nz(t.getMontant());
+            historique.add(ClientVenteLigneDTO.builder()
+                    .uniqueId(t.getUniqueId())
+                    .date(t.getDate())
+                    .type("PAIEMENT")
+                    .magasinNom(null)
+                    .montant(t.getMontant())
+                    .montantRapporte(t.getMontant())
                     .build());
         }
         historique.sort((a, b) -> b.getDate().compareTo(a.getDate()));

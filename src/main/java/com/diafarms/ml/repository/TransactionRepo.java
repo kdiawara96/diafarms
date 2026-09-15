@@ -26,6 +26,13 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     // vente source est modifiée ou supprimée — voir TransactionService.createFromSource.
     Optional<Transaction> findBySourceUniqueId(String sourceUniqueId);
 
+    // Paiements/avances directs d'un client (ex: ClientServiceImpl.payerDette) — pas
+    // liés à une vente, donc invisibles dans venteOeufsRepo/venteReformeRepo, mais ils
+    // affectent bien le solde du client (voir ClientServiceImpl.getReport, qui les
+    // fusionne dans l'historique pour que le client comprenne pourquoi son solde a
+    // bougé alors qu'aucune vente ne s'affichait).
+    List<Transaction> findByClient_UniqueIdAndFarm_IdAndInitialisation_RemovedFalse(String clientUniqueId, Long farmId);
+
     @Query("SELECT COUNT(t) > 0 FROM Transaction t WHERE t.ref = :ref")
     boolean existsByRef(@Param("ref") String ref);
 
