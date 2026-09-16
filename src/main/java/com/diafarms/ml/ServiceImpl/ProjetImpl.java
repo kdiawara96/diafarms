@@ -27,7 +27,8 @@ import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Race;
 import com.diafarms.ml.models.Site;
 import com.diafarms.ml.models.Utilisateurs;
-import com.diafarms.ml.models.Vaccination;
+import com.diafarms.ml.models.Soins;
+import com.diafarms.ml.enums.TypeSoin;
 import com.diafarms.ml.models.Batiment.StatutBatiment;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.enums.TypeTransaction;
@@ -44,7 +45,7 @@ import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.repository.RaceRepo;
 import com.diafarms.ml.repository.SiteRepo;
 import com.diafarms.ml.repository.UtilisateursRepo;
-import com.diafarms.ml.repository.VaccinationRepo;
+import com.diafarms.ml.repository.SoinsRepo;
 import com.diafarms.ml.request.create.OccupationCreate;
 import com.diafarms.ml.request.create.ProjetCreate;
 import com.diafarms.ml.request.create.VaccinCreate;
@@ -133,7 +134,7 @@ public class ProjetImpl implements ProjetServices {
     private final AlimentationRepo alimentationRepo;
     private final ConsommationAlimentRepo consommationAlimentRepo;
     private final TransactionRepo transactionRepo;
-    private final VaccinationRepo vaccinationRepo;
+    private final SoinsRepo soinsRepo;
     private final OccupationBatimentRepo occupationBatimentRepo;
     private final BatimentRepo batimentRepo;
     private final InvestissementRepartitionRepository investissementRepartitionRepo;
@@ -443,29 +444,32 @@ public class ProjetImpl implements ProjetServices {
         // APPEL DE TA MÉTHODE POUR CRÉER LES ALERTES PAR DÉFAUT
         projectAlertConfigService.insertDefaultAlertsForProject(savedProjet);
 
-        // 6. Créer les vaccinations
+        // 6. Créer les vaccinations — voir Soins.java, TypeSoin.VACCINATION (fusion de
+        // l'ancienne entité Vaccination le 2026-09-16).
         if (data.getVaccins() != null && !data.getVaccins().isEmpty()) {
             for (VaccinCreate vaccinData : data.getVaccins()) {
-                Vaccination vaccination = new Vaccination();
+                Soins vaccination = new Soins();
                 vaccination.setUniqueId(generateUID());
-                vaccination.setNomVaccin(vaccinData.getNomVaccin());
-                vaccination.setQuantite(vaccinData.getQuantite());
+                vaccination.setDate(savedProjet.getDebut());
+                vaccination.setType(TypeSoin.VACCINATION);
+                vaccination.setProduit(vaccinData.getNomVaccin());
+                vaccination.setQuantite(vaccinData.getQuantite() != null ? vaccinData.getQuantite().doubleValue() : null);
                 vaccination.setPrixUnitaire(vaccinData.getPrixUnitaire());
                 vaccination.setCoutTotal(vaccinData.getCoutTotal());
-                
+
                 if (vaccinData.getModeAdministration() != null && !vaccinData.getModeAdministration().isEmpty()) {
                     vaccination.setModeAdministration(
                         String.join(" | ", vaccinData.getModeAdministration())
                     );
                 }
-                
+
                 vaccination.setProjet(savedProjet);
                 vaccination.setFarm(farm);
                 vaccination.setInitialisation(Initialisation.init());
 
-                Vaccination savedVaccination = vaccinationRepo.save(vaccination);
+                Soins savedVaccination = soinsRepo.save(vaccination);
                 if (currentUser != null && currentUser.getFarm() != null) {
-                    String descVaccin = "Vaccin " + savedVaccination.getNomVaccin() + " (" + savedVaccination.getQuantite() + " doses) — projet " + savedProjet.getTitre();
+                    String descVaccin = "Vaccin " + savedVaccination.getProduit() + " (" + savedVaccination.getQuantite() + " doses) — projet " + savedProjet.getTitre();
                     transactionService.syncSortie(savedProjet, currentUser.getFarm(), savedVaccination.getCoutTotal(), "Vaccination",
                             savedProjet.getDebut(), descVaccin, SourceTransaction.VACCINATION, savedVaccination.getUniqueId(), currentUser);
                 }

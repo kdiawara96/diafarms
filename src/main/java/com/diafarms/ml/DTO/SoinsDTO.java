@@ -22,10 +22,12 @@ public class SoinsDTO {
     private String uniqueId;
     private LocalDate date;
     private LocalTime heure;
-    private String type;
+    private String type; // "VACCINATION" | "MEDICAMENT" | "AUTRE"
     private String produit;
     private Double quantite;
+    private Double prixUnitaire; // renseigné seulement si type = VACCINATION
     private Double coutTotal;
+    private String modeAdministration; // renseigné seulement si type = VACCINATION
     private String observations;
     private String projetCode;
     private String projetUniqueId;
@@ -40,10 +42,12 @@ public class SoinsDTO {
                 .uniqueId(s.getUniqueId())
                 .date(s.getDate())
                 .heure(s.getHeure())
-                .type(s.getType())
+                .type(s.getType() != null ? s.getType().name() : null)
                 .produit(s.getProduit())
                 .quantite(s.getQuantite())
+                .prixUnitaire(s.getPrixUnitaire())
                 .coutTotal(s.getCoutTotal())
+                .modeAdministration(s.getModeAdministration())
                 .observations(s.getObservations())
                 .projetCode(s.getProjet() != null ? s.getProjet().getCode() : null)
                 .projetUniqueId(s.getProjet() != null ? s.getProjet().getUniqueId() : null)

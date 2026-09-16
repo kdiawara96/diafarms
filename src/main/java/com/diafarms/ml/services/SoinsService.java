@@ -13,5 +13,5 @@ public interface SoinsService {
 
     String deleteOrRecover(String uniqueId);
 
-    PaginatedResponse<SoinsDTO> list(int page, int size, String search, String projetUniqueId, String batimentUniqueId);
+    PaginatedResponse<SoinsDTO> list(int page, int size, String search, String projetUniqueId, String batimentUniqueId, String type);
 }

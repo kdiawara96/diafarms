@@ -106,9 +106,8 @@ public class Projets {
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Alimentation> alimentations = new ArrayList<>();
 
-    @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<Vaccination> vaccinations = new ArrayList<>();
-
+    // Regroupe vaccins/médicaments/autres soins (voir Soins.type = TypeSoin.VACCINATION
+    // pour l'équivalent de l'ancienne entité Vaccination, fusionnée ici le 2026-09-16).
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Soins> soins = new ArrayList<>();
 

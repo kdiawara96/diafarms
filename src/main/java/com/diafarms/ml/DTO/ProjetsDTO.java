@@ -54,7 +54,9 @@ public class ProjetsDTO {
      private List<AlimentationDTO> alimentation;
      private RaceDTO race;
      private List<OccupationBatimentDTO> occupationBatiment;
-     private List<VaccinationDTO> vaccination;
+     // Vaccins/médicaments/autres soins réunis dans une seule liste — voir Soins.type
+     // (TypeSoin.VACCINATION == ancien VaccinationDTO, fusionné le 2026-09-16). Le
+     // front filtre par type côté client pour ses deux sections visuelles distinctes.
      private List<SoinsDTO> soins;
      private List<ProjectAlertConfigDTO> alertConfig;
      private List<FichierMediaDTO> fichiersMedia;
@@ -189,11 +191,6 @@ public class ProjetsDTO {
 
                 .occupationBatiment(data.getOccupations() != null ? data.getOccupations().stream()
                         .map(OccupationBatimentDTO::fromEntityList)
-                        .toList() : java.util.Collections.emptyList())
-
-                // CORRECTION ICI : Ajout de la sécurité anti-NullPointerException
-                .vaccination(data.getVaccinations() != null ? data.getVaccinations().stream()
-                        .map(VaccinationDTO::fromEntity)
                         .toList() : java.util.Collections.emptyList())
 
                 .soins(data.getSoins() != null ? data.getSoins().stream()

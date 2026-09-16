@@ -28,9 +28,10 @@ public class SoinsControllers {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String projetUniqueId,
-            @RequestParam(required = false) String batimentUniqueId) {
+            @RequestParam(required = false) String batimentUniqueId,
+            @RequestParam(required = false) String type) {
         try {
-            PaginatedResponse<SoinsDTO> response = service.list(page, size, search, projetUniqueId, batimentUniqueId);
+            PaginatedResponse<SoinsDTO> response = service.list(page, size, search, projetUniqueId, batimentUniqueId, type);
             return ApiResponse.createResponse("Liste des soins récupérée", HttpStatus.OK, response, null);
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors de la récupération des soins", HttpStatus.INTERNAL_SERVER_ERROR, null, null);

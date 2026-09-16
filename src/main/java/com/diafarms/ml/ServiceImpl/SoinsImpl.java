@@ -3,6 +3,7 @@ package com.diafarms.ml.ServiceImpl;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.SoinsDTO;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.SourceTransaction;
+import com.diafarms.ml.enums.TypeSoin;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Soins;
 import com.diafarms.ml.models.Utilisateurs;
@@ -49,13 +51,39 @@ public class SoinsImpl implements SoinsService {
         }
     }
 
-    // Voir AlimentationImpl.syncTransaction — même principe pour les soins.
+    private TypeSoin parseType(String type) {
+        if (type == null || type.isBlank()) {
+            throw new IllegalArgumentException("Le type de soins est requis (VACCINATION, MEDICAMENT ou AUTRE).");
+        }
+        try {
+            return TypeSoin.valueOf(type.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Type de soins invalide : " + type);
+        }
+    }
+
+    private String joinModeAdministration(List<String> modes) {
+        if (modes == null || modes.isEmpty()) return null;
+        String joined = modes.stream()
+                .filter(m -> m != null && !m.trim().isEmpty())
+                .collect(Collectors.joining(" | "));
+        return joined.isBlank() ? null : joined;
+    }
+
+    // Voir AlimentationImpl.syncTransaction — même principe. Un vaccin (doses + prix
+    // unitaire, coût calculé automatiquement) garde sa propre catégorie comptable
+    // "Vaccination" pour ne pas mélanger les rapports existants avec les soins
+    // génériques, même si les deux vivent maintenant dans la même table.
     private void syncTransaction(Soins s, Utilisateurs currentUser) {
         if (currentUser == null || currentUser.getFarm() == null) return;
-        String description = "Soins (" + s.getType() + " — " + s.getProduit() + ") — projet "
-                + (s.getProjet() != null ? s.getProjet().getTitre() : "?");
-        transactionService.syncSortie(s.getProjet(), currentUser.getFarm(), s.getCoutTotal(), "Soins",
-                s.getDate(), description, SourceTransaction.SOINS, s.getUniqueId(), currentUser);
+        boolean vaccination = s.getType() == TypeSoin.VACCINATION;
+        String description = vaccination
+                ? "Vaccin " + s.getProduit() + " (" + s.getQuantite() + " doses) — projet " + (s.getProjet() != null ? s.getProjet().getTitre() : "?")
+                : "Soins (" + s.getType() + " — " + s.getProduit() + ") — projet " + (s.getProjet() != null ? s.getProjet().getTitre() : "?");
+        transactionService.syncSortie(s.getProjet(), currentUser.getFarm(), s.getCoutTotal(),
+                vaccination ? "Vaccination" : "Soins", s.getDate(), description,
+                vaccination ? SourceTransaction.VACCINATION : SourceTransaction.SOINS,
+                s.getUniqueId(), currentUser);
     }
 
     @Override
@@ -71,10 +99,12 @@ public class SoinsImpl implements SoinsService {
         s.setProjet(projet);
         s.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
         s.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
-        s.setType(data.getType());
+        s.setType(parseType(data.getType()));
         s.setProduit(data.getProduit());
         s.setQuantite(data.getQuantite());
+        s.setPrixUnitaire(data.getPrixUnitaire());
         s.setCoutTotal(data.getCoutTotal());
+        s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         s.setObservations(data.getObservations());
         s.setInitialisation(Initialisation.init());
 
@@ -104,10 +134,12 @@ public class SoinsImpl implements SoinsService {
 
         if (data.getDate() != null) s.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) s.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
-        if (data.getType() != null) s.setType(data.getType());
+        if (data.getType() != null) s.setType(parseType(data.getType()));
         if (data.getProduit() != null) s.setProduit(data.getProduit());
         if (data.getQuantite() != null) s.setQuantite(data.getQuantite());
+        if (data.getPrixUnitaire() != null) s.setPrixUnitaire(data.getPrixUnitaire());
         if (data.getCoutTotal() != null) s.setCoutTotal(data.getCoutTotal());
+        if (data.getModeAdministration() != null) s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         if (data.getObservations() != null) s.setObservations(data.getObservations());
         if (data.getBatimentUniqueId() != null) {
             s.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
@@ -149,7 +181,7 @@ public class SoinsImpl implements SoinsService {
 
     @Override
     @Transactional(readOnly = true)
-    public PaginatedResponse<SoinsDTO> list(int page, int size, String search, String projetUniqueId, String batimentUniqueId) {
+    public PaginatedResponse<SoinsDTO> list(int page, int size, String search, String projetUniqueId, String batimentUniqueId, String type) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "date"));
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -158,8 +190,9 @@ public class SoinsImpl implements SoinsService {
         String searchParam = (search == null || search.isBlank()) ? null : "%" + search.trim().toLowerCase() + "%";
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
+        TypeSoin typeParam = (type == null || type.isBlank()) ? null : parseType(type);
 
-        Page<Soins> resultPage = soinsRepo.search(farmId, projetParam, batimentParam, searchParam, pageable);
+        Page<Soins> resultPage = soinsRepo.search(farmId, projetParam, batimentParam, typeParam, searchParam, pageable);
 
         List<SoinsDTO> dtoList = resultPage.getContent().stream()
                 .map(SoinsDTO::fromEntity)

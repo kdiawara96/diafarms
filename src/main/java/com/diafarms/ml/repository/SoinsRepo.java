@@ -1,5 +1,6 @@
 package com.diafarms.ml.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -22,10 +23,15 @@ public interface SoinsRepo extends JpaRepository<Soins, Long> {
         "AND s.initialisation.removed = false " +
         "AND (:projetUniqueId IS NULL OR p.uniqueId = :projetUniqueId) " +
         "AND (:batimentUniqueId IS NULL OR b.uniqueId = :batimentUniqueId) " +
-        "AND (:search IS NULL OR LOWER(s.produit) LIKE :search OR LOWER(s.observations) LIKE :search OR LOWER(s.type) LIKE :search)")
+        "AND (:type IS NULL OR s.type = :type) " +
+        "AND (:search IS NULL OR LOWER(s.produit) LIKE :search OR LOWER(s.observations) LIKE :search)")
     Page<Soins> search(@Param("farmId") Long farmId,
                         @Param("projetUniqueId") String projetUniqueId,
                         @Param("batimentUniqueId") String batimentUniqueId,
+                        @Param("type") com.diafarms.ml.enums.TypeSoin type,
                         @Param("search") String search,
                         Pageable pageable);
+
+    @Query("SELECT s FROM Soins s WHERE s.projet.uniqueId = :projetUniqueId AND s.initialisation.removed = false")
+    List<Soins> findByProjetUniqueIdAndInitialisationRemovedFalse(@Param("projetUniqueId") String projetUniqueId);
 }
