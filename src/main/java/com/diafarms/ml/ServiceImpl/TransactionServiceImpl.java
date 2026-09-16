@@ -60,6 +60,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final ClientRepo clientRepo;
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
+    private final SoldeClientServiceImpl soldeClientService;
 
     // Sentinelles "pas de filtre" pour les requêtes agrégat par date (voir
     // TransactionRepo.countByProjetIdsAndStatut) — Postgres échoue à déterminer le
@@ -465,6 +466,16 @@ public class TransactionServiceImpl implements TransactionService {
         t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
         transactionRepo.save(t);
         boolean removed = t.getInitialisation().getRemoved();
+
+        // Un client n'est renseigné sur une transaction QUE via ClientServiceImpl.payerDette
+        // (remboursement, acompte de commande, paiement de facture — voir create() ci-dessus),
+        // qui ajuste toujours SoldeClient de -montant au moment de la création. Sans ce
+        // rattrapage, supprimer/restaurer une telle transaction laissait le solde du client
+        // définitivement faux (contrairement à VenteOeufsImpl/VenteReformeImpl.deleteOrRecover,
+        // qui reversent bien ajusterEcart).
+        if (t.getClient() != null) {
+            soldeClientService.ajusterSolde(t.getClient(), t.getFarm(), removed ? t.getMontant() : -t.getMontant());
+        }
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), t.getId(), "Transaction",
