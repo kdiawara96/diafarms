@@ -29,6 +29,7 @@ public class AlimentationDTO {
     private LocalDate dateDistribution;
     private LocalTime heure;
     private String observations;
+    private String fournisseur;
     private String projetCode;
     private String projetUniqueId;
     private String batimentNom;
@@ -53,6 +54,7 @@ public class AlimentationDTO {
                 .dateDistribution(data.getDateDistribution())
                 .heure(data.getHeure())
                 .observations(data.getObservations())
+                .fournisseur(data.getFournisseur())
                 .projetCode(data.getProjet() != null ? data.getProjet().getCode() : null)
                 .projetUniqueId(data.getProjet() != null ? data.getProjet().getUniqueId() : null)
                 .batimentNom(data.getBatiment() != null ? data.getBatiment().getNom() : null)

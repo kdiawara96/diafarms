@@ -45,7 +45,10 @@ public class Alimentation {
     private LocalTime heure;
 
     @Column(name = "observations", length = 500)
-    private String observations; // Pour noter un changement de fournisseur, un refus de d'aliment, etc.
+    private String observations; // Pour noter un refus d'aliment, etc.
+
+    @Column(name = "fournisseur", length = 100)
+    private String fournisseur; // Optionnel
 
     @Embedded
     private Initialisation initialisation;

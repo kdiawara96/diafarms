@@ -107,6 +107,7 @@ public class AlimentationImpl implements AlimentationService {
         );
         alimentation.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         alimentation.setObservations(data.getObservations());
+        alimentation.setFournisseur(data.getFournisseur());
         alimentation.setProjet(projet);
         if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
             alimentation.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
@@ -186,6 +187,9 @@ public class AlimentationImpl implements AlimentationService {
         }
         if (data.getBatimentUniqueId() != null) {
             alimentation.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
+        }
+        if (data.getFournisseur() != null) {
+            alimentation.setFournisseur(data.getFournisseur());
         }
 
         // Mise à jour date
