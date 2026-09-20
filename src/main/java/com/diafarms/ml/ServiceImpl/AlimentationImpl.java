@@ -72,6 +72,18 @@ public class AlimentationImpl implements AlimentationService {
         }
     }
 
+    // L'achat d'aliment est un acte financier (il crée le stock ET la sortie d'argent) :
+    // réservé à la finance, plus à la Production, qui ne fait que consommer et consulter
+    // le stock. Même population que TransactionServiceImpl.ensureCanDemanderSuppression.
+    private void ensureCanManageAchat(Utilisateurs u) {
+        boolean ok = u != null && u.getRoles() != null && u.getRoles().stream().anyMatch(r ->
+                "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole())
+                        || "RESPONSABLE".equalsIgnoreCase(r.getRole()) || "COMPTABLE".equalsIgnoreCase(r.getRole()));
+        if (!ok) {
+            throw new IllegalArgumentException("Seule la finance (comptable, responsable ou administrateur) peut enregistrer, modifier ou supprimer un achat d'aliment.");
+        }
+    }
+
     // --- Log helper ---
     private void logAction(Utilisateurs currentUser, Alimentation alimentation, String message) {
         if (currentUser != null) {
@@ -91,6 +103,10 @@ public class AlimentationImpl implements AlimentationService {
 
         // 2. Récupérer l'utilisateur et sa ferme
         Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanManageAchat(currentUser);
+        if (data.getCoutTotal() == null || data.getCoutTotal() <= 0) {
+            throw new IllegalArgumentException("Le coût total de l'achat est obligatoire.");
+        }
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
 
         // 3. Créer l'entité
@@ -135,6 +151,7 @@ public class AlimentationImpl implements AlimentationService {
     @Override
     @Transactional
     public AlimentationDTO update(String uniqueId, AlimentationUpdate data) {
+        ensureCanManageAchat(getCurrentUserSafe());
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
@@ -216,6 +233,7 @@ public class AlimentationImpl implements AlimentationService {
     @Override
     @Transactional
     public AlimentationDTO delete(String uniqueId) {
+        ensureCanManageAchat(getCurrentUserSafe());
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
