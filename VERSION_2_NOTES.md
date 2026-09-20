@@ -520,3 +520,58 @@ cette machine de dev (Docker pas installé) — cause des 500 sur l'upload logo/
 Remplacé par un MinIO autonome (binaire direct, mêmes identifiants `.env`) : à
 relancer manuellement après un redémarrage de la machine tant que ce n'est pas
 transformé en vrai service système.
+
+---
+
+## Mise à jour 2026-09-14 à 2026-09-20 (session Santé, Entretien, achats, cohérence)
+
+Tout est déployé (backend + web), mobile APK v1.22 (versionCode 23) installé sur le
+Samsung A16. Les alertes de cohérence en direct n'ont PAS encore été testées sur
+appareil par l'utilisateur.
+
+**Règle métier centrale** : la Production note le FAIT (jamais d'argent), la
+Comptabilité saisit l'argent. Le coût d'un soin/vaccin se saisit en Comptabilité
+(Nouvelle transaction, Sortie, catégorie "Santé / Vétérinaire"). Anciens coûts
+migrés en transactions manuelles.
+
+- Suppression d'un paiement Transaction : le solde client est ré-ajusté
+  (`TransactionServiceImpl.deleteOrRecover`). "Convertir en vente" demande confirmation.
+- **Soins + Vaccination fusionnés** : une seule entité `Soins` (enum `TypeSoin`
+  VACCINATION/MEDICAMENT/AUTRE), un seul endpoint, une seule section "Santé /
+  Vétérinaire" web et mobile. Ancienne table `vaccinations` laissée en place (renommage
+  en `vaccinations_legacy_backup` proposé, jamais confirmé exécuté).
+- Section Santé (7 derniers jours) visible dans Production web, plus fiche projet.
+- **Entretien** (journal poulailler ou site, sans argent) : back + web (page dédiée) + mobile.
+- **FAQ/Aide** (web, recherchable, schémas HTML/CSS) à côté du bouton Abonnement.
+- **Fournisseur** optionnel sur l'achat d'aliment (back, web, mobile).
+- **Catégories de transaction** : Entrée = Vente, Location, Don, Autre (Prêt volontairement
+  écarté, un prêt sert à acheter aliments/matériel déjà suivis). Sortie : "Achat" retiré
+  (tout est achat). Mobile harmonisé avec le web. L'édition garde visible une catégorie
+  existante hors liste (ex "Aliment"). Champ "Spécifier la catégorie" sous Catégorie.
+- **Achat d'aliment = acte financier** : `AlimentationImpl.ensureCanManageAchat`
+  (ADMIN, SUPER_ADMIN, RESPONSABLE, COMPTABLE), coût obligatoire. Web : bouton dans
+  Comptabilité, Fiche Projet garde la saisie (ADMIN/RESPONSABLE), Production lit
+  seulement (section 7 jours, sans montant) et ne saisit que la consommation. Mobile :
+  carte "Achat d'aliment" pour le Comptable, la carte Alimentation ouvre directement
+  la Consommation. Un achat mobile hors ligne saisi par un Production sera refusé.
+- Effectif VIVANT affiché (mobile carte "Poules", web fiche projet), pas l'initial.
+- **Cohérence des saisies** (déclenchée par 10 500 œufs saisis pour 1000 poules) :
+  - `commons/EffectifVivantHelper` = source unique de l'effectif (projet ou bâtiment).
+  - `GET /plafond-saisie` (PlafondSaisieDTO : effectifVivant, perimetre, oeufsDejaCollectes,
+    oeufsRestants).
+  - Mortalité n'avait AUCUN plafond serveur : ajouté (create + update, positif, <= effectif).
+  - Cassés + non utilisables <= œufs collectés (create + update).
+  - Web : `LimiteAlerte` + `usePlafondSaisie`, alertes rouges en direct et bouton grisé
+    (collecte, mortalité, réforme, consommation, vente œufs/réforme, transfert) et dans
+    `EditProductionDialog` (la valeur d'origine est rendue disponible).
+  - Mobile : `SaisieFormActivity.refreshCoherence`, LOCAL-FIRST : cache préchargé
+    (`CachePrefetcher.CACHE_PLAFOND_PREFIX`, par projet et poulailler) moins les saisies
+    locales non envoyées (statut LOCAL seulement, les ERROR sont exclues, la saisie en
+    cours d'édition aussi). L'appel réseau ne fait que rafraîchir. `SyncManager` affiche
+    maintenant la vraie raison d'un refus serveur (errorBody).
+
+**Ouvert / non fait** : renommer `vaccinations` (SQL à faire lancer par l'utilisateur) ;
+retirer prix/coût des vaccinations de l'assistant "Nouveau projet" ; montant rapporté
+supérieur au théorique non contrôlé ; quantité des soins non validée ; effectif par
+poulailler dans la liste mobile = effectif initial ; backfill Tigiri "Acheté (théorique)" ;
+bouton "Modifier" des Commandes web.
