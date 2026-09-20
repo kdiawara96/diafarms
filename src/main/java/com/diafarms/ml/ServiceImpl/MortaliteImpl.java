@@ -36,6 +36,7 @@ public class MortaliteImpl implements MortaliteService {
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -46,11 +47,35 @@ public class MortaliteImpl implements MortaliteService {
         }
     }
 
+    // Une mortalité ne peut pas dépasser l'effectif encore vivant (bâtiment s'il est
+    // connu, sinon projet entier — même périmètre que le plafond de ponte, voir
+    // EffectifVivantHelper) : sans ça, l'effectif vivant devenait négatif et la
+    // mortalité cumulée dépassait 100 %. dejaComptees : ce que la saisie modifiée
+    // comptait déjà avant modification (0 à la création).
+    private void validerPlafondMortalite(com.diafarms.ml.models.Projets projet, com.diafarms.ml.models.Batiment batiment,
+                                         int nombreMorts, int dejaComptees) {
+        if (nombreMorts <= 0) {
+            throw new IllegalArgumentException("Le nombre de sujets morts doit être positif.");
+        }
+        int restant = effectifVivantHelper.plafond(projet, batiment) + dejaComptees;
+        if (nombreMorts > restant) {
+            String perimetre = effectifVivantHelper.plafondParBatiment(batiment) ? "ce poulailler" : "le projet";
+            throw new IllegalArgumentException(
+                "Le nombre de morts (" + nombreMorts + ") dépasse l'effectif vivant de " + perimetre + " (" + Math.max(0, restant) + " sujet(s))."
+            );
+        }
+    }
+
     @Override
     @Transactional
     public MortaliteDTO create(MortaliteCreate data) {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
+
+        int nombreMorts = data.getNombreMorts() != null ? data.getNombreMorts() : 0;
+        com.diafarms.ml.models.Batiment batimentSaisi = (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank())
+                ? batimentRepo.findByUniqueId(data.getBatimentUniqueId()) : null;
+        validerPlafondMortalite(projet, batimentSaisi, nombreMorts, 0);
 
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -87,12 +112,24 @@ public class MortaliteImpl implements MortaliteService {
         Mortalite m = mortaliteRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Mortalité introuvable : " + uniqueId));
 
+        int ancienNombre = m.getNombreMorts() != null ? m.getNombreMorts() : 0;
+        Long ancienBatimentId = m.getBatiment() != null ? m.getBatiment().getId() : null;
         if (data.getDate() != null) m.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) m.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreMorts() != null) m.setNombreMorts(data.getNombreMorts());
         if (data.getCause() != null) m.setCause(data.getCause());
         if (data.getBatimentUniqueId() != null) {
             m.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
+        }
+        // Ce que cette même saisie comptait AVANT modification est déjà dans la somme
+        // de mortalité du périmètre : on le rend disponible, sauf si le bâtiment a changé
+        // (elle ne comptait alors pas dans le nouveau périmètre).
+        boolean memePerimetre = java.util.Objects.equals(
+                ancienBatimentId, m.getBatiment() != null ? m.getBatiment().getId() : null);
+        // Seulement si le nombre ou le bâtiment change : modifier la seule cause d'une
+        // ancienne saisie ne doit pas être bloqué par un plafond qu'elle dépassait déjà.
+        if (data.getNombreMorts() != null || data.getBatimentUniqueId() != null) {
+            validerPlafondMortalite(m.getProjet(), m.getBatiment(), m.getNombreMorts(), memePerimetre ? ancienNombre : 0);
         }
         if (m.getInitialisation() != null) {
             m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());

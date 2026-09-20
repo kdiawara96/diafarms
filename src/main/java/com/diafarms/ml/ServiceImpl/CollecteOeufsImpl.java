@@ -46,6 +46,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     private final com.diafarms.ml.repository.MagasinTransfertRepo magasinTransfertRepo;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -61,44 +62,27 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     }
 
     // Une poule ne pond qu'un œuf par JOUR au plus (pas par collecte) : le nombre
-    // d'œufs collectés ne peut donc pas dépasser l'effectif vivant — même formule que
-    // ReformeImpl.effectifVivant (nbSujets - mortalité cumulée - déjà réformés, un
-    // sujet réformé ne pondant plus). La ponte se renouvelle chaque jour (ce n'est pas
-    // un stock qu'on consomme, contrairement au cheptel qu'on réforme) donc rien à
-    // soustraire ici d'un jour sur l'autre — mais DEUX collectes le MÊME jour (matin +
-    // soir) doivent, elles, être cumulées avant comparaison : voir
-    // validerPlafondJournalier, appelé séparément par create/update.
-    private int effectifVivant(Projets projet) {
-        int nbSujets = projet.getNbSujets() == null ? 0 : projet.getNbSujets();
-        int morts = nz(mortaliteRepo.sumMortsByProjetId(projet.getId()));
-        int dejaReformes = nz(reformeRepo.sumSujetsByProjetId(projet.getId()));
-        return nbSujets - morts - dejaReformes;
-    }
-
-    // Effectif vivant d'UN bâtiment précis, à partir de son occupation active
-    // (nbSujetsDansBatiment, saisi à l'assignation — voir OccupationBatiment) moins la
-    // mortalité/réforme attribuées à CE bâtiment. Retourne null si inconnu (aucune
-    // occupation active, ou nbSujetsDansBatiment jamais renseigné) : dans ce cas on
-    // retombe sur l'effectif du projet entier plutôt que de bloquer une saisie faute
-    // de donnée — voir plafondEffectif ci-dessous.
-    private Integer effectifVivantBatiment(Batiment batiment) {
-        List<com.diafarms.ml.models.OccupationBatiment> actives = occupationBatimentRepo.findActiveByBatimentId(batiment.getId());
-        if (actives.isEmpty() || actives.get(0).getNbSujetsDansBatiment() == null) return null;
-        int base = actives.get(0).getNbSujetsDansBatiment();
-        int morts = nz(mortaliteRepo.sumMortsByBatimentId(batiment.getId()));
-        int dejaReformes = nz(reformeRepo.sumSujetsByBatimentId(batiment.getId()));
-        return base - morts - dejaReformes;
-    }
-
-    // Plafond à appliquer pour CETTE saisie : celui du bâtiment sélectionné s'il est
-    // connu, sinon celui du projet entier (bâtiment non sélectionné, ou effectif du
-    // bâtiment inconnu faute de donnée d'occupation).
+    // d'œufs collectés ne peut donc pas dépasser l'effectif vivant. Le calcul de
+    // l'effectif (projet ou bâtiment) vit dans EffectifVivantHelper, partagé avec la
+    // mortalité et l'endpoint d'alerte en direct. DEUX collectes le MÊME jour (matin +
+    // soir) doivent, elles, être cumulées avant comparaison : voir validerPlafondJournalier.
     private int plafondEffectif(Projets projet, Batiment batiment) {
-        if (batiment != null) {
-            Integer effectifBatiment = effectifVivantBatiment(batiment);
-            if (effectifBatiment != null) return effectifBatiment;
+        return effectifVivantHelper.plafond(projet, batiment);
+    }
+
+    // Cassés et non utilisables sont des SOUS-ENSEMBLES des œufs collectés (le bon état
+    // = collectés - cassés - non utilisables) : leur somme ne peut ni être négative ni
+    // dépasser le total collecté, sinon le stock vendable serait négatif.
+    private void validerCassesEtNonUtilisables(int collectes, int casses, int nonUtilisables) {
+        if (casses < 0 || nonUtilisables < 0) {
+            throw new IllegalArgumentException("Le nombre d'œufs cassés ou non utilisables ne peut pas être négatif.");
         }
-        return effectifVivant(projet);
+        if (casses + nonUtilisables > collectes) {
+            throw new IllegalArgumentException(
+                "Les œufs cassés (" + casses + ") et non utilisables (" + nonUtilisables
+                        + ") dépassent le nombre d'œufs collectés (" + collectes + ")."
+            );
+        }
     }
 
     // Cumule tout ce qui a déjà été collecté CE JOUR-LÀ (même périmètre que
@@ -107,9 +91,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     // en cours d'édition ne doit pas se compter contre elle-même (update).
     private void validerPlafondJournalier(Projets projet, Batiment batiment, LocalDate date, int oeufsCollectes, Long excludeId) {
         int plafond = plafondEffectif(projet, batiment);
-        int dejaCollectes = batiment != null
-                ? nz(collecteOeufsRepo.sumOeufsByBatimentIdAndDateExcluding(batiment.getId(), date, excludeId))
-                : nz(collecteOeufsRepo.sumOeufsByProjetIdAndDateExcluding(projet.getId(), date, excludeId));
+        int dejaCollectes = effectifVivantHelper.oeufsDejaCollectes(projet, batiment, date, excludeId);
         if (dejaCollectes + oeufsCollectes > plafond) {
             String perimetre = batiment != null ? "ce bâtiment" : "le projet";
             throw new IllegalArgumentException(
@@ -146,6 +128,9 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         int oeufsCollectes = data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0;
         LocalDate date = data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now();
         validerPlafondJournalier(projet, batiment, date, oeufsCollectes, null);
+        validerCassesEtNonUtilisables(oeufsCollectes,
+                data.getOeufsCasses() != null ? data.getOeufsCasses() : 0,
+                data.getOeufsNonUtilisables() != null ? data.getOeufsNonUtilisables() : 0);
 
         // Magasin de STOCKAGE obligatoire (pas le bâtiment/poulailler d'élevage,
         // optionnel lui) : c'est ce qui plafonne les transferts vers un magasin de
@@ -229,6 +214,9 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         }
         if (data.getOeufsCasses() != null) c.setOeufsCasses(data.getOeufsCasses());
         if (data.getOeufsNonUtilisables() != null) c.setOeufsNonUtilisables(data.getOeufsNonUtilisables());
+        if (data.getOeufsCollectes() != null || data.getOeufsCasses() != null || data.getOeufsNonUtilisables() != null) {
+            validerCassesEtNonUtilisables(c.getOeufsCollectes(), c.getOeufsCasses(), c.getOeufsNonUtilisables());
+        }
         if (data.getMagasinStockageUniqueId() != null) {
             if (data.getMagasinStockageUniqueId().isBlank()) {
                 throw new IllegalArgumentException("Le magasin de stockage est obligatoire.");
