@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 public class ProjetsControllers {
 
     private final ProjetServices services;
+    private final com.diafarms.ml.services.ProjetRapportPdfService rapportPdfService;
 
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<PaginatedResponse<ProjetsDTO>>> getProjets(
@@ -154,6 +155,26 @@ public class ProjetsControllers {
                 return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
             }
         }
+
+    // Rapport PDF d'un projet (lecture seule : un compte en consultation seule peut le générer).
+    @GetMapping("/{uniqueId}/rapport-pdf")
+    public ResponseEntity<byte[]> rapportPdf(@PathVariable String uniqueId,
+                                             @RequestParam(required = false) String dateDebut,
+                                             @RequestParam(required = false) String dateFin) {
+        try {
+            byte[] pdf = rapportPdfService.generer(uniqueId,
+                    (dateDebut != null && !dateDebut.isBlank()) ? java.time.LocalDate.parse(dateDebut) : null,
+                    (dateFin != null && !dateFin.isBlank()) ? java.time.LocalDate.parse(dateFin) : null);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
+            headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment().filename("rapport-projet-" + uniqueId + ".pdf").build());
+            return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+        } catch (IllegalArgumentException e) {
+            return new ResponseEntity<>(e.getMessage().getBytes(java.nio.charset.StandardCharsets.UTF_8), HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            return new ResponseEntity<>("Erreur interne du serveur".getBytes(java.nio.charset.StandardCharsets.UTF_8), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 
         @GetMapping("/select")
         public ResponseEntity<ApiResponse<List<ProjetsSelect>>> selectProjet() {

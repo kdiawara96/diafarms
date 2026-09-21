@@ -37,4 +37,9 @@ public interface ConsommationAlimentRepo extends JpaRepository<ConsommationAlime
     @Query("SELECT COALESCE(SUM(c.quantiteKg), 0.0) FROM ConsommationAliment c " +
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
     Double sumConsommeByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
+
+    // Toutes les consommations vivantes d'un projet — sert au rapport PDF du projet
+    // (ProjetRapportPdfServiceImpl), qui agrège en mémoire sur la période demandée.
+    @Query("SELECT c FROM ConsommationAliment c WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
+    java.util.List<ConsommationAliment> findAllByProjetId(@Param("projetId") Long projetId);
 }
