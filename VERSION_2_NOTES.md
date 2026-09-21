@@ -575,3 +575,34 @@ retirer prix/coût des vaccinations de l'assistant "Nouveau projet" ; montant ra
 supérieur au théorique non contrôlé ; quantité des soins non validée ; effectif par
 poulailler dans la liste mobile = effectif initial ; backfill Tigiri "Acheté (théorique)" ;
 bouton "Modifier" des Commandes web.
+
+---
+
+## Mise à jour 2026-09-21 (démo, rapport PDF projet, rattachement des dépenses)
+
+- **Comptes en consultation seule** : `Utilisateurs.consultationSeule` + `security/ConsultationSeuleFilter` (403 sur tout non GET,
+  sauf changement de mot de passe et notifications). Ferme de démonstration séparée, données fictives jusqu'au 21/09/2026
+  (voir mémoire `diafarms-demo-farm`).
+- **Rapport PDF d'un projet** : `GET /projets/{uid}/rapport-pdf?dateDebut&dateFin` (`ProjetRapportPdfServiceImpl`, OpenPDF) +
+  bouton "Rapport PDF" dans la Fiche Projet. Coût de l'aliment consommé = estimation au prix moyen d'achat au kilo.
+- **Taux de ponte corrigé** : fenêtre de 7 jours exacte et effectif vivant (réforme déduite).
+- **Rattachement facultatif d'une dépense** (ferme entière par défaut) :
+  - `Transaction.site` et `Transaction.batiment` (nullable, LAZY), indépendants du projet et entre eux (le poulailler n'a
+    PAS de site en base). `TransactionCreate/Update.siteUniqueId/batimentUniqueId` : à la modification null = inchangé,
+    "" = retirer. Résolus sur la même ferme (`resoudreSite/resoudreBatiment`).
+  - `syncSortie` a une surcharge avec batiment/site (`appliquerRattachement`) : l'achat d'aliment reprend son poulailler et
+    le site du projet ; les autres appelants gardent l'ancienne signature (aucun changement).
+  - `GET /batiments/tous` = TOUS les poulaillers ; `/batiments/select` ne renvoie que les poulaillers LIBRES (création de projet).
+  - `GET /transactions/depenses-par-rattachement` (LEFT JOIN explicites, bornes de dates concrètes) ; vide pour un RESPONSABLE
+    seul. Carte "Dépenses par site et par poulailler" dans Rapports (web).
+  - Web : `RattachementFields` dans Créer/Modifier une transaction, colonnes facultatives "Site (nom)"/"Poulailler (nom)" dans
+    l'import Excel, colonnes Site/Poulailler dans l'export, rattachement sous "Projet" dans la liste.
+  - Mobile (APK 1.23) : dépense "commune" par défaut SANS obligation de projet, liste "Projets concernés" facultative et
+    repliée, sélecteurs Site/Poulailler (caches `sites_select` / `batiments_tous` préchargés), champ Poulailler du haut
+    masqué pour les transactions, une saisie commune n'enregistre plus le projet de l'accueil dans ses colonnes.
+    Aucun changement de version de base locale (les saisies non envoyées sont conservées).
+  - Correction : `SyncManager` ne connaissait pas VENTE_FIENTES (la synchro restait suspendue) ; un type non géré est
+    maintenant marqué en erreur sans bloquer la suite.
+- **Ouvert** : filtre par site/poulailler dans la liste Comptabilité, section site/poulailler dans le PDF projet, suggestion du
+  site d'après le dernier projet du poulailler, rattrapage des anciennes dépenses d'aliment (prennent leur poulailler à leur
+  prochaine modification), lien permanent poulailler-site si un jour utile.
