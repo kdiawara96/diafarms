@@ -191,11 +191,16 @@ public class ProjetImpl implements ProjetServices {
 
     private Double computeTauxPonte(Projets p) {
         if (p.getNbSujets() == null || p.getNbSujets() <= 0) return 0.0;
-        Integer morts = mortaliteRepo.sumMortsByProjetId(p.getId());
-        int effectifActuel = p.getNbSujets() - (morts == null ? 0 : morts);
+        // Effectif VIVANT (mortalité ET réforme déduites, un sujet réformé ne pond plus),
+        // même définition que l'effectif affiché : avant, seule la mortalité était retirée.
+        int effectifActuel = computeEffectifVivant(p);
         if (effectifActuel <= 0) return 0.0;
 
-        Integer oeufsRecents = collecteOeufsRepo.sumOeufsByProjetIdSince(p.getId(), LocalDate.now().minusDays(TAUX_PONTE_WINDOW_DAYS));
+        // Fenêtre de EXACTEMENT TAUX_PONTE_WINDOW_DAYS jours, aujourd'hui compris : le
+        // filtre est "date >= since", donc since = aujourd'hui - (N - 1). Avant, since =
+        // aujourd'hui - N comptait N + 1 jours d'œufs divisés par N (taux surévalué de
+        // jusqu'à 14 % pour N = 7).
+        Integer oeufsRecents = collecteOeufsRepo.sumOeufsByProjetIdSince(p.getId(), LocalDate.now().minusDays(TAUX_PONTE_WINDOW_DAYS - 1L));
         double moyenneJournaliere = (oeufsRecents == null ? 0 : oeufsRecents) / (double) TAUX_PONTE_WINDOW_DAYS;
         double taux = (moyenneJournaliere / effectifActuel) * 100;
         return Math.round(taux * 10) / 10.0;
