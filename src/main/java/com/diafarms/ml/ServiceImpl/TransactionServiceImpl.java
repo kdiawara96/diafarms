@@ -854,6 +854,26 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional(readOnly = true)
+    public java.util.List<com.diafarms.ml.DTO.DepenseRattachementDTO> getDepensesParRattachement(LocalDate dateDebut, LocalDate dateFin) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null || isPureResponsable(currentUser)) {
+            return java.util.List.of();
+        }
+        return transactionRepo.sumSortiesParRattachement(currentUser.getFarm().getId(), deb(dateDebut), fin(dateFin)).stream()
+                .map(r -> com.diafarms.ml.DTO.DepenseRattachementDTO.builder()
+                        .siteUniqueId((String) r[0])
+                        .siteNom((String) r[1])
+                        .batimentUniqueId((String) r[2])
+                        .batimentNom((String) r[3])
+                        .total(((Number) r[4]).doubleValue())
+                        .nombre(((Number) r[5]).longValue())
+                        .build())
+                .sorted((a, b) -> Double.compare(b.getTotal(), a.getTotal()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ProjetVenteReelDTO> getVentesReelParProjet(LocalDate dateDebut, LocalDate dateFin) {
         Utilisateurs currentUser = getCurrentUserSafe();
         Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;

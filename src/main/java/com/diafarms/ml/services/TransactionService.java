@@ -125,4 +125,9 @@ public interface TransactionService {
      * de scope RESPONSABLE/COMPTABLE ici — c'est Reporting.tsx qui filtre côté client
      * aux projets pertinents pour l'utilisateur courant. */
     List<ProjetVenteReelDTO> getVentesReelParProjet(LocalDate dateDebut, LocalDate dateFin);
+
+    /** Dépenses validées par rattachement (site et/ou poulailler) sur une période, pour le rapport
+     * "dépenses par site / par poulailler". Vide pour un responsable de projet seul (ces dépenses
+     * ne sont rattachées à aucun de ses projets). */
+    java.util.List<com.diafarms.ml.DTO.DepenseRattachementDTO> getDepensesParRattachement(LocalDate dateDebut, LocalDate dateFin);
 }

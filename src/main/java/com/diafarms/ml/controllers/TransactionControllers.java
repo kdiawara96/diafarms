@@ -95,6 +95,21 @@ public class TransactionControllers {
         }
     }
 
+    // Dépenses validées par site / par poulailler (voir Transaction.site/batiment), sur une période.
+    @GetMapping("/depenses-par-rattachement")
+    public ResponseEntity<ApiResponse<List<com.diafarms.ml.DTO.DepenseRattachementDTO>>> depensesParRattachement(
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin) {
+        try {
+            LocalDate dateDebutParam = (dateDebut != null && !dateDebut.isBlank()) ? LocalDate.parse(dateDebut) : null;
+            LocalDate dateFinParam = (dateFin != null && !dateFin.isBlank()) ? LocalDate.parse(dateFin) : null;
+            return ApiResponse.createResponse("Dépenses par rattachement récupérées", HttpStatus.OK,
+                    service.getDepensesParRattachement(dateDebutParam, dateFinParam), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur lors du calcul", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<TransactionDTO>> create(@RequestBody TransactionCreate request) {
         try {

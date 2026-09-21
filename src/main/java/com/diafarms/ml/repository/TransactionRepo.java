@@ -206,4 +206,20 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     @Query("SELECT t FROM Transaction t WHERE t.projet.id = :projetId " +
         "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE AND t.initialisation.removed = false")
     List<Transaction> findAllValideByProjetId(@Param("projetId") Long projetId);
+
+    // Dépenses VALIDÉES ayant un site et/ou un poulailler, regroupées par ce rattachement, sur
+    // une période (bornes toujours concrètes, voir TransactionServiceImpl.deb/fin : jamais de
+    // "(:x IS NULL OR ...)" qui plante sur Postgres). LEFT JOIN explicites : un site sans
+    // poulailler (ou l'inverse) ne doit pas faire disparaître la ligne.
+    @Query("SELECT s.uniqueId, s.nom, b.uniqueId, b.nom, COALESCE(SUM(t.montant), 0.0), COUNT(t) " +
+        "FROM Transaction t LEFT JOIN t.site s LEFT JOIN t.batiment b " +
+        "WHERE t.farm.id = :farmId AND t.initialisation.removed = false " +
+        "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+        "AND t.type = com.diafarms.ml.enums.TypeTransaction.SORTIE " +
+        "AND t.date >= :dateDebut AND t.date <= :dateFin " +
+        "AND (s.id IS NOT NULL OR b.id IS NOT NULL) " +
+        "GROUP BY s.uniqueId, s.nom, b.uniqueId, b.nom")
+    List<Object[]> sumSortiesParRattachement(@Param("farmId") Long farmId,
+                                             @Param("dateDebut") java.time.LocalDate dateDebut,
+                                             @Param("dateFin") java.time.LocalDate dateFin);
 }
