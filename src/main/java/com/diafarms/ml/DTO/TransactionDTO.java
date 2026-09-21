@@ -53,6 +53,11 @@ public class TransactionDTO {
     private LocalDateTime createdAt;
     private SourceTransaction sourceType;
     private String sourceUniqueId;
+    // Rattachements facultatifs (null = ferme entière) — voir Transaction.site/batiment.
+    private String siteUniqueId;
+    private String siteNom;
+    private String batimentUniqueId;
+    private String batimentNom;
     // Qui a initié la transaction (saisie manuelle ou vente à l'origine) — affiché sur
     // la page Ventes quand un ADMIN regarde "tous les vendeurs", voir Ventes.tsx.
     private String creeParNom;
@@ -86,6 +91,10 @@ public class TransactionDTO {
                 .createdAt(t.getInitialisation() != null ? t.getInitialisation().getCreatedAt() : null)
                 .sourceType(t.getSourceType())
                 .sourceUniqueId(t.getSourceUniqueId())
+                .siteUniqueId(t.getSite() != null ? t.getSite().getUniqueId() : null)
+                .siteNom(t.getSite() != null ? t.getSite().getNom() : null)
+                .batimentUniqueId(t.getBatiment() != null ? t.getBatiment().getUniqueId() : null)
+                .batimentNom(t.getBatiment() != null ? t.getBatiment().getNom() : null)
                 .creeParNom(t.getCreePar() != null ? t.getCreePar().getFullName() : null)
                 .demandeSuppressionParNom(t.getDemandeSuppressionPar() != null ? t.getDemandeSuppressionPar().getFullName() : null)
                 .dateDemandeSuppression(t.getDateDemandeSuppression())

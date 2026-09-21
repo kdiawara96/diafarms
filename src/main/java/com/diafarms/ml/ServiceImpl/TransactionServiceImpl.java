@@ -51,6 +51,8 @@ public class TransactionServiceImpl implements TransactionService {
 
     private final TransactionRepo transactionRepo;
     private final ProjetsRepo projetsRepo;
+    private final com.diafarms.ml.repository.SiteRepo siteRepo;
+    private final com.diafarms.ml.repository.BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
     private final VenteOeufsRepo venteOeufsRepo;
@@ -217,6 +219,36 @@ public class TransactionServiceImpl implements TransactionService {
         return null;
     }
 
+    // Résolution des rattachements facultatifs site/poulailler : appartiennent à la MÊME
+    // ferme que l'utilisateur et ne sont pas supprimés (une transaction ne doit jamais
+    // pointer vers le site ou le poulailler d'une autre ferme).
+    private com.diafarms.ml.models.Site resoudreSite(String uniqueId, Utilisateurs currentUser) {
+        if (uniqueId == null || uniqueId.isBlank()) return null;
+        com.diafarms.ml.models.Site site = siteRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Site introuvable : " + uniqueId));
+        if (Boolean.TRUE.equals(site.getInitialisation() != null ? site.getInitialisation().getRemoved() : false)
+                || !memeFerme(site.getFarm(), currentUser)) {
+            throw new IllegalArgumentException("Site introuvable : " + uniqueId);
+        }
+        return site;
+    }
+
+    private com.diafarms.ml.models.Batiment resoudreBatiment(String uniqueId, Utilisateurs currentUser) {
+        if (uniqueId == null || uniqueId.isBlank()) return null;
+        com.diafarms.ml.models.Batiment batiment = batimentRepo.findByUniqueId(uniqueId);
+        if (batiment == null
+                || Boolean.TRUE.equals(batiment.getInitialisation() != null ? batiment.getInitialisation().getRemoved() : false)
+                || !memeFerme(batiment.getFarm(), currentUser)) {
+            throw new IllegalArgumentException("Poulailler introuvable : " + uniqueId);
+        }
+        return batiment;
+    }
+
+    private boolean memeFerme(Farm farm, Utilisateurs currentUser) {
+        return farm != null && currentUser != null && currentUser.getFarm() != null
+                && farm.getId().equals(currentUser.getFarm().getId());
+    }
+
     @Override
     @Transactional
     public TransactionDTO create(TransactionCreate data) {
@@ -261,6 +293,9 @@ public class TransactionServiceImpl implements TransactionService {
         } else if (data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()) {
             t.setProjetsConcernes(projetsRepo.findByUniqueIdIn(data.getProjetsConcernesUniqueIds()));
         }
+
+        t.setSite(resoudreSite(data.getSiteUniqueId(), currentUser));
+        t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), currentUser));
 
         if (currentUser != null) {
             t.setFarm(currentUser.getFarm());
@@ -340,10 +375,23 @@ public class TransactionServiceImpl implements TransactionService {
         });
     }
 
+    // Signature d'origine, conservée telle quelle pour tous les appelants existants : ne
+    // touche JAMAIS aux rattachements site/poulailler (voir la surcharge ci-dessous).
     @Override
     @Transactional
     public void syncSortie(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
                             String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar) {
+        syncSortie(projet, farm, montant, categorie, date, description, sourceType, sourceUniqueId, creePar, null, null, false);
+    }
+
+    // Surcharge pour les sources qui CONNAISSENT leur poulailler (aliment, soins) :
+    // appliquerRattachement = true fait suivre la transaction (site du projet, poulailler
+    // de la source) à chaque nouvelle saisie ou modification de la source.
+    @Override
+    @Transactional
+    public void syncSortie(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
+                            String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar,
+                            com.diafarms.ml.models.Batiment batiment, com.diafarms.ml.models.Site site, boolean appliquerRattachement) {
         var existante = transactionRepo.findBySourceUniqueId(sourceUniqueId);
         boolean doitExister = montant != null && montant > 0;
 
@@ -362,6 +410,10 @@ public class TransactionServiceImpl implements TransactionService {
             t.setMontant(montant);
             t.setDescription(description);
             t.setProjet(projet);
+            if (appliquerRattachement) {
+                t.setBatiment(batiment);
+                t.setSite(site);
+            }
             if (Boolean.TRUE.equals(t.getInitialisation().getRemoved())) {
                 t.getInitialisation().setRemoved(false);
             }
@@ -382,6 +434,10 @@ public class TransactionServiceImpl implements TransactionService {
         t.setValidateur(creePar);
         t.setDateValidation(LocalDateTime.now());
         t.setProjet(projet);
+        if (appliquerRattachement) {
+            t.setBatiment(batiment);
+            t.setSite(site);
+        }
         t.setSourceType(sourceType);
         t.setSourceUniqueId(sourceUniqueId);
         t.setFarm(farm);
@@ -434,6 +490,14 @@ public class TransactionServiceImpl implements TransactionService {
                     .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
             t.setProjet(projet);
             t.setProjetsConcernes(new java.util.ArrayList<>());
+        }
+        // Rattachements facultatifs : null = inchangé, "" = retiré, valeur = défini.
+        Utilisateurs utilisateurCourant = getCurrentUserSafe();
+        if (data.getSiteUniqueId() != null) {
+            t.setSite(resoudreSite(data.getSiteUniqueId(), utilisateurCourant));
+        }
+        if (data.getBatimentUniqueId() != null) {
+            t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), utilisateurCourant));
         }
         if (t.getInitialisation() != null) {
             t.getInitialisation().setUpdatedAt(LocalDateTime.now());

@@ -18,4 +18,8 @@ public class TransactionCreate {
     private String description;
     private Double montant;
     private String categorie;
+
+    // Rattachements facultatifs (voir Transaction.site / Transaction.batiment) : absents = ferme entière.
+    private String siteUniqueId;
+    private String batimentUniqueId;
 }

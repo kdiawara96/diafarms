@@ -240,6 +240,17 @@ public class BatimentController {
             );
         }
     }
+    // Tous les poulaillers actifs (occupés ou non), pour rattacher une dépense à un poulailler.
+    @GetMapping("/tous")
+    public ResponseEntity<ApiResponse<List<BatimentsDTO>>> tous() {
+        try {
+            return ApiResponse.createResponse("Liste récupérée", HttpStatus.OK, services.tous(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null,
+                    List.of("Une erreur inattendue s'est produite"));
+        }
+    }
+
     // ==================== SEARCH ====================
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<BatimentsDTO>>> search(

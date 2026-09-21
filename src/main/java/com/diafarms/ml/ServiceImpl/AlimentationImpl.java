@@ -53,8 +53,11 @@ public class AlimentationImpl implements AlimentationService {
         if (currentUser == null || currentUser.getFarm() == null) return;
         String description = "Achat aliment : " + a.getNomAliment() + " (" + a.getQuantiteKg() + " kg) — projet "
                 + (a.getProjet() != null ? a.getProjet().getTitre() : "?");
+        // L'achat connaît son poulailler (facultatif) et son projet : la dépense les reprend
+        // (poulailler de l'achat, site du projet) pour le suivi par poulailler / par site.
         transactionService.syncSortie(a.getProjet(), currentUser.getFarm(), a.getCoutTotal(), "Aliment",
-                a.getDateDistribution(), description, SourceTransaction.ALIMENTATION, a.getUniqueId(), currentUser);
+                a.getDateDistribution(), description, SourceTransaction.ALIMENTATION, a.getUniqueId(), currentUser,
+                a.getBatiment(), a.getProjet() != null ? a.getProjet().getSite() : null, true);
     }
 
     // --- Génération UID ---   

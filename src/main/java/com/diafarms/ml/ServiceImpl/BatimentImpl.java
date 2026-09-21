@@ -221,6 +221,21 @@ public class BatimentImpl implements BatimentServices {
     }
 
    @Override
+   @Transactional(readOnly = true)
+   public List<BatimentsDTO> tous() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if (currentUser == null || currentUser.getFarm() == null) return List.of();
+        return batimentRepo.findActiveByFarmId(currentUser.getFarm().getId()).stream()
+                .map(BatimentsDTO::select)
+                .collect(Collectors.toList());
+   }
+
+   @Override
    public List<BatimentsDTO> select() {
         Utilisateurs currentUser = null;
         try {

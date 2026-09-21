@@ -82,6 +82,12 @@ public interface TransactionService {
     void syncSortie(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
                      String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar);
 
+    /** Idem, avec les rattachements facultatifs d'une source qui connaît son poulailler
+     * (aliment, soins) : appliquerRattachement = true fait suivre batiment/site. */
+    void syncSortie(Projets projet, Farm farm, Double montant, String categorie, LocalDate date,
+                     String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar,
+                     com.diafarms.ml.models.Batiment batiment, com.diafarms.ml.models.Site site, boolean appliquerRattachement);
+
     /** Met à jour le montant de la transaction liée à une vente modifiée. */
     void updateMontantBySource(String sourceUniqueId, Double montant);
 

@@ -20,4 +20,9 @@ public class TransactionUpdate {
     private String description;
     private Double montant;
     private String categorie;
+
+    // Rattachements facultatifs, même principe que `commun` (un `null` JSON est ambigu) :
+    // absent (null) = inchangé ; chaîne VIDE = retirer le rattachement ; valeur = le définir.
+    private String siteUniqueId;
+    private String batimentUniqueId;
 }
