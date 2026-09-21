@@ -30,5 +30,6 @@ public class UsersAuth_DTO {
     String refreshToken;
     String accessToken;
     Boolean mustChangePassword;
+    Boolean consultationSeule;
 
 }

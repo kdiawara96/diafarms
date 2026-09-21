@@ -188,6 +188,7 @@ public class AuthImpl implements AuthServices {
         authModel.setRoles(currentUser.getRoles());
         authModel.setAccessToken(accessToken);
         authModel.setMustChangePassword(Boolean.TRUE.equals(currentUser.getMustChangePassword()));
+        authModel.setConsultationSeule(Boolean.TRUE.equals(currentUser.getConsultationSeule()));
 
         if (ouiRefresh) {
             JwtClaimsSet refreshClaims = JwtClaimsSet.builder()
