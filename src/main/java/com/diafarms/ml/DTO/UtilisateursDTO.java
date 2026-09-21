@@ -34,6 +34,7 @@ public class UtilisateursDTO {
     private boolean statut;
     private String password;
     private Boolean mustChangePassword;
+    private Boolean consultationSeule;
     // Non nul seulement dans la réponse de création de compte : indique si l'email
     // contenant les identifiants a réellement pu être envoyé.
     private Boolean emailSent;
@@ -80,6 +81,7 @@ public class UtilisateursDTO {
                 .telephone(utilisateur.getTelephone())
                 .statut(utilisateur.getStatut())
                 .mustChangePassword(utilisateur.getMustChangePassword())
+                .consultationSeule(utilisateur.getConsultationSeule())
                 .createdAt(utilisateur.getInitialisation().getCreatedAt())
                 .updatedAt(utilisateur.getInitialisation().getUpdatedAt())
                 .lastLogin(utilisateur.getLastLogin())
@@ -112,6 +114,7 @@ public class UtilisateursDTO {
                 .telephone(utilisateur.getTelephone())
                 .statut(utilisateur.getStatut())
                 .mustChangePassword(utilisateur.getMustChangePassword())
+                .consultationSeule(utilisateur.getConsultationSeule())
                 .password(plainPassword)
                 .emailSent(emailSent)
                 .createdAt(utilisateur.getInitialisation().getCreatedAt())

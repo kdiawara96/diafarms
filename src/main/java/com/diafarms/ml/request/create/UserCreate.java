@@ -16,4 +16,6 @@ public class UserCreate {
     private String email;
     private String telephone;
     private List<String> roles; 
+    // Compte en consultation seule (voir Utilisateurs.consultationSeule) : réservé à l'admin qui crée le compte.
+    private Boolean consultationSeule;
 }

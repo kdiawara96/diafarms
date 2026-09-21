@@ -82,6 +82,13 @@ public class Utilisateurs {
     @Column(name = "must_change_password")
     private Boolean mustChangePassword = false;
 
+    // Compte en CONSULTATION SEULE (ex: comptes de démonstration remis à des visiteurs) :
+    // toute requête qui modifie quoi que ce soit (POST/PUT/PATCH/DELETE) est refusée par
+    // ConsultationSeuleFilter, seul le GET passe. NULL sur les lignes existantes,
+    // traité comme false.
+    @Column(name = "consultation_seule")
+    private Boolean consultationSeule = false;
+
     // Révocation immédiate des sessions web (déconnexion "réelle") : embarqué comme
     // claim dans chaque access/refresh token émis par mot de passe (voir AuthImpl.jwt),
     // incrémenté à la déconnexion (voir authControllers.logout). Un token web déjà

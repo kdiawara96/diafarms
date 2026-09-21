@@ -12,5 +12,6 @@ public class UserUpdate {
     private String email;
     private String city;
     private String region;
+    private Boolean consultationSeule; // réservé à l'admin, voir Utilisateurs.consultationSeule
     private List<String> roles; // Reçoit la liste des noms de rôles modifiés (ex: ["PRODUCTION", "FINANCE"])
 }

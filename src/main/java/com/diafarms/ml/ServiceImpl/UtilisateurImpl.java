@@ -387,6 +387,10 @@ public class UtilisateurImpl implements UtilisateursServices {
         u.setCity(dto.getCity());
         u.setRegion(dto.getRegion());
         u.setStatut(true); // Actif par défaut
+        // Consultation seule (comptes de démonstration) : seul un admin peut poser ce drapeau.
+        if (Boolean.TRUE.equals(dto.getConsultationSeule()) && isAdmin(currentUser)) {
+            u.setConsultationSeule(true);
+        }
 
         // Association automatique à la ferme de l'admin connecté
         if (currentUser != null) {
@@ -478,6 +482,12 @@ public class UtilisateurImpl implements UtilisateursServices {
                 .collect(Collectors.toSet());
             
             u.setRoles(updatedRoles);
+        }
+
+        if (dto.getConsultationSeule() != null) {
+            Utilisateurs admin = null;
+            try { admin = OtherService.getCurrentUser(); } catch (Exception ignored) { }
+            if (isAdmin(admin)) u.setConsultationSeule(dto.getConsultationSeule());
         }
 
         Utilisateurs updatedUser = utilisateursRepo.save(u);
