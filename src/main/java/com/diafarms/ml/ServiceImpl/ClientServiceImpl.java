@@ -89,6 +89,16 @@ public class ClientServiceImpl implements ClientService {
         }
     }
 
+    // Rembourser fait sortir de l'argent de la caisse (contrairement à payerDette, qui
+    // en fait entrer) : un cran plus strict, VENTE exclu — un vendeur ne doit pas
+    // pouvoir décider seul de sortir de l'argent de la ferme, même pour rendre une
+    // avance à un client.
+    private void ensureCanRembourser(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour rembourser un client.");
+        }
+    }
+
     @Override
     @Transactional
     public ClientDTO create(ClientCreate data) {
@@ -343,6 +353,74 @@ public class ClientServiceImpl implements ClientService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), client.getId(), "Client",
                     "Paiement de " + montant + " FCFA enregistré pour " + client.getNom());
+        }
+
+        ClientDTO dto = ClientDTO.fromEntity(client);
+        dto.setSolde(soldeClientService.getSolde(client).getSolde());
+        return dto;
+    }
+
+    // Rend en argent au client une avance qu'il a déjà payée (ex: acompte sur une
+    // commande d'œufs, mais il préfère finalement récupérer son argent plutôt que
+    // d'attendre la livraison, ou l'échanger contre autre chose) — jumeau de payerDette
+    // mais dans l'autre sens : une Transaction "sortie" (l'argent sort vraiment de la
+    // caisse à ce moment-là) et le solde qui remonte d'autant vers zéro. Plafonné à
+    // l'avance réellement disponible : on ne peut pas rembourser plus que ce que le
+    // client a payé d'avance, ni rembourser un client qui n'a justement pas d'avance
+    // (solde positif ou nul = il doit encore, ou rien du tout).
+    @Override
+    @Transactional
+    public ClientDTO rembourser(String uniqueId, Double montant, String description) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanRembourser(currentUser);
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
+        }
+        if (montant == null || montant <= 0) {
+            throw new IllegalArgumentException("Le montant remboursé doit être positif.");
+        }
+        Client client = clientRepo.findByUniqueId(uniqueId);
+        if (client == null) {
+            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        }
+
+        double soldeActuel = soldeClientService.getSolde(client).getSolde();
+        if (soldeActuel >= 0) {
+            throw new IllegalArgumentException(
+                "Ce client n'a aucune avance à rembourser (son solde est " + (soldeActuel == 0 ? "à zéro" : "positif : il doit encore de l'argent à la ferme") + ")."
+            );
+        }
+        double avanceDisponible = -soldeActuel;
+        if (montant > avanceDisponible) {
+            throw new IllegalArgumentException(
+                "Le remboursement (" + montant + " FCFA) dépasse l'avance disponible de ce client (" + avanceDisponible + " FCFA)."
+            );
+        }
+
+        TransactionCreate txData = new TransactionCreate();
+        txData.setType("SORTIE");
+        txData.setCommun(true);
+        txData.setDate(java.time.LocalDate.now());
+        txData.setMontant(montant);
+        // Catégorie volontairement absente de "Nouvelle transaction" (liste manuelle) —
+        // même raison que "Salaire" : passer par cet écran dédié applique le contrôle
+        // ci-dessus (plafond à l'avance réellement disponible), une transaction manuelle
+        // le contournerait.
+        txData.setCategorie("Remboursement au client");
+        txData.setClientUniqueId(client.getUniqueId());
+        txData.setDescription((description != null && !description.isBlank())
+                ? description
+                : "Remboursement d'une avance — " + client.getNom());
+        transactionService.create(txData);
+
+        // Le remboursement CONSOMME l'avance : le solde remonte vers zéro (même sens
+        // que l'écart d'une vente qui consomme une avance, voir VenteOeufsImpl.ajusterEcart) —
+        // jamais un -montant, qui creuserait l'avance au lieu de la réduire.
+        soldeClientService.ajusterSolde(client, currentUser.getFarm(), montant);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), client.getId(), "Client",
+                    "Remboursement de " + montant + " FCFA enregistré pour " + client.getNom());
         }
 
         ClientDTO dto = ClientDTO.fromEntity(client);

@@ -21,4 +21,10 @@ public interface ClientService {
     // de commande — CommandeServiceImpl).
     ClientDTO payerDette(String uniqueId, Double montant, String description);
     ClientDTO payerDette(String uniqueId, Double montant, String categorie, String description);
+
+    /** Rend en argent une avance déjà payée par ce client (jumeau de payerDette, dans
+     * l'autre sens) — génère une Transaction "sortie" et fait remonter le solde vers
+     * zéro. Refusé si le client n'a pas d'avance (solde >= 0), ou si le montant dépasse
+     * l'avance disponible. Voir ClientServiceImpl.rembourser. */
+    ClientDTO rembourser(String uniqueId, Double montant, String description);
 }

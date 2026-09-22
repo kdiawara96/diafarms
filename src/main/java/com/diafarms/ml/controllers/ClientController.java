@@ -88,6 +88,21 @@ public class ClientController {
         }
     }
 
+    // Jumeau de payer-dette, dans l'autre sens : rend en argent une avance déjà payée
+    // par ce client. Réservé ADMIN/RESPONSABLE/COMPTABLE (jamais VENTE) — voir
+    // ClientServiceImpl.ensureCanRembourser.
+    @PostMapping("/{uniqueId}/rembourser")
+    public ResponseEntity<ApiResponse<ClientDTO>> rembourser(@PathVariable String uniqueId, @RequestBody PayerDetteClientRequest request) {
+        try {
+            return ApiResponse.createResponse("Remboursement enregistré", HttpStatus.OK,
+                    service.rembourser(uniqueId, request.getMontant(), request.getDescription()), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<PaginatedResponse<ClientDTO>>> list(
             @RequestParam(defaultValue = "0") int page,
