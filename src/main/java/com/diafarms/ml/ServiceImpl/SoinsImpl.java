@@ -168,7 +168,7 @@ public class SoinsImpl implements SoinsService {
         s.getInitialisation().setRemoved(!s.getInitialisation().getRemoved());
         soinsRepo.save(s);
         boolean removed = s.getInitialisation().getRemoved();
-        transactionService.toggleRemovedBySource(s.getUniqueId());
+        transactionService.setRemovedBySource(s.getUniqueId(), removed);
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {

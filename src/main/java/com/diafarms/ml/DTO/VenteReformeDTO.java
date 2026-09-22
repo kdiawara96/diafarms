@@ -35,6 +35,10 @@ public class VenteReformeDTO {
     private Double poidsTotalKg;
     private String creeParNom;
     private LocalDateTime createdAt;
+    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // VenteReformeImpl.demanderSuppression.
+    private String demandeSuppressionParNom;
+    private LocalDateTime dateDemandeSuppression;
     private List<VenteReformeRepartitionDTO> repartitions;
 
     public static VenteReformeDTO fromEntity(VenteReforme v) {
@@ -56,6 +60,8 @@ public class VenteReformeDTO {
                 .poidsTotalKg(v.getPoidsTotalKg())
                 .creeParNom(v.getCreePar() != null ? v.getCreePar().getFullName() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
+                .demandeSuppressionParNom(v.getDemandeSuppressionPar() != null ? v.getDemandeSuppressionPar().getFullName() : null)
+                .dateDemandeSuppression(v.getDateDemandeSuppression())
                 .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()
                         .map(VenteReformeRepartitionDTO::fromEntity)
                         .toList() : java.util.Collections.emptyList())

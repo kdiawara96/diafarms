@@ -23,8 +23,9 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
     // LEFT JOIN explicite sur client (nullable — vente directe) : un chemin implicite
     // (r.venteOeufs.client.nom) risquerait un INNER JOIN qui exclurait les ventes
     // sans client, voir le même raisonnement documenté sur CollecteOeufsRepo.search.
-    @Query("SELECT new com.diafarms.ml.DTO.RepartitionRatioDTO(r.uniqueId, v.montant, v.montantRapporte, c.nom) " +
-        "FROM VenteOeufsRepartition r JOIN r.venteOeufs v LEFT JOIN v.client c WHERE r.uniqueId IN :uniqueIds")
+    @Query("SELECT new com.diafarms.ml.DTO.RepartitionRatioDTO(r.uniqueId, v.montant, v.montantRapporte, c.nom, v.uniqueId, dsp.fullName) " +
+        "FROM VenteOeufsRepartition r JOIN r.venteOeufs v LEFT JOIN v.client c LEFT JOIN v.demandeSuppressionPar dsp " +
+        "WHERE r.uniqueId IN :uniqueIds")
     List<RepartitionRatioDTO> findRatiosByUniqueIds(@Param("uniqueIds") List<String> uniqueIds);
 
     // Voir VenteRepartitionReelDTO — sert à TransactionServiceImpl.getVentesReelParProjet

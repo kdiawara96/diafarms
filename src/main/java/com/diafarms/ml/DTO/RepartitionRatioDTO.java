@@ -16,4 +16,11 @@ public class RepartitionRatioDTO {
     private Double venteMontant;
     private Double venteMontantRapporte; // null = pas d'écart déclaré pour cette vente
     private String clientNom; // null = vente directe, pas de client identifié
+    // uniqueId de la VENTE ENTIÈRE (VenteOeufs/VenteReforme), pas de cette seule ligne de
+    // répartition — sert au web pour demander/confirmer la suppression de la vente
+    // depuis la transaction affichée (voir TransactionDTO.venteUniqueId).
+    private String venteUniqueId;
+    // Non null = une suppression de CETTE vente est en attente de validation — voir
+    // TransactionDTO.venteDemandeSuppressionParNom.
+    private String venteDemandeSuppressionParNom;
 }

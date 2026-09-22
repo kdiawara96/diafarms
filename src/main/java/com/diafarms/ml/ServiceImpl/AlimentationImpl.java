@@ -252,7 +252,7 @@ public class AlimentationImpl implements AlimentationService {
         alimentation.setInitialisation(Initialisation.updateDate(alimentation.getInitialisation()));
 
         Alimentation deleted = alimentationRepo.save(alimentation);
-        transactionService.toggleRemovedBySource(deleted.getUniqueId());
+        transactionService.setRemovedBySource(deleted.getUniqueId(), true);
 
         // 4. Log
         Utilisateurs currentUser = getCurrentUserSafe();

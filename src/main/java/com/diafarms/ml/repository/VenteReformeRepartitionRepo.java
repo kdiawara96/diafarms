@@ -19,8 +19,9 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
 
     // Voir VenteOeufsRepartitionRepo.findRatiosByUniqueIds (même raisonnement, y compris
     // le LEFT JOIN explicite sur client, nullable).
-    @Query("SELECT new com.diafarms.ml.DTO.RepartitionRatioDTO(r.uniqueId, v.montant, v.montantRapporte, c.nom) " +
-        "FROM VenteReformeRepartition r JOIN r.venteReforme v LEFT JOIN v.client c WHERE r.uniqueId IN :uniqueIds")
+    @Query("SELECT new com.diafarms.ml.DTO.RepartitionRatioDTO(r.uniqueId, v.montant, v.montantRapporte, c.nom, v.uniqueId, dsp.fullName) " +
+        "FROM VenteReformeRepartition r JOIN r.venteReforme v LEFT JOIN v.client c LEFT JOIN v.demandeSuppressionPar dsp " +
+        "WHERE r.uniqueId IN :uniqueIds")
     List<RepartitionRatioDTO> findRatiosByUniqueIds(@Param("uniqueIds") List<String> uniqueIds);
 
     List<VenteReformeRepartition> findByVenteReforme_UniqueId(String venteReformeUniqueId);

@@ -45,6 +45,15 @@ public class TransactionDTO {
     // enrichMontantReel). Null = vente directe (sans client) ou transaction sans lien à
     // un client.
     private String clientNom;
+    // Non null seulement si sourceType = VENTE_OEUFS/VENTE_REFORME : uniqueId de la VENTE
+    // ENTIÈRE (pas cette seule part par projet) — voir TransactionServiceImpl.enrichMontantReel.
+    // Sert au web/Ventes.tsx pour demander/confirmer la suppression de la vente depuis la
+    // transaction affichée (supprimer la transaction seule ne touche ni au stock ni au
+    // solde, voir VenteOeufsImpl/VenteReformeImpl.confirmerSuppression).
+    private String venteUniqueId;
+    // Non null = une suppression de LA VENTE (pas de cette transaction) est en attente —
+    // le web l'affiche pour proposer "Confirmer/Refuser" à un admin/responsable.
+    private String venteDemandeSuppressionParNom;
     private String categorie;
     private StatutTransaction statut;
     private String commentaireRejet;

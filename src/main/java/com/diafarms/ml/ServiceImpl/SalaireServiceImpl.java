@@ -349,7 +349,7 @@ public class SalaireServiceImpl implements SalaireService {
         // Masque (ne supprime pas) la Transaction liée pour garder la trace
         // comptable, mais supprime réellement le paiement lui-même pour libérer la
         // période (un nouveau "Payer" redevient possible pour ce même mois).
-        transactionService.toggleRemovedBySource(p.getUniqueId());
+        transactionService.setRemovedBySource(p.getUniqueId(), true);
         paiementSalaireRepo.delete(p);
 
         if (currentUser != null) {

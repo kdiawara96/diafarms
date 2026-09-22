@@ -80,4 +80,39 @@ public class VenteReformeControllers {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
     }
+
+    // Suppression en deux temps (demande puis confirmation) — voir VenteReformeImpl :
+    // jamais le vendeur, même pour sa propre vente.
+    @PutMapping("/demander-suppression/{uniqueId}")
+    public ResponseEntity<ApiResponse<VenteReformeDTO>> demanderSuppression(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Demande de suppression envoyée", HttpStatus.OK, service.demanderSuppression(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/confirmer-suppression/{uniqueId}")
+    public ResponseEntity<ApiResponse<VenteReformeDTO>> confirmerSuppression(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Vente supprimée", HttpStatus.OK, service.confirmerSuppression(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/annuler-demande-suppression/{uniqueId}")
+    public ResponseEntity<ApiResponse<VenteReformeDTO>> annulerDemandeSuppression(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Demande de suppression refusée", HttpStatus.OK, service.annulerDemandeSuppression(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
 }

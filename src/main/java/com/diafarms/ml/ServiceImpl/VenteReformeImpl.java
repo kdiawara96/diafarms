@@ -81,6 +81,29 @@ public class VenteReformeImpl implements VenteReformeService {
         return v == null ? 0.0 : v;
     }
 
+    private boolean hasRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
+    private boolean isAdmin(Utilisateurs u) {
+        return hasRole(u, "ADMIN") || hasRole(u, "SUPER_ADMIN");
+    }
+
+    // Même règle que VenteOeufsImpl : jamais le vendeur (VENTE), même pour sa propre
+    // vente.
+    private void ensureCanDemanderSuppression(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour demander la suppression d'une vente.");
+        }
+    }
+
+    private void ensureCanConfirmerSuppression(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
+            throw new IllegalArgumentException("Seul un administrateur ou un responsable peut supprimer une vente.");
+        }
+    }
+
     private TypeVenteReforme parseTypeVente(String raw) {
         if (raw == null || raw.isBlank()) {
             return TypeVenteReforme.TETE;
@@ -337,7 +360,7 @@ public class VenteReformeImpl implements VenteReformeService {
         if (redistribuer) {
             List<VenteReformeRepartition> anciennes = repartitionRepo.findByVenteReforme_UniqueId(saved.getUniqueId());
             for (VenteReformeRepartition ancienne : anciennes) {
-                transactionService.toggleRemovedBySource(ancienne.getUniqueId());
+                transactionService.setRemovedBySource(ancienne.getUniqueId(), true);
             }
             repartitionRepo.deleteAll(anciennes);
             lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getNombreSujets(), saved.getMontant(), saved.getCreePar() != null ? saved.getCreePar() : currentUser);
@@ -366,15 +389,20 @@ public class VenteReformeImpl implements VenteReformeService {
     @Override
     @Transactional
     public String deleteOrRecover(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanConfirmerSuppression(currentUser);
+
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
 
-        v.getInitialisation().setRemoved(!v.getInitialisation().getRemoved());
+        boolean removed = !v.getInitialisation().getRemoved();
+        v.getInitialisation().setRemoved(removed);
         venteReformeRepo.save(v);
-        boolean removed = v.getInitialisation().getRemoved();
 
+        // Set explicite (jamais un toggle) — voir VenteOeufsImpl.deleteOrRecover pour
+        // le raisonnement complet.
         for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(uniqueId)) {
-            transactionService.toggleRemovedBySource(r.getUniqueId());
+            transactionService.setRemovedBySource(r.getUniqueId(), removed);
         }
 
         if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
@@ -382,13 +410,84 @@ public class VenteReformeImpl implements VenteReformeService {
             ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
 
-        Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme",
                     (removed ? "Suppression" : "Restauration") + " d'une vente réforme");
         }
 
         return removed ? "Vente supprimée." : "Vente récupérée.";
+    }
+
+    @Override
+    @Transactional
+    public VenteReformeDTO demanderSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanDemanderSuppression(currentUser);
+
+        VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
+        if (v.getDemandeSuppressionPar() != null) {
+            throw new IllegalArgumentException("Une demande de suppression est déjà en attente pour cette vente.");
+        }
+        v.setDemandeSuppressionPar(currentUser);
+        v.setDateDemandeSuppression(java.time.LocalDateTime.now());
+        VenteReforme saved = venteReformeRepo.save(v);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
+                    "Demande de suppression d'une vente réforme — en attente de validation");
+        }
+        return VenteReformeDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public VenteReformeDTO confirmerSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanConfirmerSuppression(currentUser);
+
+        VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
+        if (v.getDemandeSuppressionPar() == null) {
+            throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
+        }
+
+        v.getInitialisation().setRemoved(true);
+        venteReformeRepo.save(v);
+
+        for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(uniqueId)) {
+            transactionService.setRemovedBySource(r.getUniqueId(), true);
+        }
+        if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
+            double ecart = nz(v.getMontant()) - v.getMontantRapporte();
+            ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), -ecart);
+        }
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme", "Suppression confirmée pour une vente réforme");
+        }
+        return VenteReformeDTO.fromEntity(v);
+    }
+
+    @Override
+    @Transactional
+    public VenteReformeDTO annulerDemandeSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanConfirmerSuppression(currentUser);
+
+        VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
+        if (v.getDemandeSuppressionPar() == null) {
+            throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
+        }
+        v.setDemandeSuppressionPar(null);
+        v.setDateDemandeSuppression(null);
+        VenteReforme saved = venteReformeRepo.save(v);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme", "Demande de suppression refusée pour une vente réforme");
+        }
+        return VenteReformeDTO.fromEntity(saved);
     }
 
     @Override

@@ -23,7 +23,7 @@ public interface SalaireService {
     PaiementSalaireDTO modifierPaiement(String paiementUniqueId, SalairePaiementUpdateRequest data);
     // Suppression réelle (pas un simple masquage) : libère la période pour un nouveau
     // paiement. La Transaction liée est retirée de la comptabilité (masquée, pas
-    // supprimée) pour garder une trace — voir TransactionService.toggleRemovedBySource.
+    // supprimée) pour garder une trace — voir TransactionService.setRemovedBySource.
     void supprimerPaiement(String paiementUniqueId);
     PaginatedResponse<SalaireDTO> list(int page, int size);
     // Non paginé — toute la grille salariale de la ferme en un appel, pour le picker

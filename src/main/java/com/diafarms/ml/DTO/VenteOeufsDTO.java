@@ -35,6 +35,10 @@ public class VenteOeufsDTO {
     private TypeVenteOeufs typeOeuf;
     private String creeParNom;
     private LocalDateTime createdAt;
+    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // VenteOeufsImpl.demanderSuppression.
+    private String demandeSuppressionParNom;
+    private LocalDateTime dateDemandeSuppression;
     // Part de chaque projet contributeur dans cette vente (voir VenteOeufsRepartition) —
     // permet d'afficher qui a apporté quoi, la vraie donnée reste les Transactions
     // générées une par projet.
@@ -58,6 +62,8 @@ public class VenteOeufsDTO {
                 .typeOeuf(v.getTypeOeuf())
                 .creeParNom(v.getCreePar() != null ? v.getCreePar().getFullName() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
+                .demandeSuppressionParNom(v.getDemandeSuppressionPar() != null ? v.getDemandeSuppressionPar().getFullName() : null)
+                .dateDemandeSuppression(v.getDateDemandeSuppression())
                 .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()
                         .map(VenteOeufsRepartitionDTO::fromEntity)
                         .toList() : java.util.Collections.emptyList())

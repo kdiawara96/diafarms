@@ -368,9 +368,9 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public void toggleRemovedBySource(String sourceUniqueId) {
+    public void setRemovedBySource(String sourceUniqueId, boolean removed) {
         transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
-            t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
+            t.getInitialisation().setRemoved(removed);
             transactionRepo.save(t);
         });
     }
@@ -777,6 +777,8 @@ public class TransactionServiceImpl implements TransactionService {
                 d.setMontantReel(d.getMontant() * ratio(info));
             }
             d.setClientNom(info.getClientNom());
+            d.setVenteUniqueId(info.getVenteUniqueId());
+            d.setVenteDemandeSuppressionParNom(info.getVenteDemandeSuppressionParNom());
         }
     }
 

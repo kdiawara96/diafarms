@@ -84,6 +84,35 @@ public class VenteOeufsImpl implements VenteOeufsService {
         return v == null ? 0.0 : v;
     }
 
+    private boolean hasRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
+    private boolean isAdmin(Utilisateurs u) {
+        return hasRole(u, "ADMIN") || hasRole(u, "SUPER_ADMIN");
+    }
+
+    // Peut DEMANDER une suppression — jamais le vendeur (VENTE), même pour sa propre
+    // vente : il ne doit pas pouvoir effacer la trace d'un manquant sur l'argent qu'il
+    // devait rapporter (voir SoldeVendeur/ajusterEcart). Même population que
+    // TransactionServiceImpl.ensureCanDemanderSuppression.
+    private void ensureCanDemanderSuppression(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour demander la suppression d'une vente.");
+        }
+    }
+
+    // Peut CONFIRMER une demande, ou supprimer/restaurer directement — un cran plus
+    // strict qu'une demande (COMPTABLE exclu) : une vente déjà encaissée en partie ou
+    // en totalité ne doit jamais disparaître sur la seule décision d'une personne qui
+    // manipule l'argent au quotidien.
+    private void ensureCanConfirmerSuppression(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
+            throw new IllegalArgumentException("Seul un administrateur ou un responsable peut supprimer une vente.");
+        }
+    }
+
     /** Route l'écart théorique/rapporté vers le solde du CLIENT si la vente en a un
      * (vente à crédit : ce n'est pas le vendeur qui est en tort), sinon vers le solde
      * du vendeur (comportement historique, vente "directe" sans client identifié). */
@@ -352,7 +381,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         if (redistribuer) {
             List<VenteOeufsRepartition> anciennes = repartitionRepo.findByVenteOeufs_UniqueId(saved.getUniqueId());
             for (VenteOeufsRepartition ancienne : anciennes) {
-                transactionService.toggleRemovedBySource(ancienne.getUniqueId());
+                transactionService.setRemovedBySource(ancienne.getUniqueId(), true);
             }
             repartitionRepo.deleteAll(anciennes);
             lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getQuantiteOeufs(), saved.getMontant(), saved.getCreePar() != null ? saved.getCreePar() : currentUser);
@@ -383,15 +412,22 @@ public class VenteOeufsImpl implements VenteOeufsService {
     @Override
     @Transactional
     public String deleteOrRecover(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanConfirmerSuppression(currentUser);
+
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
-        v.getInitialisation().setRemoved(!v.getInitialisation().getRemoved());
+        boolean removed = !v.getInitialisation().getRemoved();
+        v.getInitialisation().setRemoved(removed);
         venteOeufsRepo.save(v);
-        boolean removed = v.getInitialisation().getRemoved();
 
+        // Set explicite (jamais un toggle) : la transaction générée suit TOUJOURS l'état
+        // qu'on vient de décider pour la vente, même si elle avait déjà été modifiée
+        // séparément entre-temps (ex: supprimée à part depuis la Comptabilité) — un
+        // simple flip l'aurait remise dans le mauvais état dans ce cas.
         for (VenteOeufsRepartition r : repartitionRepo.findByVenteOeufs_UniqueId(uniqueId)) {
-            transactionService.toggleRemovedBySource(r.getUniqueId());
+            transactionService.setRemovedBySource(r.getUniqueId(), removed);
         }
 
         // Supprimer une vente annule aussi son impact sur le solde (vendeur ou client
@@ -402,13 +438,84 @@ public class VenteOeufsImpl implements VenteOeufsService {
             ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
 
-        Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs",
                     (removed ? "Suppression" : "Restauration") + " d'une vente d'œufs");
         }
 
         return removed ? "Vente supprimée." : "Vente récupérée.";
+    }
+
+    @Override
+    @Transactional
+    public VenteOeufsDTO demanderSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanDemanderSuppression(currentUser);
+
+        VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
+        if (v.getDemandeSuppressionPar() != null) {
+            throw new IllegalArgumentException("Une demande de suppression est déjà en attente pour cette vente.");
+        }
+        v.setDemandeSuppressionPar(currentUser);
+        v.setDateDemandeSuppression(java.time.LocalDateTime.now());
+        VenteOeufs saved = venteOeufsRepo.save(v);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs",
+                    "Demande de suppression d'une vente d'œufs — en attente de validation");
+        }
+        return VenteOeufsDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
+    public VenteOeufsDTO confirmerSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanConfirmerSuppression(currentUser);
+
+        VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
+        if (v.getDemandeSuppressionPar() == null) {
+            throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
+        }
+
+        v.getInitialisation().setRemoved(true);
+        venteOeufsRepo.save(v);
+
+        for (VenteOeufsRepartition r : repartitionRepo.findByVenteOeufs_UniqueId(uniqueId)) {
+            transactionService.setRemovedBySource(r.getUniqueId(), true);
+        }
+        if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
+            double ecart = nz(v.getMontant()) - v.getMontantRapporte();
+            ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), -ecart);
+        }
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs", "Suppression confirmée pour une vente d'œufs");
+        }
+        return VenteOeufsDTO.fromEntity(v);
+    }
+
+    @Override
+    @Transactional
+    public VenteOeufsDTO annulerDemandeSuppression(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanConfirmerSuppression(currentUser);
+
+        VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
+        if (v.getDemandeSuppressionPar() == null) {
+            throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
+        }
+        v.setDemandeSuppressionPar(null);
+        v.setDateDemandeSuppression(null);
+        VenteOeufs saved = venteOeufsRepo.save(v);
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs", "Demande de suppression refusée pour une vente d'œufs");
+        }
+        return VenteOeufsDTO.fromEntity(saved);
     }
 
     @Override

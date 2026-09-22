@@ -111,6 +111,16 @@ public class VenteOeufs {
             columnDefinition = "varchar(10) not null default 'BON'")
     private TypeVenteOeufs typeOeuf = TypeVenteOeufs.BON;
 
+    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // VenteOeufsImpl.demanderSuppression/confirmerSuppression. Un vendeur (VENTE) ne
+    // peut ni demander ni confirmer la suppression d'une vente, même la sienne : il ne
+    // doit pas pouvoir effacer la trace d'un manquant sur l'argent qu'il devait rapporter.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "demande_suppression_par_id")
+    private Utilisateurs demandeSuppressionPar;
+
+    private java.time.LocalDateTime dateDemandeSuppression;
+
     @Embedded
     private Initialisation initialisation;
 }

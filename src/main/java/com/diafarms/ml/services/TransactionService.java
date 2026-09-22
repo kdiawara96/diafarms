@@ -49,7 +49,13 @@ public interface TransactionService {
 
     /** Bascule removed sur la transaction liée à une vente supprimée/restaurée
      * (retrouvée via sourceUniqueId) — pas de recette fantôme après suppression. */
-    void toggleRemovedBySource(String sourceUniqueId);
+    /** Aligne le `removed` de la transaction générée par une source (aliment, soins,
+     * vente, investissement, salaire...) sur celui, déjà décidé, de cette source —
+     * jamais un simple flip : une source qui appelle ceci deux fois de suite (ex: sa
+     * propre transaction a été supprimée séparément entre-temps) doit retomber juste,
+     * pas inverser un état qu'elle ne connaît pas. Remplace l'ancien
+     * toggleRemovedBySource, qui inversait à l'aveugle. */
+    void setRemovedBySource(String sourceUniqueId, boolean removed);
 
     /**
      * Demande la suppression d'une transaction (ADMIN/RESPONSABLE/COMPTABLE) — ne

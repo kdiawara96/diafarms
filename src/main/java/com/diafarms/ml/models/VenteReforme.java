@@ -103,6 +103,15 @@ public class VenteReforme {
     @Column(name = "poids_total_kg")
     private Double poidsTotalKg;
 
+    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // VenteReformeImpl.demanderSuppression/confirmerSuppression, même règle que
+    // VenteOeufs.demandeSuppressionPar (un vendeur ne peut jamais l'initier ni la confirmer).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "demande_suppression_par_id")
+    private Utilisateurs demandeSuppressionPar;
+
+    private java.time.LocalDateTime dateDemandeSuppression;
+
     @Embedded
     private Initialisation initialisation;
 }

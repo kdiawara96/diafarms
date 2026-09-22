@@ -327,7 +327,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
 
         // 2. Retire la sortie comptable liée (removed=true, conserve la trace d'audit)
-        transactionService.toggleRemovedBySource(inv.getUniqueId());
+        transactionService.setRemovedBySource(inv.getUniqueId(), true);
 
         // Capturés avant la suppression physique (plus rien à lire sur inv après).
         Long id = inv.getId();
