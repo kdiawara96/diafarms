@@ -76,6 +76,24 @@ public class CommandeController {
         }
     }
 
+    // Livraison partielle ou totale d'une commande (grosse commande livrée au fil de la
+    // collecte, en plusieurs fois) — voir CommandeServiceImpl.livrer. quantite absente =
+    // tout ce qu'il reste (même résultat que /convertir-en-vente) ; montantRecu = argent
+    // NOUVEAU reçu à CETTE livraison précise, 0 si rien de neuf.
+    @PostMapping("/{uniqueId}/livrer")
+    public ResponseEntity<ApiResponse<CommandeDTO>> livrer(
+            @PathVariable String uniqueId,
+            @RequestParam(required = false) Integer quantite,
+            @RequestParam(required = false) Double montantRecu) {
+        try {
+            return ApiResponse.createResponse("Commande livrée", HttpStatus.OK, service.livrer(uniqueId, quantite, montantRecu), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PutMapping("/deleteOrRecover/{uniqueId}")
     public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId) {
         try {

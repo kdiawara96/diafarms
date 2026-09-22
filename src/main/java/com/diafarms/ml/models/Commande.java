@@ -50,6 +50,14 @@ public class Commande {
     @Column(name = "quantite", nullable = false)
     private Integer quantite;
 
+    // Cumul déjà livré (via CommandeServiceImpl.livrer, appelée une ou plusieurs fois
+    // pour une grosse commande livrée au fil de la collecte) — NULL sur les commandes
+    // existantes avant ce champ, traité comme 0. Passe à CONVERTIE seulement une fois
+    // quantiteLivree >= quantite ; reste CONFIRMEE/EN_ATTENTE entre deux livraisons
+    // partielles.
+    @Column(name = "quantite_livree")
+    private Integer quantiteLivree;
+
     @Column(name = "prix_unitaire_estime")
     private Double prixUnitaireEstime;
 

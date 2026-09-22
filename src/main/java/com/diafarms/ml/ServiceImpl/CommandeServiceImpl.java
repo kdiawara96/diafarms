@@ -86,6 +86,10 @@ public class CommandeServiceImpl implements CommandeService {
         return v == null ? 0.0 : v;
     }
 
+    private int nz(Integer v) {
+        return v == null ? 0 : v;
+    }
+
     @Override
     @Transactional
     public CommandeDTO create(CommandeCreate data) {
@@ -172,6 +176,12 @@ public class CommandeServiceImpl implements CommandeService {
             throw new IllegalArgumentException("Seule une commande en attente peut être modifiée.");
         }
 
+        // Une commande déjà (partiellement) livrée a une vente réelle basée sur ces
+        // chiffres (voir livrer()) : les changer ensuite désynchroniserait ce qui a été
+        // livré de ce qui reste à livrer.
+        if (nz(c.getQuantiteLivree()) > 0 && (data.getQuantite() != null || data.getMontantEstime() != null || data.getPrixUnitaireEstime() != null)) {
+            throw new IllegalArgumentException("Cette commande a déjà commencé à être livrée : la quantité et le montant ne peuvent plus être modifiés.");
+        }
         if (data.getQuantite() != null) {
             if (data.getQuantite() <= 0) throw new IllegalArgumentException("La quantité commandée doit être positive.");
             c.setQuantite(data.getQuantite());
@@ -246,36 +256,62 @@ public class CommandeServiceImpl implements CommandeService {
     @Override
     @Transactional
     public CommandeDTO convertirEnVente(String uniqueId) {
+        // Livre tout ce qu'il reste, en un coup, sans nouvel argent compté à cet
+        // instant — l'ancien comportement à un seul coup, gardé pour compatibilité
+        // (bouton "Convertir en vente" historique).
+        return livrer(uniqueId, null, 0.0);
+    }
+
+    @Override
+    @Transactional
+    public CommandeDTO livrer(String uniqueId, Integer quantiteDemandee, Double montantRecu) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
         Commande c = commandeRepo.findByUniqueId(uniqueId);
         if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
         if (c.getStatut() == StatutCommande.CONVERTIE) {
-            throw new IllegalArgumentException("Cette commande a déjà été convertie en vente.");
+            throw new IllegalArgumentException("Cette commande a déjà été entièrement livrée.");
         }
         if (c.getStatut() == StatutCommande.ANNULEE) {
-            throw new IllegalArgumentException("Une commande annulée ne peut pas être convertie en vente.");
+            throw new IllegalArgumentException("Une commande annulée ne peut pas être livrée.");
         }
 
-        // L'acompte a déjà été encaissé et porté au solde du client À LA CRÉATION de la
-        // commande (voir create() ci-dessus : payerDette() décrémente déjà le solde de
-        // ce montant, immédiatement, pour ne pas laisser ce paiement invisible tant que
-        // la commande n'est pas convertie). Le reporter ICI ENCORE comme montantRapporte
-        // faisait donc compter l'acompte DEUX FOIS sur le solde : une fois à la création
-        // (-acompte), une deuxième fois via l'écart de cette vente (montant - acompte au
-        // lieu de montant - 0), le client finissait par sembler devoir "montant - 2 ×
-        // acompte" plutôt que "montant - acompte". montantRapporte = 0 ici : la vente ne
-        // représente aucun argent NOUVEAU reçu à cet instant, l'écart plein (montant - 0)
-        // vient donc simplement annuler l'acompte déjà déduit et refléter le solde réel.
+        int quantiteRestante = c.getQuantite() - nz(c.getQuantiteLivree());
+        int quantite = quantiteDemandee != null ? quantiteDemandee : quantiteRestante;
+        if (quantite <= 0) {
+            throw new IllegalArgumentException("La quantité à livrer doit être positive.");
+        }
+        if (quantite > quantiteRestante) {
+            throw new IllegalArgumentException(
+                "Quantité supérieure à ce qu'il reste à livrer sur cette commande (" + quantiteRestante + " restant(s))."
+            );
+        }
+
+        // Prix au même prorata que le prix unitaire estimé de la commande (ou déduit du
+        // montant total si aucun prix unitaire n'a été renseigné) : une livraison
+        // partielle de la moitié de la commande vaut la moitié de son montant estimé.
+        double prixUnitaire = c.getPrixUnitaireEstime() != null ? c.getPrixUnitaireEstime()
+                : c.getMontantEstime() / c.getQuantite();
+        double montantLivraison = prixUnitaire * quantite;
+
+        // L'acompte (et tout paiement complémentaire, voir update()) a déjà été encaissé
+        // et porté au solde du client au moment où il a été VERSÉ, pas ici (voir
+        // create()/update() : payerDette() décrémente déjà le solde immédiatement, pour
+        // ne pas laisser cet argent invisible tant que rien n'est livré). Le reporter ICI
+        // ENCORE comme montantRapporte compterait cet argent deux fois sur le solde.
+        // montantRapporte ne représente donc QUE l'argent NOUVEAU reçu à CETTE livraison
+        // précise (0 par défaut) : l'écart (montant - montantRapporte) vient alors
+        // simplement consommer ce qui a déjà été payé d'avance et refléter le solde réel.
+        double montantRapporteReel = nz(montantRecu);
         String venteUniqueId;
         if (c.getType() == TypeStockMagasin.OEUFS) {
             VenteOeufsCreate data = new VenteOeufsCreate();
             data.setMagasinUniqueId(c.getMagasin().getUniqueId());
             data.setClientUniqueId(c.getClient().getUniqueId());
-            data.setQuantiteOeufs(c.getQuantite());
-            data.setPrixUnitaire(c.getPrixUnitaireEstime());
-            data.setMontant(c.getMontantEstime());
-            data.setMontantRapporte(0.0);
+            data.setQuantiteOeufs(quantite);
+            data.setPrixUnitaire(prixUnitaire);
+            data.setMontant(montantLivraison);
+            data.setMontantRapporte(montantRapporteReel);
             data.setDate(LocalDate.now().toString());
             VenteOeufsDTO vente = venteOeufsService.create(data);
             venteUniqueId = vente.getUniqueId();
@@ -283,22 +319,26 @@ public class CommandeServiceImpl implements CommandeService {
             VenteReformeCreate data = new VenteReformeCreate();
             data.setMagasinUniqueId(c.getMagasin().getUniqueId());
             data.setClientUniqueId(c.getClient().getUniqueId());
-            data.setNombreSujets(c.getQuantite());
-            data.setPrixUnitaire(c.getPrixUnitaireEstime());
-            data.setMontant(c.getMontantEstime());
-            data.setMontantRapporte(0.0);
+            data.setNombreSujets(quantite);
+            data.setPrixUnitaire(prixUnitaire);
+            data.setMontant(montantLivraison);
+            data.setMontantRapporte(montantRapporteReel);
             data.setDate(LocalDate.now().toString());
             VenteReformeDTO vente = venteReformeService.create(data);
             venteUniqueId = vente.getUniqueId();
         }
 
+        int quantiteLivreeApres = nz(c.getQuantiteLivree()) + quantite;
+        c.setQuantiteLivree(quantiteLivreeApres);
         c.setVenteUniqueId(venteUniqueId);
-        c.setStatut(StatutCommande.CONVERTIE);
+        boolean complete = quantiteLivreeApres >= c.getQuantite();
+        if (complete) c.setStatut(StatutCommande.CONVERTIE);
         Commande saved = commandeRepo.save(c);
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
-                    "Commande convertie en vente pour " + c.getClient().getNom());
+                    "Livraison de " + quantite + " (" + c.getType() + ") pour " + c.getClient().getNom()
+                            + (complete ? " — commande entièrement livrée" : " — reste " + (c.getQuantite() - quantiteLivreeApres)));
         }
         return CommandeDTO.fromEntity(saved);
     }

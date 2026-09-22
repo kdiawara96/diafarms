@@ -24,6 +24,9 @@ public class CommandeDTO {
     private String magasinNom;
     private String type;
     private Integer quantite;
+    // Cumul déjà livré et ce qu'il reste — voir Commande.quantiteLivree/CommandeServiceImpl.livrer.
+    private Integer quantiteLivree;
+    private Integer quantiteRestante;
     private Double prixUnitaireEstime;
     private Double montantEstime;
     private Double montantAcompte;
@@ -44,6 +47,10 @@ public class CommandeDTO {
                 .magasinNom(c.getMagasin() != null ? c.getMagasin().getNom() : null)
                 .type(c.getType() != null ? c.getType().name() : null)
                 .quantite(c.getQuantite())
+                .quantiteLivree(c.getQuantiteLivree() != null ? c.getQuantiteLivree() : 0)
+                .quantiteRestante(c.getQuantite() != null
+                        ? c.getQuantite() - (c.getQuantiteLivree() != null ? c.getQuantiteLivree() : 0)
+                        : null)
                 .prixUnitaireEstime(c.getPrixUnitaireEstime())
                 .montantEstime(c.getMontantEstime())
                 .montantAcompte(c.getMontantAcompte())
