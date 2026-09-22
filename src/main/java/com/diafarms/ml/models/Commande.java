@@ -56,8 +56,10 @@ public class Commande {
     @Column(name = "montant_estime", nullable = false)
     private Double montantEstime;
 
-    // Acompte versé à la commande (optionnel) — reporté sur montantRapporte de la
-    // vente générée lors de la conversion, voir CommandeServiceImpl.convertirEnVente.
+    // Acompte versé à la commande (optionnel) — encaissé et porté au solde du client
+    // dès la création (voir CommandeServiceImpl.create/payerDette), PAS reporté à
+    // nouveau sur la vente générée lors de la conversion (ça le compterait deux fois
+    // sur le solde, voir CommandeServiceImpl.convertirEnVente).
     @Column(name = "montant_acompte")
     private Double montantAcompte;
 

@@ -257,10 +257,16 @@ public class CommandeServiceImpl implements CommandeService {
             throw new IllegalArgumentException("Une commande annulée ne peut pas être convertie en vente.");
         }
 
-        // L'acompte déjà versé (nz : 0.0 si aucun) devient le montant rapporté de la
-        // vente générée — jamais laissé null, sinon la convention "null = pas d'écart
-        // connu, compte pour le plein théorique" masquerait à tort la dette du client
-        // sur ce qui n'a justement PAS encore été payé (voir VenteOeufs.montantRapporte).
+        // L'acompte a déjà été encaissé et porté au solde du client À LA CRÉATION de la
+        // commande (voir create() ci-dessus : payerDette() décrémente déjà le solde de
+        // ce montant, immédiatement, pour ne pas laisser ce paiement invisible tant que
+        // la commande n'est pas convertie). Le reporter ICI ENCORE comme montantRapporte
+        // faisait donc compter l'acompte DEUX FOIS sur le solde : une fois à la création
+        // (-acompte), une deuxième fois via l'écart de cette vente (montant - acompte au
+        // lieu de montant - 0), le client finissait par sembler devoir "montant - 2 ×
+        // acompte" plutôt que "montant - acompte". montantRapporte = 0 ici : la vente ne
+        // représente aucun argent NOUVEAU reçu à cet instant, l'écart plein (montant - 0)
+        // vient donc simplement annuler l'acompte déjà déduit et refléter le solde réel.
         String venteUniqueId;
         if (c.getType() == TypeStockMagasin.OEUFS) {
             VenteOeufsCreate data = new VenteOeufsCreate();
@@ -269,7 +275,7 @@ public class CommandeServiceImpl implements CommandeService {
             data.setQuantiteOeufs(c.getQuantite());
             data.setPrixUnitaire(c.getPrixUnitaireEstime());
             data.setMontant(c.getMontantEstime());
-            data.setMontantRapporte(nz(c.getMontantAcompte()));
+            data.setMontantRapporte(0.0);
             data.setDate(LocalDate.now().toString());
             VenteOeufsDTO vente = venteOeufsService.create(data);
             venteUniqueId = vente.getUniqueId();
@@ -280,7 +286,7 @@ public class CommandeServiceImpl implements CommandeService {
             data.setNombreSujets(c.getQuantite());
             data.setPrixUnitaire(c.getPrixUnitaireEstime());
             data.setMontant(c.getMontantEstime());
-            data.setMontantRapporte(nz(c.getMontantAcompte()));
+            data.setMontantRapporte(0.0);
             data.setDate(LocalDate.now().toString());
             VenteReformeDTO vente = venteReformeService.create(data);
             venteUniqueId = vente.getUniqueId();
