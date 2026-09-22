@@ -606,3 +606,15 @@ bouton "Modifier" des Commandes web.
 - **Ouvert** : filtre par site/poulailler dans la liste Comptabilité, section site/poulailler dans le PDF projet, suggestion du
   site d'après le dernier projet du poulailler, rattrapage des anciennes dépenses d'aliment (prennent leur poulailler à leur
   prochaine modification), lien permanent poulailler-site si un jour utile.
+
+---
+
+## Mise à jour 2026-09-22 (double comptage acompte/vente, livraison progressive d'une commande)
+
+- **Bug trouvé et corrigé** : `CommandeServiceImpl.convertirEnVente` reportait l'acompte déjà encaissé (et déjà porté au solde du client à la création de la commande) une deuxième fois comme `montantRapporte` de la vente générée, comptant l'acompte deux fois (solde du client sous-évalué de 2×acompte, recettes de la ferme surévaluées de l'acompte). Corrigé : `montantRapporte` à la conversion ne représente plus que l'argent NOUVEAU reçu à cet instant précis (0 par défaut), jamais l'acompte déjà comptabilisé séparément.
+- **Livraison progressive d'une commande** (`Commande.quantiteLivree`, `CommandeServiceImpl.livrer(uniqueId, quantite, montantRecu)`, `POST /commandes/{uid}/livrer`) : une grosse commande peut désormais être livrée en plusieurs fois (au fil de la collecte), chaque livraison créant sa propre vente au prorata, jusqu'à épuisement (`statut` passe à `CONVERTIE` seulement une fois `quantiteLivree >= quantite`). `convertirEnVente` reste l'ancien raccourci "tout livrer d'un coup, 0 argent neuf", inchangé pour compatibilité.
+  - Web : `Commandes.tsx` remplace l'ancien "Convertir en vente" par `LivrerCommandeDialog` (quantité modifiable, montant reçu aujourd'hui optionnel), colonne Quantité affiche "X livré(s), reste Y".
+  - `update()` d'une commande refuse désormais de changer quantité/montant une fois qu'une livraison a commencé (`quantiteLivree > 0`).
+  - Mobile : aucun changement — seule la web gère le cycle de vie d'une commande (confirmer/annuler/livrer/facturer), le mobile ne fait que la CRÉATION (`SaisieType.COMMANDE_CREATE`).
+- **Cas d'usage découvert en audit** (client réel, commande de 750 œufs payée d'avance en 2 fois, livrée ensuite via 3 ventes SÉPARÉES sans jamais utiliser "Convertir en vente") : ce cas historique n'est pas corrigé rétroactivement (aucune commande liée), seulement empêché pour l'avenir si "Livrer" est utilisé au lieu de ventes manuelles déconnectées.
+- **Testé en réel** (créé puis nettoyé sur une vraie ferme, pas la démo) : 3 livraisons successives d'une commande de 750 œufs/73750 FCFA avec acompte 30000, dont une avec paiement complémentaire de 5000 à la livraison — solde final exact (38750, soit 73750-30000-5000).
