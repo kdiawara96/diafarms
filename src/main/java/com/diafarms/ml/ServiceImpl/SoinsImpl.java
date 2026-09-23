@@ -41,6 +41,7 @@ public class SoinsImpl implements SoinsService {
     private final LogsServices logs;
     private final OtherService otherService;
     private final TransactionService transactionService;
+    private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -108,9 +109,7 @@ public class SoinsImpl implements SoinsService {
         s.setObservations(data.getObservations());
         s.setInitialisation(Initialisation.init());
 
-        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
-            s.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        s.setBatiment(poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId()));
         if (currentUser != null) {
             s.setFarm(currentUser.getFarm());
         }
@@ -141,9 +140,7 @@ public class SoinsImpl implements SoinsService {
         if (data.getCoutTotal() != null) s.setCoutTotal(data.getCoutTotal());
         if (data.getModeAdministration() != null) s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         if (data.getObservations() != null) s.setObservations(data.getObservations());
-        if (data.getBatimentUniqueId() != null) {
-            s.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        s.setBatiment(poulaillerObligatoire.resoudrePourModification(s.getProjet(), s.getBatiment(), data.getBatimentUniqueId()));
         if (s.getInitialisation() != null) {
             s.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }

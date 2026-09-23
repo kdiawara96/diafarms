@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.EffectifReformeDTO;
 import com.diafarms.ml.DTO.ReformeDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.models.Batiment;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Reforme;
 import com.diafarms.ml.models.Utilisateurs;
@@ -44,6 +45,8 @@ public class ReformeImpl implements ReformeService {
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
+    private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -65,6 +68,18 @@ public class ReformeImpl implements ReformeService {
         return nbSujets - morts - dejaReformes;
     }
 
+    // Effectif vivant DU POULAILLER (s'il est connu, voir EffectifVivantHelper) : on ne
+    // réforme pas plus de sujets qu'il n'en reste dans ce poulailler. dejaCompte = ce que
+    // cette même réforme retire déjà de cet effectif (modification dans le même poulailler).
+    private void validerEffectifPoulailler(Projets projet, Batiment poulailler, int nombre, int dejaCompte) {
+        if (!effectifVivantHelper.plafondParBatiment(poulailler)) return;
+        int restant = effectifVivantHelper.plafond(projet, poulailler) + dejaCompte;
+        if (nombre > restant) {
+            throw new IllegalArgumentException(
+                "Effectif vivant insuffisant dans ce poulailler (" + restant + " sujet(s) restants).");
+        }
+    }
+
     @Override
     @Transactional
     public ReformeDTO create(ReformeCreate data) {
@@ -82,6 +97,9 @@ public class ReformeImpl implements ReformeService {
             );
         }
 
+        Batiment poulailler = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
+        validerEffectifPoulailler(projet, poulailler, data.getNombreSujets(), 0);
+
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Reforme r = new Reforme();
@@ -93,9 +111,7 @@ public class ReformeImpl implements ReformeService {
         r.setCause(data.getCause());
         r.setInitialisation(Initialisation.init());
 
-        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
-            r.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        r.setBatiment(poulailler);
         if (currentUser != null) {
             r.setFarm(currentUser.getFarm());
         }
@@ -117,6 +133,16 @@ public class ReformeImpl implements ReformeService {
         Reforme r = reformeRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Réforme introuvable : " + uniqueId));
 
+        // Poulailler et plafond du poulailler vérifiés AVANT toute modification de
+        // l'entité (sinon la somme lue en base inclurait déjà la nouvelle valeur).
+        Batiment ancienPoulailler = r.getBatiment();
+        Batiment nouveauPoulailler = poulaillerObligatoire.resoudrePourModification(r.getProjet(), ancienPoulailler, data.getBatimentUniqueId());
+        if (data.getNombreSujets() != null || data.getBatimentUniqueId() != null) {
+            boolean memePoulailler = ancienPoulailler != null && ancienPoulailler.getId().equals(nouveauPoulailler.getId());
+            int nouveauNombre = data.getNombreSujets() != null ? data.getNombreSujets() : r.getNombreSujets();
+            validerEffectifPoulailler(r.getProjet(), nouveauPoulailler, nouveauNombre, memePoulailler ? r.getNombreSujets() : 0);
+        }
+
         if (data.getDate() != null) r.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) r.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreSujets() != null) {
@@ -136,9 +162,7 @@ public class ReformeImpl implements ReformeService {
             r.setNombreSujets(data.getNombreSujets());
         }
         if (data.getCause() != null) r.setCause(data.getCause());
-        if (data.getBatimentUniqueId() != null) {
-            r.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        r.setBatiment(nouveauPoulailler);
         if (r.getInitialisation() != null) {
             r.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }

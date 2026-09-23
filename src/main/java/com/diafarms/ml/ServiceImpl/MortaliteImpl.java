@@ -37,6 +37,7 @@ public class MortaliteImpl implements MortaliteService {
     private final LogsServices logs;
     private final OtherService otherService;
     private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
+    private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -73,8 +74,7 @@ public class MortaliteImpl implements MortaliteService {
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
         int nombreMorts = data.getNombreMorts() != null ? data.getNombreMorts() : 0;
-        com.diafarms.ml.models.Batiment batimentSaisi = (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank())
-                ? batimentRepo.findByUniqueId(data.getBatimentUniqueId()) : null;
+        com.diafarms.ml.models.Batiment batimentSaisi = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         validerPlafondMortalite(projet, batimentSaisi, nombreMorts, 0);
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -88,9 +88,7 @@ public class MortaliteImpl implements MortaliteService {
         m.setCause(data.getCause());
         m.setInitialisation(Initialisation.init());
 
-        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
-            m.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        m.setBatiment(batimentSaisi);
         if (currentUser != null) {
             m.setFarm(currentUser.getFarm());
         }
@@ -118,9 +116,7 @@ public class MortaliteImpl implements MortaliteService {
         if (data.getHeure() != null) m.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreMorts() != null) m.setNombreMorts(data.getNombreMorts());
         if (data.getCause() != null) m.setCause(data.getCause());
-        if (data.getBatimentUniqueId() != null) {
-            m.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        m.setBatiment(poulaillerObligatoire.resoudrePourModification(m.getProjet(), m.getBatiment(), data.getBatimentUniqueId()));
         // Ce que cette même saisie comptait AVANT modification est déjà dans la somme
         // de mortalité du périmètre : on le rend disponible, sauf si le bâtiment a changé
         // (elle ne comptait alors pas dans le nouveau périmètre).
@@ -128,7 +124,7 @@ public class MortaliteImpl implements MortaliteService {
                 ancienBatimentId, m.getBatiment() != null ? m.getBatiment().getId() : null);
         // Seulement si le nombre ou le bâtiment change : modifier la seule cause d'une
         // ancienne saisie ne doit pas être bloqué par un plafond qu'elle dépassait déjà.
-        if (data.getNombreMorts() != null || data.getBatimentUniqueId() != null) {
+        if (data.getNombreMorts() != null || !memePerimetre) {
             validerPlafondMortalite(m.getProjet(), m.getBatiment(), m.getNombreMorts(), memePerimetre ? ancienNombre : 0);
         }
         if (m.getInitialisation() != null) {

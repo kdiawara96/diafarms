@@ -47,6 +47,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     private final LogsServices logs;
     private final OtherService otherService;
     private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
+    private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -123,8 +124,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
-        Batiment batiment = (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank())
-                ? batimentRepo.findByUniqueId(data.getBatimentUniqueId()) : null;
+        Batiment batiment = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         int oeufsCollectes = data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0;
         LocalDate date = data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now();
         validerPlafondJournalier(projet, batiment, date, oeufsCollectes, null);
@@ -132,8 +132,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
                 data.getOeufsCasses() != null ? data.getOeufsCasses() : 0,
                 data.getOeufsNonUtilisables() != null ? data.getOeufsNonUtilisables() : 0);
 
-        // Magasin de STOCKAGE obligatoire (pas le bâtiment/poulailler d'élevage,
-        // optionnel lui) : c'est ce qui plafonne les transferts vers un magasin de
+        // Magasin de STOCKAGE obligatoire (en plus du poulailler d'élevage) : c'est ce qui plafonne les transferts vers un magasin de
         // vente plus tard (MagasinTransfertServiceImpl), impossible de savoir où sont
         // les œufs sans ça.
         if (data.getMagasinStockageUniqueId() == null || data.getMagasinStockageUniqueId().isBlank()) {
@@ -203,9 +202,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
 
         if (data.getDate() != null) c.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
-        if (data.getBatimentUniqueId() != null) {
-            c.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        c.setBatiment(poulaillerObligatoire.resoudrePourModification(c.getProjet(), c.getBatiment(), data.getBatimentUniqueId()));
         if (data.getOeufsCollectes() != null) {
             // Validé avec la date/le bâtiment déjà à jour ci-dessus (au cas où l'un des
             // deux change en même temps que la quantité) — voir validerPlafondJournalier.

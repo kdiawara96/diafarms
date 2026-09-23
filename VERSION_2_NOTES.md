@@ -659,3 +659,22 @@ client — seule la transaction avait été supprimée, la vente (`ventes_oeufs`
 - Testé en local (Postgres temporaire + navigateur headless), pas encore en production.
 - **Ouvert** : les autres transactions à source (salaire, aliment, soins, investissement, projet) restent modifiables et
   supprimables seules depuis la Comptabilité — même risque de désynchronisation, non traité ici.
+
+### 2026-09-23 (suite) — poulailler obligatoire sur les saisies de production
+
+- Le poulailler était facultatif depuis le 10/07 (choix par défaut au moment de créer les modules, sans raison métier).
+  Il est maintenant **obligatoire** pour collecte d'œufs, sortie (consommation) d'aliment, soins (vaccination comprise),
+  mortalité et réforme : `commons/PoulaillerObligatoire` (doit être un poulailler occupé par le projet, occupations
+  terminées comprises ; déduit si le projet n'en occupe qu'un, ce qui garde valides les saisies hors ligne des anciens
+  APK). Une ancienne saisie sans poulailler doit en recevoir un dès qu'on la modifie (`resoudrePourModification`).
+- **Achat d'aliment : inchangé** (lié au projet, poulailler facultatif) — décision de l'utilisateur ; le mobile ne
+  l'exige plus non plus (il l'exigeait à tort).
+- Réforme : nouveau plafond par poulailler (`ReformeImpl.validerEffectifPoulailler`), vérifié avant toute modification
+  de l'entité.
+- Non concernés : vaccins prévus dans l'assistant "Nouveau projet" et transfert de stock d'aliment à la clôture
+  (créations internes, restent sans poulailler).
+- Web : "Poulailler *" dans les 5 dialogues de création et dans la fiche projet (soins, vaccination comprise) ;
+  `EditProductionDialog` demande le poulailler d'une ancienne saisie qui n'en a pas. Import Excel inchangé (colonne
+  "Bâtiment (nom)" : vide accepté seulement si le projet n'a qu'un poulailler, le serveur refuse sinon).
+- Mobile APK 1.24 (versionCode 25) : pas de choix "Aucun" pour ces 5 types, présélection s'il n'y a qu'un poulailler,
+  libellé "Poulailler *" ; "Vente" retirée des catégories d'entrée d'argent.

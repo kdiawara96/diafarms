@@ -32,4 +32,9 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
         ORDER BY o.dateEntree DESC
         """)
     java.util.List<OccupationBatiment> findActiveByBatimentId(@Param("batimentId") Long batimentId);
+
+    // Tous les poulaillers occupés par un projet, occupations terminées comprises (une
+    // saisie peut être antidatée) — voir PoulaillerObligatoire.
+    @Query("SELECT DISTINCT o.batiment FROM OccupationBatiment o WHERE o.projet.id = :projetId")
+    java.util.List<com.diafarms.ml.models.Batiment> findBatimentsByProjetId(@Param("projetId") Long projetId);
 }

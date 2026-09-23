@@ -39,6 +39,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -78,9 +79,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
         c.setQuantiteKg(data.getQuantiteKg());
         c.setInitialisation(Initialisation.init());
 
-        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
-            c.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        c.setBatiment(poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId()));
         if (currentUser != null) {
             c.setFarm(currentUser.getFarm());
         }
@@ -118,9 +117,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
             }
             c.setQuantiteKg(data.getQuantiteKg());
         }
-        if (data.getBatimentUniqueId() != null) {
-            c.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        c.setBatiment(poulaillerObligatoire.resoudrePourModification(c.getProjet(), c.getBatiment(), data.getBatimentUniqueId()));
         if (c.getInitialisation() != null) {
             c.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }
