@@ -120,6 +120,10 @@ public class Transaction {
 
     private LocalDateTime dateDemandeSuppression;
 
+    // Voir VenteOeufs.motifSuppression.
+    @Column(name = "motif_suppression", columnDefinition = "TEXT")
+    private String motifSuppression;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id")
     private Farm farm;

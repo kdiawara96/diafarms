@@ -222,4 +222,9 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     List<Object[]> sumSortiesParRattachement(@Param("farmId") Long farmId,
                                              @Param("dateDebut") java.time.LocalDate dateDebut,
                                              @Param("dateFin") java.time.LocalDate dateFin);
+
+    // Statut des transactions générées par des ventes (page Ventes, voir VenteListeImpl) :
+    // [sourceUniqueId, statut], transactions supprimées comprises.
+    @Query("SELECT t.sourceUniqueId, t.statut FROM Transaction t WHERE t.sourceUniqueId IN :sourceIds")
+    List<Object[]> findStatutsBySourceIds(@Param("sourceIds") List<String> sourceIds);
 }

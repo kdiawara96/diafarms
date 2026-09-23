@@ -56,6 +56,8 @@ public interface TransactionService {
      * pas inverser un état qu'elle ne connaît pas. Remplace l'ancien
      * toggleRemovedBySource, qui inversait à l'aveugle. */
     void setRemovedBySource(String sourceUniqueId, boolean removed);
+    /** La transaction générée par une source (null si aucune). */
+    TransactionDTO findDtoBySource(String sourceUniqueId);
 
     /**
      * Demande la suppression d'une transaction (ADMIN/RESPONSABLE/COMPTABLE) — ne
@@ -63,7 +65,7 @@ public interface TransactionService {
      * suppression" jusqu'à ce qu'un admin/responsable du projet confirme (voir
      * confirmerSuppression) ou refuse (voir annulerDemandeSuppression).
      */
-    TransactionDTO demanderSuppression(String uniqueId);
+    TransactionDTO demanderSuppression(String uniqueId, String motif);
 
     /** Confirme une demande de suppression en attente — même autorité que
      * valider/rejeter (ADMIN ou responsable du projet). Supprime réellement
@@ -101,10 +103,13 @@ public interface TransactionService {
      * quand seul le montant rapporté change (pas la quantité/le montant théorique) :
      * pas de nouvelle répartition, juste rafraîchir le texte de traçabilité de l'écart. */
     void updateDescriptionBySource(String sourceUniqueId, String description);
+    /** Aligne la date de la transaction liée sur celle de sa vente modifiée. */
+    void updateDateBySource(String sourceUniqueId, LocalDate date);
 
     TransactionDTO update(String uniqueId, TransactionUpdate data);
 
-    String deleteOrRecover(String uniqueId);
+    /** motif obligatoire pour supprimer (ignoré pour restaurer). */
+    String deleteOrRecover(String uniqueId, String motif);
 
     TransactionDTO valider(String uniqueId);
 

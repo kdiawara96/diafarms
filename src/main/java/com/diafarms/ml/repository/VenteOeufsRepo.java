@@ -58,4 +58,14 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
         "AND v.typeOeuf = com.diafarms.ml.enums.TypeVenteOeufs.BON AND v.initialisation.removed = false " +
         "ORDER BY v.date ASC")
     java.util.List<VenteOeufs> findAllBonByFarmIdOrderByDateAsc(@Param("farmId") Long farmId);
+
+    // Page Ventes (voir VenteListeImpl) : ventes actives d'une ferme sur une période,
+    // bornes NON NULLES. LEFT JOIN FETCH : client/magasin/vendeur sont facultatifs.
+    @Query("SELECT DISTINCT v FROM VenteOeufs v LEFT JOIN FETCH v.client LEFT JOIN FETCH v.magasin " +
+        "LEFT JOIN FETCH v.creePar LEFT JOIN FETCH v.demandeSuppressionPar " +
+        "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
+        "AND v.date >= :dateDebut AND v.date <= :dateFin")
+    List<VenteOeufs> findActivesPourListe(@Param("farmId") Long farmId,
+                                          @Param("dateDebut") java.time.LocalDate dateDebut,
+                                          @Param("dateFin") java.time.LocalDate dateFin);
 }

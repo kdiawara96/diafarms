@@ -38,6 +38,7 @@ import com.diafarms.ml.repository.VenteOeufsRepo;
 import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.TransactionCreate;
+import com.diafarms.ml.request.others.MotifSuppressionRequest;
 import com.diafarms.ml.request.others.RejectTransactionRequest;
 import com.diafarms.ml.request.update.TransactionUpdate;
 import com.diafarms.ml.services.LogsServices;
@@ -50,6 +51,7 @@ import lombok.RequiredArgsConstructor;
 public class TransactionServiceImpl implements TransactionService {
 
     private final TransactionRepo transactionRepo;
+    private final com.diafarms.ml.repository.VenteDiverseRepo venteDiverseRepo;
     private final ProjetsRepo projetsRepo;
     private final com.diafarms.ml.repository.SiteRepo siteRepo;
     private final com.diafarms.ml.repository.BatimentRepo batimentRepo;
@@ -119,6 +121,16 @@ public class TransactionServiceImpl implements TransactionService {
     private void ensureCanConfirmerSuppression(Utilisateurs u, Projets projet) {
         if (!isAdmin(u) && !isResponsableDuProjet(u, projet)) {
             throw new IllegalArgumentException("Seul un administrateur ou le responsable de ce projet peut confirmer ou refuser cette suppression.");
+        }
+    }
+
+    // Une transaction générée par une vente n'est que la conséquence financière de cette
+    // vente : la modifier, la rejeter ou la supprimer seule laissait la vente active (stock,
+    // historique client, page Ventes) alors que l'argent disparaissait de la comptabilité.
+    // Tout passe donc par la vente, qui entraîne sa transaction avec elle.
+    private void ensurePasLieeAUneVente(Transaction t) {
+        if (TransactionDTO.isSourceVente(t.getSourceType())) {
+            throw new IllegalArgumentException("Cette transaction vient d'une vente : modifiez ou supprimez la vente depuis la page Ventes.");
         }
     }
 
@@ -457,6 +469,22 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public TransactionDTO findDtoBySource(String sourceUniqueId) {
+        return transactionRepo.findBySourceUniqueId(sourceUniqueId).map(TransactionDTO::fromEntity).orElse(null);
+    }
+
+    @Override
+    @Transactional
+    public void updateDateBySource(String sourceUniqueId, LocalDate date) {
+        transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
+            t.setDate(date);
+            t.getInitialisation().setUpdatedAt(LocalDateTime.now());
+            transactionRepo.save(t);
+        });
+    }
+
+    @Override
     @Transactional
     public void updateDescriptionBySource(String sourceUniqueId, String description) {
         transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
@@ -471,6 +499,7 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionDTO update(String uniqueId, TransactionUpdate data) {
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        ensurePasLieeAUneVente(t);
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
         if (data.getDate() != null) t.setDate(data.getDate());
@@ -516,11 +545,14 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public String deleteOrRecover(String uniqueId) {
+    public String deleteOrRecover(String uniqueId, String motif) {
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        ensurePasLieeAUneVente(t);
+        // Motif exigé pour supprimer, pas pour restaurer.
+        String motifValide = Boolean.TRUE.equals(t.getInitialisation().getRemoved()) ? null : MotifSuppressionRequest.exiger(motif);
 
         // Même autorité que valider/rejeter/confirmerSuppression — plus de
         // suppression/restauration directe sans passer par une demande, voir
@@ -528,6 +560,7 @@ public class TransactionServiceImpl implements TransactionService {
         ensureCanConfirmerSuppression(currentUser, t.getProjet());
 
         t.getInitialisation().setRemoved(!t.getInitialisation().getRemoved());
+        if (motifValide != null) t.setMotifSuppression(motifValide);
         transactionRepo.save(t);
         boolean removed = t.getInitialisation().getRemoved();
 
@@ -543,7 +576,8 @@ public class TransactionServiceImpl implements TransactionService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), t.getId(), "Transaction",
-                    (removed ? "Suppression" : "Restauration") + " de la transaction '" + t.getRef() + "'");
+                    (removed ? "Suppression" : "Restauration") + " de la transaction '" + t.getRef() + "'"
+                            + (removed ? " — motif : " + motifValide : ""));
         }
 
         return removed ? "Transaction supprimée." : "Transaction récupérée.";
@@ -551,23 +585,26 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public TransactionDTO demanderSuppression(String uniqueId) {
+    public TransactionDTO demanderSuppression(String uniqueId, String motif) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanDemanderSuppression(currentUser);
+        String motifValide = MotifSuppressionRequest.exiger(motif);
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        ensurePasLieeAUneVente(t);
         if (t.getDemandeSuppressionPar() != null) {
             throw new IllegalArgumentException("Une demande de suppression est déjà en attente pour cette transaction.");
         }
 
         t.setDemandeSuppressionPar(currentUser);
         t.setDateDemandeSuppression(LocalDateTime.now());
+        t.setMotifSuppression(motifValide);
         Transaction saved = transactionRepo.save(t);
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Transaction",
-                    "Demande de suppression de la transaction '" + saved.getRef() + "' — en attente de validation");
+                    "Demande de suppression de la transaction '" + saved.getRef() + "' — motif : " + motifValide);
         }
 
         return TransactionDTO.fromEntity(saved);
@@ -581,6 +618,9 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
         ensureCanConfirmerSuppression(currentUser, t.getProjet());
+        // Une demande faite avant ce verrou sur une transaction de vente ne peut plus
+        // qu'être refusée (annulerDemandeSuppression reste permis pour la nettoyer).
+        ensurePasLieeAUneVente(t);
         if (t.getDemandeSuppressionPar() == null) {
             throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette transaction.");
         }
@@ -612,6 +652,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         t.setDemandeSuppressionPar(null);
         t.setDateDemandeSuppression(null);
+        t.setMotifSuppression(null);
         Transaction saved = transactionRepo.save(t);
 
         if (currentUser != null) {
@@ -666,6 +707,9 @@ public class TransactionServiceImpl implements TransactionService {
         if (!isAdmin(currentUser) && !isResponsableDuProjet(currentUser, t.getProjet())) {
             throw new IllegalArgumentException("Seul un administrateur ou le responsable de ce projet peut rejeter cette transaction.");
         }
+        // Rejeter une vente = la retirer des comptes sans rendre le stock ni corriger le
+        // solde : même désynchronisation qu'une suppression, passer par la vente.
+        ensurePasLieeAUneVente(t);
 
         t.setStatut(StatutTransaction.REJETE);
         t.setCommentaireRejet(data.getCommentaire());
@@ -755,6 +799,25 @@ public class TransactionServiceImpl implements TransactionService {
         List<String> reformeIds = dtoList.stream()
                 .filter(d -> d.getSourceType() == SourceTransaction.VENTE_REFORME && d.getSourceUniqueId() != null)
                 .map(TransactionDTO::getSourceUniqueId).distinct().toList();
+
+        // Vente diverse : pas de ratio (pas de montant rapporté), juste l'éventuelle demande
+        // de suppression de LA VENTE, pour que la Comptabilité propose confirmer/refuser.
+        List<String> diversesIds = dtoList.stream()
+                .filter(d -> d.getSourceType() == SourceTransaction.VENTE_DIVERSE && d.getSourceUniqueId() != null)
+                .map(TransactionDTO::getSourceUniqueId).distinct().toList();
+        if (!diversesIds.isEmpty()) {
+            Map<String, String> demandeParVente = new HashMap<>();
+            for (com.diafarms.ml.models.VenteDiverse v : venteDiverseRepo.findByUniqueIds(diversesIds)) {
+                if (v.getDemandeSuppressionPar() != null) {
+                    demandeParVente.put(v.getUniqueId(), v.getDemandeSuppressionPar().getFullName());
+                }
+            }
+            for (TransactionDTO d : dtoList) {
+                if (d.getSourceType() == SourceTransaction.VENTE_DIVERSE) {
+                    d.setVenteDemandeSuppressionParNom(demandeParVente.get(d.getSourceUniqueId()));
+                }
+            }
+        }
 
         if (oeufsIds.isEmpty() && reformeIds.isEmpty()) return;
 

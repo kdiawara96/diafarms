@@ -121,6 +121,11 @@ public class VenteOeufs {
 
     private java.time.LocalDateTime dateDemandeSuppression;
 
+    // Pourquoi la suppression a été demandée — obligatoire (voir MotifSuppressionRequest),
+    // conservé après confirmation pour la traçabilité, effacé si la demande est refusée.
+    @Column(name = "motif_suppression", columnDefinition = "TEXT")
+    private String motifSuppression;
+
     @Embedded
     private Initialisation initialisation;
 }

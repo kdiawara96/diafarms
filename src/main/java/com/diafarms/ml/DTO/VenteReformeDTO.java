@@ -39,6 +39,7 @@ public class VenteReformeDTO {
     // VenteReformeImpl.demanderSuppression.
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;
+    private String motifSuppression;
     private List<VenteReformeRepartitionDTO> repartitions;
 
     public static VenteReformeDTO fromEntity(VenteReforme v) {
@@ -62,6 +63,7 @@ public class VenteReformeDTO {
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
                 .demandeSuppressionParNom(v.getDemandeSuppressionPar() != null ? v.getDemandeSuppressionPar().getFullName() : null)
                 .dateDemandeSuppression(v.getDateDemandeSuppression())
+                .motifSuppression(v.getMotifSuppression())
                 .repartitions(v.getRepartitions() != null ? v.getRepartitions().stream()
                         .map(VenteReformeRepartitionDTO::fromEntity)
                         .toList() : java.util.Collections.emptyList())

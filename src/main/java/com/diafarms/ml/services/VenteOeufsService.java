@@ -14,12 +14,12 @@ public interface VenteOeufsService {
 
     // Réservé ADMIN/RESPONSABLE (toggle direct, delete ou restore) — voir
     // VenteOeufsImpl.deleteOrRecover.
-    String deleteOrRecover(String uniqueId);
+    String deleteOrRecover(String uniqueId, String motif);
 
     /** Marque une demande de suppression — ADMIN/RESPONSABLE/COMPTABLE, jamais le
      * vendeur (VENTE), même pour sa propre vente : il ne doit pas pouvoir effacer la
      * preuve d'un manquant sur l'argent qu'il devait rapporter. */
-    VenteOeufsDTO demanderSuppression(String uniqueId);
+    VenteOeufsDTO demanderSuppression(String uniqueId, String motif);
 
     /** Confirme une demande en attente — supprime réellement. ADMIN/RESPONSABLE seulement. */
     VenteOeufsDTO confirmerSuppression(String uniqueId);

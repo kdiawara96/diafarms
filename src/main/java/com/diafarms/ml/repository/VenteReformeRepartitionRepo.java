@@ -56,4 +56,7 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
     @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
         "WHERE r.venteReforme.magasin.id = :magasinId AND r.venteReforme.initialisation.removed = false")
     Integer sumSujetsByMagasinId(@Param("magasinId") Long magasinId);
+
+    @Query("SELECT r FROM VenteReformeRepartition r JOIN FETCH r.projet WHERE r.venteReforme.id IN :venteIds")
+    List<com.diafarms.ml.models.VenteReformeRepartition> findByVenteIds(@Param("venteIds") List<Long> venteIds);
 }

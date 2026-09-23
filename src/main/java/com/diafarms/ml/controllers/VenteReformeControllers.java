@@ -10,6 +10,7 @@ import com.diafarms.ml.DTO.StockReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
+import com.diafarms.ml.request.others.MotifSuppressionRequest;
 import com.diafarms.ml.request.create.VenteReformeCreate;
 import com.diafarms.ml.request.update.VenteReformeUpdate;
 import com.diafarms.ml.services.VenteReformeService;
@@ -71,9 +72,11 @@ public class VenteReformeControllers {
     }
 
     @PutMapping("/deleteOrRecover/{uniqueId}")
-    public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId) {
+    public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId,
+                                                               @RequestBody(required = false) MotifSuppressionRequest request) {
         try {
-            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, service.deleteOrRecover(uniqueId), null);
+            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK,
+                    service.deleteOrRecover(uniqueId, request != null ? request.getMotif() : null), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -84,9 +87,11 @@ public class VenteReformeControllers {
     // Suppression en deux temps (demande puis confirmation) — voir VenteReformeImpl :
     // jamais le vendeur, même pour sa propre vente.
     @PutMapping("/demander-suppression/{uniqueId}")
-    public ResponseEntity<ApiResponse<VenteReformeDTO>> demanderSuppression(@PathVariable String uniqueId) {
+    public ResponseEntity<ApiResponse<VenteReformeDTO>> demanderSuppression(@PathVariable String uniqueId,
+                                                                    @RequestBody(required = false) MotifSuppressionRequest request) {
         try {
-            return ApiResponse.createResponse("Demande de suppression envoyée", HttpStatus.OK, service.demanderSuppression(uniqueId), null);
+            return ApiResponse.createResponse("Demande de suppression envoyée", HttpStatus.OK,
+                    service.demanderSuppression(uniqueId, request != null ? request.getMotif() : null), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

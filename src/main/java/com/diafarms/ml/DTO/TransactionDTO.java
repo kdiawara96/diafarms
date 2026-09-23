@@ -74,6 +74,11 @@ public class TransactionDTO {
     // voir TransactionServiceImpl.demanderSuppression.
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;
+    private String motifSuppression;
+    // true = transaction générée par une vente (œufs, réforme, fientes/autre) : elle ne
+    // se modifie ni ne se supprime depuis la Comptabilité, seulement via sa vente (voir
+    // TransactionServiceImpl.ensurePasLieeAUneVente), sinon vente et comptabilité divergent.
+    private boolean lieeAUneVente;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -107,6 +112,16 @@ public class TransactionDTO {
                 .creeParNom(t.getCreePar() != null ? t.getCreePar().getFullName() : null)
                 .demandeSuppressionParNom(t.getDemandeSuppressionPar() != null ? t.getDemandeSuppressionPar().getFullName() : null)
                 .dateDemandeSuppression(t.getDateDemandeSuppression())
+                .motifSuppression(t.getMotifSuppression())
+                .lieeAUneVente(isSourceVente(t.getSourceType()))
+                // Une vente diverse n'a qu'une transaction, pointant directement vers elle ;
+                // œufs/réforme passent par leur ligne de répartition (enrichMontantReel).
+                .venteUniqueId(t.getSourceType() == SourceTransaction.VENTE_DIVERSE ? t.getSourceUniqueId() : null)
                 .build();
+    }
+
+    public static boolean isSourceVente(SourceTransaction s) {
+        return s == SourceTransaction.VENTE_OEUFS || s == SourceTransaction.VENTE_REFORME
+                || s == SourceTransaction.VENTE_DIVERSE;
     }
 }

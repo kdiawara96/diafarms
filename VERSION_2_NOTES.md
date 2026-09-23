@@ -618,3 +618,44 @@ bouton "Modifier" des Commandes web.
   - Mobile : aucun changement — seule la web gère le cycle de vie d'une commande (confirmer/annuler/livrer/facturer), le mobile ne fait que la CRÉATION (`SaisieType.COMMANDE_CREATE`).
 - **Cas d'usage découvert en audit** (client réel, commande de 750 œufs payée d'avance en 2 fois, livrée ensuite via 3 ventes SÉPARÉES sans jamais utiliser "Convertir en vente") : ce cas historique n'est pas corrigé rétroactivement (aucune commande liée), seulement empêché pour l'avenir si "Livrer" est utilisé au lieu de ventes manuelles déconnectées.
 - **Testé en réel** (créé puis nettoyé sur une vraie ferme, pas la démo) : 3 livraisons successives d'une commande de 750 œufs/73750 FCFA avec acompte 30000, dont une avec paiement complémentaire de 5000 à la livraison — solde final exact (38750, soit 73750-30000-5000).
+
+---
+
+## Mise à jour 2026-09-23 (ventes lues dans leurs tables, verrou comptable, motif de suppression, vraie table des fientes)
+
+Déclencheur : une vente d'œufs (Tigiri, 250 FCFA, 16/09) supprimée depuis la Comptabilité restait dans l'historique du
+client — seule la transaction avait été supprimée, la vente (`ventes_oeufs`) restait active (stock et solde non corrigés).
+
+- **A. Verrou** : une transaction générée par une vente (`TransactionDTO.isSourceVente` : VENTE_OEUFS, VENTE_REFORME,
+  VENTE_DIVERSE) ne se modifie, ne se rejette, ne se supprime plus seule (`TransactionServiceImpl.ensurePasLieeAUneVente`
+  dans update, deleteOrRecover, demanderSuppression, confirmerSuppression, rejeter ; `annulerDemandeSuppression` reste
+  permis pour nettoyer une ancienne demande). `TransactionDTO.lieeAUneVente` ; la Comptabilité web propose à la place
+  "Demander la suppression de la vente" (API de la vente, car un COMPTABLE pur n'a pas accès à la page Ventes) et
+  confirmer/refuser pour ADMIN/RESPONSABLE.
+- **B. Page Ventes** : `GET /ventes/list?dateDebut&dateFin&vendeurUniqueId` (`VenteListeImpl`, `VenteLigneDTO`) lit
+  `ventes_oeufs`, `ventes_reforme`, `ventes_diverses` — une ligne par VENTE (plus une par part de projet). Mêmes restrictions
+  que /transactions/list (VENTE pur : ses ventes ; ADMIN/COMPTABLE pur : filtre vendeur ; RESPONSABLE pur : ventes de ses
+  projets, pas les diverses communes). Statut dérivé des transactions liées (REJETE l'emporte). Les "Paiements clients"
+  restent lus en comptabilité (recherche ciblée, plus le grand livre entier). Modifier = `EditVenteDialog` (API de la
+  vente, pas de la transaction).
+- **Motif obligatoire** (`MotifSuppressionRequest`, ≥ 3 caractères, corps `{motif}`) : demande de suppression (ventes œufs,
+  réforme, diverses, transactions) et suppression directe `deleteOrRecover` (pas pour restaurer). Colonne
+  `motif_suppression` sur ventes_oeufs, ventes_reforme, ventes_diverses, transactions ; effacé si la demande est refusée,
+  gardé après confirmation ; repris dans les logs. Web : `DemandeSuppressionDialog`.
+- **Fientes et "Autre vente" = vraie table `ventes_diverses`** (`VenteDiverse`, `ProduitVenteDiverse` FIENTES/AUTRE,
+  `/ventes-diverses/create|update|deleteOrRecover|demander-suppression|confirmer-suppression|annuler-demande-suppression`).
+  Une transaction commune `SourceTransaction.VENTE_DIVERSE`, sourceUniqueId = uniqueId de la vente, suit création,
+  modification (montant, date, libellé) et suppression. **Compatibilité** : `POST /transactions/create` avec
+  `ENTREE` + catégorie "Vente fientes"/"Autre vente" (APK déjà installés, saisies hors ligne) crée une VenteDiverse
+  (`VenteDiverseService.createDepuisTransaction`) — aucune nouvelle APK nécessaire.
+- **Droits** : modifier une vente (œufs, réforme, diverse) = ADMIN/RESPONSABLE/COMPTABLE (`ensureCanModifier`), plus le
+  vendeur (il pouvait effacer son propre manquant via le montant rapporté).
+- **Correction** : modifier seulement la date d'une vente d'œufs/réforme ne mettait pas à jour la date de ses
+  transactions (`updateDateBySource`).
+- **Migration** : `docs/sql/2026-09-23_ventes_diverses.sql` (à lancer APRÈS le redémarrage qui crée la table) :
+  contrainte CHECK de `transactions.source_type` + VENTE_DIVERSE, reprise des anciennes entrées "Vente fientes"/"Autre
+  vente" en ventes (même unique_id), et requête en lecture seule qui liste les ventes orphelines (cas Tigiri), à supprimer
+  ensuite depuis Ventes (le stock et le solde client se corrigent alors).
+- Testé en local (Postgres temporaire + navigateur headless), pas encore en production.
+- **Ouvert** : les autres transactions à source (salaire, aliment, soins, investissement, projet) restent modifiables et
+  supprimables seules depuis la Comptabilité — même risque de désynchronisation, non traité ici.

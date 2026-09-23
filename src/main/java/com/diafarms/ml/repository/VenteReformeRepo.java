@@ -41,4 +41,13 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     Double sumMontantRapporteByFarmIdAndDateRange(@Param("farmId") Long farmId,
                                                    @Param("dateDebut") java.time.LocalDate dateDebut,
                                                    @Param("dateFin") java.time.LocalDate dateFin);
+
+    // Voir VenteOeufsRepo.findActivesPourListe.
+    @Query("SELECT DISTINCT v FROM VenteReforme v LEFT JOIN FETCH v.client LEFT JOIN FETCH v.magasin " +
+        "LEFT JOIN FETCH v.creePar LEFT JOIN FETCH v.demandeSuppressionPar " +
+        "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
+        "AND v.date >= :dateDebut AND v.date <= :dateFin")
+    List<VenteReforme> findActivesPourListe(@Param("farmId") Long farmId,
+                                            @Param("dateDebut") java.time.LocalDate dateDebut,
+                                            @Param("dateFin") java.time.LocalDate dateFin);
 }

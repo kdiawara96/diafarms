@@ -14,11 +14,11 @@ public interface VenteReformeService {
 
     // Réservé ADMIN/RESPONSABLE (toggle direct, delete ou restore) — voir
     // VenteReformeImpl.deleteOrRecover.
-    String deleteOrRecover(String uniqueId);
+    String deleteOrRecover(String uniqueId, String motif);
 
     /** Marque une demande de suppression — ADMIN/RESPONSABLE/COMPTABLE, jamais le
      * vendeur (VENTE), même pour sa propre vente — voir VenteOeufsService (même règle). */
-    VenteReformeDTO demanderSuppression(String uniqueId);
+    VenteReformeDTO demanderSuppression(String uniqueId, String motif);
 
     /** Confirme une demande en attente — supprime réellement. ADMIN/RESPONSABLE seulement. */
     VenteReformeDTO confirmerSuppression(String uniqueId);

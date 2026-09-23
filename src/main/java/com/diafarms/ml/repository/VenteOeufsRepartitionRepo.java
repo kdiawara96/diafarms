@@ -72,4 +72,7 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
         "WHERE r.venteOeufs.magasin.id = :magasinId AND r.venteOeufs.typeOeuf = :typeOeuf " +
         "AND r.venteOeufs.initialisation.removed = false")
     Integer sumQuantiteByMagasinId(@Param("magasinId") Long magasinId, @Param("typeOeuf") TypeVenteOeufs typeOeuf);
+
+    @Query("SELECT r FROM VenteOeufsRepartition r JOIN FETCH r.projet WHERE r.venteOeufs.id IN :venteIds")
+    List<VenteOeufsRepartition> findByVenteIds(@Param("venteIds") List<Long> venteIds);
 }

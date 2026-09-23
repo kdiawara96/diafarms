@@ -10,5 +10,8 @@ public enum SourceTransaction {
     VACCINATION,
     INVESTISSEMENT,
     PROJET_ACHAT_SUJETS,
-    PROJET_CHARGES
+    PROJET_CHARGES,
+    // Vente de fientes ou "autre vente" (voir VenteDiverse) — une seule transaction
+    // commune par vente, sourceUniqueId = VenteDiverse.uniqueId.
+    VENTE_DIVERSE
 }

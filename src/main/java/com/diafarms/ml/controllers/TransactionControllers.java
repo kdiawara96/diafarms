@@ -15,9 +15,11 @@ import com.diafarms.ml.enums.TypeTransaction;
 import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.TransactionCreate;
+import com.diafarms.ml.request.others.MotifSuppressionRequest;
 import com.diafarms.ml.request.others.RejectTransactionRequest;
 import com.diafarms.ml.request.update.TransactionUpdate;
 import com.diafarms.ml.services.TransactionService;
+import com.diafarms.ml.services.VenteDiverseService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class TransactionControllers {
 
     private final TransactionService service;
+    private final VenteDiverseService venteDiverseService;
 
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<PaginatedResponse<TransactionDTO>>> list(
@@ -113,6 +116,13 @@ public class TransactionControllers {
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<TransactionDTO>> create(@RequestBody TransactionCreate request) {
         try {
+            // Une "Vente fientes"/"Autre vente" saisie comme une entrée d'argent (anciens
+            // APK hors ligne, ancien import Excel) devient une vraie VenteDiverse : la
+            // vente est l'original, sa transaction suit.
+            if (VenteDiverseService.estVenteDiverse(request)) {
+                return ApiResponse.createResponse("Vente enregistrée avec succès", HttpStatus.CREATED,
+                        venteDiverseService.createDepuisTransaction(request), null);
+            }
             return ApiResponse.createResponse("Transaction créée avec succès", HttpStatus.CREATED, service.create(request), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
@@ -133,9 +143,11 @@ public class TransactionControllers {
     }
 
     @PutMapping("/deleteOrRecover/{uniqueId}")
-    public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId) {
+    public ResponseEntity<ApiResponse<String>> deleteOrRecover(@PathVariable String uniqueId,
+                                                               @RequestBody(required = false) MotifSuppressionRequest request) {
         try {
-            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, service.deleteOrRecover(uniqueId), null);
+            return ApiResponse.createResponse("Opération réussie", HttpStatus.OK,
+                    service.deleteOrRecover(uniqueId, request != null ? request.getMotif() : null), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -144,9 +156,11 @@ public class TransactionControllers {
     }
 
     @PutMapping("/demander-suppression/{uniqueId}")
-    public ResponseEntity<ApiResponse<TransactionDTO>> demanderSuppression(@PathVariable String uniqueId) {
+    public ResponseEntity<ApiResponse<TransactionDTO>> demanderSuppression(@PathVariable String uniqueId,
+                                                                           @RequestBody(required = false) MotifSuppressionRequest request) {
         try {
-            return ApiResponse.createResponse("Demande de suppression envoyée — en attente de validation", HttpStatus.OK, service.demanderSuppression(uniqueId), null);
+            return ApiResponse.createResponse("Demande de suppression envoyée — en attente de validation", HttpStatus.OK,
+                    service.demanderSuppression(uniqueId, request != null ? request.getMotif() : null), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
