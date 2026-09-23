@@ -37,4 +37,10 @@ public interface ClientRepo extends JpaRepository<Client, Long> {
 
     @Query("SELECT c FROM Client c WHERE c.farm.id = :farmId AND c.initialisation.removed = false")
     Page<Client> findActiveByFarmId(@Param("farmId") Long farmId, Pageable pageable);
+
+    // Sérialise les imputations d'un même client (deux paiements saisis en même temps
+    // par deux vendeurs ne doivent pas imputer deux fois la même vente).
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM Client c WHERE c.id = :id")
+    java.util.Optional<Client> findByIdForUpdate(@Param("id") Long id);
 }

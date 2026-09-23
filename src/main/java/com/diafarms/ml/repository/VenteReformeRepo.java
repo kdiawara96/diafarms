@@ -50,4 +50,16 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     List<VenteReforme> findActivesPourListe(@Param("farmId") Long farmId,
                                             @Param("dateDebut") java.time.LocalDate dateDebut,
                                             @Param("dateFin") java.time.LocalDate dateFin);
+
+    // Ventes actives d'un client, plus anciennes d'abord (ordre d'imputation).
+    @Query("SELECT v FROM VenteReforme v LEFT JOIN FETCH v.commande WHERE v.client.id = :clientId " +
+           "AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
+    List<VenteReforme> findActivesByClientIdPourImputation(@Param("clientId") Long clientId);
+
+    @Query("SELECT COALESCE(SUM(v.montant), 0) FROM VenteReforme v WHERE v.client.id = :clientId " +
+           "AND v.initialisation.removed = false")
+    Double sumMontantActifsByClientId(@Param("clientId") Long clientId);
+
+    @Query("SELECT v FROM VenteReforme v WHERE v.commande.id = :commandeId AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
+    List<VenteReforme> findActivesByCommandeId(@Param("commandeId") Long commandeId);
 }

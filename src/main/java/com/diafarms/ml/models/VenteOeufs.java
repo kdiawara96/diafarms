@@ -126,6 +126,12 @@ public class VenteOeufs {
     @Column(name = "motif_suppression", columnDefinition = "TEXT")
     private String motifSuppression;
 
+    // Non null = cette vente est une LIVRAISON de cette commande (une livraison = une
+    // vente). Remplace Commande.venteUniqueId, qui ne gardait que la dernière.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "commande_id")
+    private Commande commande;
+
     @Embedded
     private Initialisation initialisation;
 }

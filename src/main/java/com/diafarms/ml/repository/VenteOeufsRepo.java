@@ -68,4 +68,16 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
     List<VenteOeufs> findActivesPourListe(@Param("farmId") Long farmId,
                                           @Param("dateDebut") java.time.LocalDate dateDebut,
                                           @Param("dateFin") java.time.LocalDate dateFin);
+
+    // Ventes actives d'un client, plus anciennes d'abord (ordre d'imputation).
+    @Query("SELECT v FROM VenteOeufs v LEFT JOIN FETCH v.commande WHERE v.client.id = :clientId " +
+           "AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
+    List<VenteOeufs> findActivesByClientIdPourImputation(@Param("clientId") Long clientId);
+
+    @Query("SELECT COALESCE(SUM(v.montant), 0) FROM VenteOeufs v WHERE v.client.id = :clientId " +
+           "AND v.initialisation.removed = false")
+    Double sumMontantActifsByClientId(@Param("clientId") Long clientId);
+
+    @Query("SELECT v FROM VenteOeufs v WHERE v.commande.id = :commandeId AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
+    List<VenteOeufs> findActivesByCommandeId(@Param("commandeId") Long commandeId);
 }
