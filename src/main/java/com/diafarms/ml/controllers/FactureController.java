@@ -56,8 +56,8 @@ public class FactureController {
     public ResponseEntity<ApiResponse<FactureDTO>> payer(@PathVariable String uniqueId,
                                                            @RequestBody FacturePaiementRequest request) {
         try {
-            LocalDate date = (request == null || request.getDate() == null || request.getDate().isBlank())
-                    ? null : LocalDate.parse(request.getDate());
+            // Date mal formée -> IllegalArgumentException -> 400 (voir DateSaisie).
+            LocalDate date = com.diafarms.ml.commons.DateSaisie.parse(request != null ? request.getDate() : null, null);
             String mode = request != null ? request.getMode() : null;
             Double montant = request != null ? request.getMontant() : null;
             return ApiResponse.createResponse("Paiement enregistré", HttpStatus.OK, service.payer(uniqueId, montant, mode, date), null);

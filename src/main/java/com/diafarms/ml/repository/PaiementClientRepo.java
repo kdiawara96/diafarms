@@ -25,6 +25,16 @@ public interface PaiementClientRepo extends JpaRepository<PaiementClient, Long> 
            "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF")
     Double sumActifsByClientId(@Param("clientId") Long clientId);
 
+    // Facture d'avant la refonte (legacy) : argent reçu APRÈS la reprise sur cette
+    // facture (payer), qui s'ajoute à son montant payé historique. Les paiements créés
+    // par la reprise elle-même (observations « Reprise... », voir
+    // RepriseCircuitClientService.PREFIXE_OBSERVATIONS) sont exclus : ils reprennent des
+    // paiements déjà comptés dans ce montant payé historique.
+    @Query("SELECT COALESCE(SUM(p.montant), 0) FROM PaiementClient p WHERE p.facture.id = :factureId " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND (p.observations IS NULL OR p.observations NOT LIKE 'Reprise%')")
+    Double sumActifsHorsRepriseByFactureId(@Param("factureId") Long factureId);
+
     // Comptabilité : encaissé sur une période (bornes toujours concrètes).
     @Query("SELECT COALESCE(SUM(p.montant), 0) FROM PaiementClient p WHERE p.farm.id = :farmId " +
            "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +

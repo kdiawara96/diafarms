@@ -44,19 +44,18 @@ public class FactureDTO {
     }
 
     // Construit le DTO à partir de l'entité, des lignes déjà chargées (DTO) et du
-    // montant payé déjà calculé par l'appelant (FactureServiceImpl.toDto) :
+    // montant payé déjà calculé par l'appelant (FactureServiceImpl.calculerMontantPaye) :
     // Σ min(ligne.montant, CompteClientService.payeVente(ligne)) pour une facture
     // non-legacy — plafonné ligne par ligne pour qu'une avance imputée au-delà du
-    // montant d'une ligne ne gonfle pas le total payé de la facture. Une facture
-    // legacy garde son montantPaye historique tel quel (colonne Facture.montantPaye,
-    // jamais recalculé). Le statut ANNULEE prime toujours sur le calcul PAYEE/
+    // montant d'une ligne ne gonfle pas le total payé de la facture ; pour une facture
+    // legacy, montantPaye historique + paiements reçus sur elle depuis la reprise
+    // (plafonné au total). Le statut ANNULEE prime toujours sur le calcul PAYEE/
     // PARTIELLE/IMPAYEE (voir Facture.StatutFacture).
     public static FactureDTO fromEntity(Facture f, List<FactureLigneDTO> lignes, double payeCalcule) {
         if (f == null) return null;
 
-        boolean legacy = Boolean.TRUE.equals(f.getLegacy());
         double montantTotal = nz(f.getMontantTotal());
-        double montantPaye = legacy ? nz(f.getMontantPaye()) : payeCalcule;
+        double montantPaye = payeCalcule;
         double resteAPayer = CalculImputation.arrondi(montantTotal - montantPaye);
 
         String statut;

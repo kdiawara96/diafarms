@@ -303,7 +303,9 @@ public class TransactionServiceImpl implements TransactionService {
 
         if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
             Client client = clientRepo.findByUniqueId(data.getClientUniqueId());
-            if (client == null) {
+            // Client d'une autre ferme : même message qu'introuvable (pas de rattachement
+            // d'une transaction à un client qui n'est pas celui de la ferme).
+            if (client == null || !memeFerme(client.getFarm(), currentUser)) {
                 throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
             }
             t.setClient(client);

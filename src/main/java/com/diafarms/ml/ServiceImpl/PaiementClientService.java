@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.*;
 import com.diafarms.ml.commons.CalculImputation;
+import com.diafarms.ml.commons.DateSaisie;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.*;
 import com.diafarms.ml.models.*;
@@ -66,6 +67,33 @@ public class PaiementClientService {
         return c;
     }
 
+    // Commande / facture rattachées à un paiement ou un remboursement : elles doivent être
+    // de la même ferme ET du même client, sinon l'argent d'un client irait prioritairement
+    // régler (ou rembourser) la commande d'un autre. Même message qu'introuvable, pour ne
+    // pas révéler ce qui existe dans une autre ferme.
+    private Commande commandeDuClient(String uid, Client c) {
+        if (uid == null || uid.isBlank()) return null;
+        Commande k = commandeRepo.findByUniqueId(uid);
+        if (k == null || k.getFarm() == null || !k.getFarm().getId().equals(c.getFarm().getId())
+                || k.getClient() == null || !k.getClient().getId().equals(c.getId()))
+            throw new IllegalArgumentException("Commande introuvable pour ce client : " + uid);
+        return k;
+    }
+
+    private Facture factureDuClient(String uid, Client c) {
+        if (uid == null || uid.isBlank()) return null;
+        // FactureRepo.findByUniqueId renvoie directement Facture (pas Optional).
+        Facture f = factureRepo.findByUniqueId(uid);
+        if (f == null || f.getFarm() == null || !f.getFarm().getId().equals(c.getFarm().getId())
+                || f.getClient() == null || !f.getClient().getId().equals(c.getId()))
+            throw new IllegalArgumentException("Facture introuvable pour ce client : " + uid);
+        return f;
+    }
+
+    private static boolean memeFerme(Farm farm, Utilisateurs u) {
+        return farm != null && u != null && u.getFarm() != null && farm.getId().equals(u.getFarm().getId());
+    }
+
     private static ModePaiement mode(String raw) {
         if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
         try { return ModePaiement.valueOf(raw.trim().toUpperCase()); }
@@ -77,20 +105,15 @@ public class PaiementClientService {
         Utilisateurs u = user();
         ensureCanEncaisser(u);
         Client c = client(d.getClientUniqueId(), u);
-        Commande commande = d.getCommandeUniqueId() == null || d.getCommandeUniqueId().isBlank() ? null
-                : commandeRepo.findByUniqueId(d.getCommandeUniqueId());
-        // FactureRepo.findByUniqueId renvoie directement Facture (pas Optional) — voir
-        // FactureRepo, méthode déjà utilisée telle quelle par FactureServiceImpl.
-        Facture facture = d.getFactureUniqueId() == null || d.getFactureUniqueId().isBlank() ? null
-                : java.util.Optional.ofNullable(factureRepo.findByUniqueId(d.getFactureUniqueId()))
-                        .orElseThrow(() -> new IllegalArgumentException("Facture introuvable."));
+        Commande commande = commandeDuClient(d.getCommandeUniqueId(), c);
+        Facture facture = factureDuClient(d.getFactureUniqueId(), c);
         OriginePaiement origine = d.getOrigine() == null || d.getOrigine().isBlank() ? OriginePaiement.REGLEMENT
                 : OriginePaiement.valueOf(d.getOrigine().trim().toUpperCase());
         CibleImputation cibleType = d.getVenteCibleType() == null || d.getVenteCibleType().isBlank() ? null
                 : CibleImputation.valueOf(d.getVenteCibleType().trim().toUpperCase());
         PaiementClient p = enregistrerInterne(c, d.getMontant(), mode(d.getMode()), origine, commande, cibleType,
                 d.getVenteCibleUniqueId(), facture, d.getObservations(),
-                d.getDate() == null || d.getDate().isBlank() ? LocalDate.now() : LocalDate.parse(d.getDate()));
+                DateSaisie.parse(d.getDate(), LocalDate.now()));
         return PaiementClientDTO.fromEntity(p, CalculImputation.arrondi(imputationRepo.sumActivesByPaiementId(p.getId())));
     }
 
@@ -144,7 +167,13 @@ public class PaiementClientService {
         Utilisateurs u = user();
         ensureCanAnnuler(u);
         String motif = MotifSuppressionRequest.exiger(motifBrut);
-        PaiementClient p = paiementRepo.findByUniqueId(uid).orElseThrow(() -> new IllegalArgumentException("Paiement introuvable."));
+        PaiementClient p = paiementRepo.findByUniqueId(uid)
+                .filter(x -> memeFerme(x.getFarm(), u))
+                .orElseThrow(() -> new IllegalArgumentException("Paiement introuvable."));
+        // Verrou client AVANT de regarder les imputations : un remboursement simultané
+        // (rembourserInterne verrouille le même client) ne peut plus prendre l'argent de
+        // ce paiement entre notre contrôle et son annulation.
+        compteClientService.verrouiller(p.getClient());
         if (p.getStatut() == StatutMouvement.ANNULE) throw new IllegalArgumentException("Ce paiement est déjà annulé.");
         List<ImputationPaiement> imps = imputationRepo.findActivesByPaiementId(p.getId());
         if (imps.stream().anyMatch(i -> i.getCibleType() == CibleImputation.REMBOURSEMENT))
@@ -171,8 +200,7 @@ public class PaiementClientService {
         Utilisateurs u = user();
         ensureCanRembourser(u);
         Client c = client(d.getClientUniqueId(), u);
-        Commande commande = d.getCommandeUniqueId() == null || d.getCommandeUniqueId().isBlank() ? null
-                : commandeRepo.findByUniqueId(d.getCommandeUniqueId());
+        Commande commande = commandeDuClient(d.getCommandeUniqueId(), c);
         return RemboursementClientDTO.fromEntity(rembourserInterne(c, d.getMontant(), mode(d.getMode()),
                 MotifSuppressionRequest.exiger(d.getMotif()), commande));
     }
@@ -213,7 +241,10 @@ public class PaiementClientService {
         Utilisateurs u = user();
         ensureCanAnnuler(u);
         String motif = MotifSuppressionRequest.exiger(motifBrut);
-        RemboursementClient r = remboursementRepo.findByUniqueId(uid).orElseThrow(() -> new IllegalArgumentException("Remboursement introuvable."));
+        RemboursementClient r = remboursementRepo.findByUniqueId(uid)
+                .filter(x -> memeFerme(x.getFarm(), u))
+                .orElseThrow(() -> new IllegalArgumentException("Remboursement introuvable."));
+        compteClientService.verrouiller(r.getClient()); // voir annuler()
         if (r.getStatut() == StatutMouvement.ANNULE) throw new IllegalArgumentException("Ce remboursement est déjà annulé.");
         compteClientService.annulerImputationsCible(CibleImputation.REMBOURSEMENT, r.getUniqueId(), "Remboursement annulé : " + motif);
         r.setStatut(StatutMouvement.ANNULE);

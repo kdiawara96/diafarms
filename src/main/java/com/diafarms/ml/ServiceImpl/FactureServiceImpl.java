@@ -75,6 +75,7 @@ public class FactureServiceImpl implements FactureService {
     private final CommandeRepo commandeRepo;
     private final CompteClientService compteClientService;
     private final PaiementClientService paiementClientService;
+    private final com.diafarms.ml.repository.PaiementClientRepo paiementClientRepo;
     private final LogsServices logs;
     private final OtherService otherService;
     private final MinioService minioService;
@@ -114,6 +115,17 @@ public class FactureServiceImpl implements FactureService {
 
     private static boolean estActive(Initialisation init) {
         return init == null || !Boolean.TRUE.equals(init.getRemoved());
+    }
+
+    // La vente d'une ligne existe encore et n'est pas supprimée.
+    private boolean venteActive(FactureLigne l) {
+        if (l.getVenteType() == CibleImputation.VENTE_OEUFS) {
+            return venteOeufsRepo.findByUniqueId(l.getVenteUniqueId()).map(v -> estActive(v.getInitialisation())).orElse(false);
+        }
+        if (l.getVenteType() == CibleImputation.VENTE_REFORME) {
+            return venteReformeRepo.findByUniqueId(l.getVenteUniqueId()).map(v -> estActive(v.getInitialisation())).orElse(false);
+        }
+        return false;
     }
 
     private String genererNumero(Long farmId) {
@@ -343,23 +355,23 @@ public class FactureServiceImpl implements FactureService {
             throw new IllegalArgumentException("Cette facture est annulée.");
         }
 
+        // Verrou client AVANT de lire ce qui est déjà payé : deux paiements simultanés de la
+        // même facture (ou un remboursement) ne peuvent pas lire le même reste.
+        compteClientService.verrouiller(f.getClient());
+
         List<FactureLigne> lignes = factureLigneRepo.findByFacture_Id(f.getId());
         lignes.sort(Comparator.comparing(FactureLigne::getId));
+        for (FactureLigne l : lignes) {
+            if (!venteActive(l)) {
+                throw new IllegalArgumentException("Une vente de cette facture a été supprimée : annulez la facture.");
+            }
+        }
         double montantPaye = calculerMontantPaye(f, lignes);
         double reste = CalculImputation.arrondi(nz(f.getMontantTotal()) - montantPaye);
         if (reste <= 0) {
             throw new IllegalArgumentException("Cette facture est déjà entièrement payée.");
         }
-        double montantAPayer = (montant != null && montant > 0) ? Math.min(montant, reste) : reste;
-
-        // Première ligne non soldée : les suivantes sont réglées naturellement par
-        // l'ordre commande/ancienneté du FIFO client — voir CompteClientService.imputer,
-        // déclenché par PaiementClientService.enregistrerInterne. On ne fait ici que
-        // donner une priorité à la vente visée par CE paiement.
-        FactureLigne premiereNonSoldee = lignes.stream()
-                .filter(l -> CalculImputation.arrondi(compteClientService.payeVente(l.getVenteType(), l.getVenteUniqueId()))
-                        < CalculImputation.arrondi(nz(l.getMontant())))
-                .findFirst().orElse(null);
+        double montantAPayer = CalculImputation.arrondi((montant != null && montant > 0) ? Math.min(montant, reste) : reste);
 
         ModePaiement modePaiement;
         try {
@@ -367,11 +379,38 @@ public class FactureServiceImpl implements FactureService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Mode de paiement inconnu : " + mode);
         }
+        LocalDate datePaiement = date != null ? date : LocalDate.now();
+        String observations = "Paiement facture " + f.getNumeroFacture();
 
-        paiementClientService.enregistrerInterne(f.getClient(), montantAPayer, modePaiement, OriginePaiement.FACTURE,
-                null, premiereNonSoldee != null ? premiereNonSoldee.getVenteType() : null,
-                premiereNonSoldee != null ? premiereNonSoldee.getVenteUniqueId() : null,
-                f, "Paiement facture " + f.getNumeroFacture(), date != null ? date : LocalDate.now());
+        if (Boolean.TRUE.equals(f.getLegacy())) {
+            // Facture d'avant la refonte : son « payé » est le montant payé historique +
+            // les paiements reçus sur elle depuis (voir calculerMontantPaye), pas les
+            // imputations de sa ligne. Un seul paiement, qui vise la vente de sa ligne
+            // (créée par la reprise) ; plafonné au reste de la facture ci-dessus.
+            FactureLigne ligne = lignes.isEmpty() ? null : lignes.get(0);
+            paiementClientService.enregistrerInterne(f.getClient(), montantAPayer, modePaiement, OriginePaiement.FACTURE,
+                    null, ligne != null ? ligne.getVenteType() : null, ligne != null ? ligne.getVenteUniqueId() : null,
+                    f, observations, datePaiement);
+        } else {
+            // Un paiement client PAR LIGNE non soldée, dans l'ordre des lignes, chacun visant
+            // la vente de sa ligne pour au plus ce qui reste dû sur cette ligne, jusqu'à
+            // épuisement du montant. Un seul paiement visant la première ligne laissait
+            // l'imputation automatique (plus anciennes ventes d'abord) envoyer le reste sur
+            // d'autres ventes impayées du client, hors facture : la facture n'était jamais
+            // soldée. Somme des restes des lignes = reste de la facture, donc tout est
+            // réparti.
+            double aRepartir = montantAPayer;
+            for (FactureLigne l : lignes) {
+                if (aRepartir <= 0) break;
+                double resteLigne = CalculImputation.arrondi(nz(l.getMontant())
+                        - Math.min(nz(l.getMontant()), compteClientService.payeVente(l.getVenteType(), l.getVenteUniqueId())));
+                if (resteLigne <= 0) continue;
+                double part = CalculImputation.arrondi(Math.min(aRepartir, resteLigne));
+                paiementClientService.enregistrerInterne(f.getClient(), part, modePaiement, OriginePaiement.FACTURE,
+                        null, l.getVenteType(), l.getVenteUniqueId(), f, observations, datePaiement);
+                aRepartir = CalculImputation.arrondi(aRepartir - part);
+            }
+        }
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), f.getId(), "Facture",
@@ -416,12 +455,16 @@ public class FactureServiceImpl implements FactureService {
 
     // ===================== DTO / montant payé =====================
 
-    // Σ min(ligne.montant, payeVente(ligne)) — plafonné ligne par ligne. 0 pour une
-    // facture legacy (son montantPaye vient directement de la colonne, voir
-    // FactureDTO.fromEntity) ou sans ligne (ancienne facture avant la reprise Task 11 :
-    // montantPaye affichera 0 jusqu'à ce que legacy soit posé sur cette ligne, accepté).
+    // Facture non-legacy : Σ min(ligne.montant, payeVente(ligne)) — plafonné ligne par
+    // ligne. Facture legacy (d'avant la refonte) : montantPaye historique (colonne, qui
+    // comptait déjà l'argent reçu à la vente et les anciens « marquer payée ») + paiements
+    // reçus sur cette facture depuis la reprise (payer), plafonné au total — sinon elle
+    // restait payable indéfiniment sans jamais changer de statut.
     private double calculerMontantPaye(Facture f, List<FactureLigne> lignes) {
-        if (Boolean.TRUE.equals(f.getLegacy())) return 0.0;
+        if (Boolean.TRUE.equals(f.getLegacy())) {
+            double depuisReprise = nz(paiementClientRepo.sumActifsHorsRepriseByFactureId(f.getId()));
+            return CalculImputation.arrondi(Math.min(nz(f.getMontantTotal()), nz(f.getMontantPaye()) + depuisReprise));
+        }
         return CalculImputation.arrondi(lignes.stream()
                 .mapToDouble(l -> Math.min(nz(l.getMontant()), compteClientService.payeVente(l.getVenteType(), l.getVenteUniqueId())))
                 .sum());
