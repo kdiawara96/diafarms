@@ -23,4 +23,12 @@ public class RepartitionRatioDTO {
     // Non null = une suppression de CETTE vente est en attente de validation — voir
     // TransactionDTO.venteDemandeSuppressionParNom.
     private String venteDemandeSuppressionParNom;
+    // Non null = vente à CE client — le ratio réel/théorique devient alors payé/montant
+    // (voir CompteClientService.payeVente), pas montantRapporte/montant. Ajoutés en fin de
+    // liste : ordre du constructeur généré par @AllArgsConstructor, ne pas réordonner.
+    private Long clientId;
+    // "VENTE_OEUFS" ou "VENTE_REFORME" — CibleImputation.name() de LA VENTE ENTIÈRE, pour
+    // interroger CompteClientService.payeVente sans avoir à deviner le type depuis le repo
+    // appelant (TransactionServiceImpl.ratio mélange les deux listes).
+    private String venteType;
 }

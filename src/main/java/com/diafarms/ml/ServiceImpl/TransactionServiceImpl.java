@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +21,7 @@ import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.TransactionStatsDTO;
 import com.diafarms.ml.DTO.VenteRepartitionReelDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
@@ -65,6 +68,12 @@ public class TransactionServiceImpl implements TransactionService {
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
     private final SoldeClientServiceImpl soldeClientService;
+    // @Lazy : évite tout risque de cycle de construction avec CompteClientService (lui-même
+    // consommé par PaiementClientService, ServiceImpl côté ventes/clients) — seul le ratio
+    // réel/théorique d'une vente à client en a besoin, voir ratio(RepartitionRatioDTO).
+    @Autowired
+    @Lazy
+    private CompteClientService compteClientService;
 
     // Sentinelles "pas de filtre" pour les requêtes agrégat par date (voir
     // TransactionRepo.countByProjetIdsAndStatut) — Postgres échoue à déterminer le
@@ -871,6 +880,12 @@ public class TransactionServiceImpl implements TransactionService {
 
     private double ratio(RepartitionRatioDTO r) {
         if (r.getVenteMontant() == null || r.getVenteMontant() == 0) return 1.0;
+        if (r.getClientId() != null) {
+            double paye = compteClientService.payeVente(
+                    r.getVenteType() == null ? CibleImputation.VENTE_OEUFS : CibleImputation.valueOf(r.getVenteType()),
+                    r.getVenteUniqueId());
+            return Math.min(1.0, paye / r.getVenteMontant());
+        }
         double rapporte = r.getVenteMontantRapporte() != null ? r.getVenteMontantRapporte() : r.getVenteMontant();
         return rapporte / r.getVenteMontant();
     }

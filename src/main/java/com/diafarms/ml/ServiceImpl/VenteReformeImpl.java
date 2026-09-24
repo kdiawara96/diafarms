@@ -18,6 +18,9 @@ import com.diafarms.ml.DTO.StockReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeRepartitionDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.CibleImputation;
+import com.diafarms.ml.enums.ModePaiement;
+import com.diafarms.ml.enums.OriginePaiement;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.enums.TypeVenteReforme;
@@ -60,10 +63,11 @@ public class VenteReformeImpl implements VenteReformeService {
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final ClientRepo clientRepo;
     private final SoldeVendeurServiceImpl soldeVendeurService;
-    private final SoldeClientServiceImpl soldeClientService;
     private final LogsServices logs;
     private final OtherService otherService;
     private final TransactionService transactionService;
+    private final PaiementClientService paiementClientService;
+    private final CompteClientService compteClientService;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -122,14 +126,14 @@ public class VenteReformeImpl implements VenteReformeService {
         }
     }
 
-    /** Route l'écart théorique/rapporté vers le solde du CLIENT si la vente en a un
-     * (vente à crédit : ce n'est pas le vendeur qui est en tort), sinon vers le solde
-     * du vendeur (comportement historique, vente "directe" sans client identifié). */
-    private void ajusterEcart(Client client, Utilisateurs vendeur, Farm farm, double delta) {
-        if (client != null) {
-            soldeClientService.ajusterSolde(client, farm, delta);
-        } else if (vendeur != null) {
-            soldeVendeurService.ajusterSolde(vendeur, farm, delta);
+    /** "" ou null -> ESPECES (comportement historique implicite) ; sinon la valeur de
+     * l'enum ModePaiement — même règle que PaiementClientService.mode(String). */
+    private ModePaiement modeOuEspeces(String raw) {
+        if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
+        try {
+            return ModePaiement.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Mode de paiement inconnu : " + raw);
         }
     }
 
@@ -255,7 +259,9 @@ public class VenteReformeImpl implements VenteReformeService {
         v.setNombreSujets(data.getNombreSujets());
         v.setPrixUnitaire(data.getPrixUnitaire());
         v.setMontant(data.getMontant());
-        v.setMontantRapporte(data.getMontantRapporte());
+        // Vente AVEC client : l'argent reçu est un paiement client (voir PaiementClient) ;
+        // montantRapporte ne sert plus qu'au contrôle du vendeur sur une vente SANS client.
+        v.setMontantRapporte(client == null ? data.getMontantRapporte() : null);
         v.setTypeVente(typeVente);
         v.setPoidsTotalKg(typeVente == TypeVenteReforme.KILO ? data.getPoidsTotalKg() : null);
         v.setInitialisation(Initialisation.init());
@@ -264,8 +270,18 @@ public class VenteReformeImpl implements VenteReformeService {
 
         List<VenteReformeRepartition> lignes = repartirEtCreerTransactions(saved, farm, data.getNombreSujets(), data.getMontant(), currentUser);
 
-        if (data.getMontantRapporte() != null) {
-            ajusterEcart(client, currentUser, farm, data.getMontant() - data.getMontantRapporte());
+        if (client == null) {
+            if (data.getMontantRapporte() != null) {
+                soldeVendeurService.ajusterSolde(currentUser, farm, data.getMontant() - data.getMontantRapporte());
+            }
+        } else {
+            if (data.getMontantRapporte() != null && data.getMontantRapporte() > 0) {
+                paiementClientService.enregistrerInterne(client, data.getMontantRapporte(),
+                        modeOuEspeces(data.getModePaiement()), OriginePaiement.VENTE, saved.getCommande(),
+                        CibleImputation.VENTE_REFORME, saved.getUniqueId(), null, null, saved.getDate());
+            } else {
+                compteClientService.imputer(client); // une avance éventuelle règle cette vente
+            }
         }
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
@@ -331,10 +347,6 @@ public class VenteReformeImpl implements VenteReformeService {
             v.setMontant(data.getMontant());
         }
 
-        if (data.getMontantRapporte() != null) {
-            v.setMontantRapporte(data.getMontantRapporte());
-        }
-
         if (data.getClientUniqueId() != null) {
             if (data.getClientUniqueId().isBlank()) {
                 v.setClient(null);
@@ -347,17 +359,45 @@ public class VenteReformeImpl implements VenteReformeService {
             }
         }
 
+        // Vente à un client (avant OU après cette modification) : plus de montantRapporte
+        // manuel — l'argent reçu passe par un paiement enregistré depuis la fiche client
+        // (voir PaiementClientService), pas par ce formulaire de vente.
+        boolean venteAUnClient = ancienClient != null || v.getClient() != null;
+        if (venteAUnClient && data.getMontantRapporte() != null) {
+            throw new IllegalArgumentException("Pour une vente à un client, enregistrez un paiement depuis la fiche client.");
+        }
+
+        if (data.getMontantRapporte() != null) {
+            v.setMontantRapporte(data.getMontantRapporte());
+        }
+
         String ancienClientId = ancienClient != null ? ancienClient.getUniqueId() : null;
         String nouveauClientId = v.getClient() != null ? v.getClient().getUniqueId() : null;
         boolean clientChanged = ancienClientId == null ? nouveauClientId != null : !ancienClientId.equals(nouveauClientId);
+        // Sert aussi plus bas (hors client) à rafraîchir le texte de traçabilité des
+        // lignes de répartition existantes quand il n'y a pas eu de redistribution.
         boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;
-        if (ecartChange || clientChanged) {
-            if (ancienMontantRapporte != null) {
-                ajusterEcart(ancienClient, v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
+
+        // Sans client (avant ET après) : comportement historique, écart théorique/rapporté
+        // au solde du vendeur qui a créé la vente (pas celui qui modifie).
+        if (!venteAUnClient) {
+            if (ecartChange) {
+                if (ancienMontantRapporte != null) {
+                    soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
+                }
+                if (v.getMontantRapporte() != null) {
+                    soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
+                }
             }
-            if (v.getMontantRapporte() != null) {
-                ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
-            }
+        } else if (clientChanged) {
+            // L'argent déjà imputé sur cette vente doit migrer de l'ancien client vers le
+            // nouveau (ou simplement redevenir une avance si le client est retiré) —
+            // ré-imputé plus bas, une fois la vente sauvegardée.
+            compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId, "Client de la vente modifié");
+        } else if (data.getMontant() != null && v.getMontant() < nz(ancienMontant)) {
+            // Montant corrigé à la baisse : les imputations excédentaires sont annulées
+            // (redeviennent une avance) avant de laisser imputer() les réappliquer plus bas.
+            compteClientService.ramenerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId, v.getMontant(), "Montant de la vente corrigé");
         }
 
         if (v.getInitialisation() != null) {
@@ -365,6 +405,15 @@ public class VenteReformeImpl implements VenteReformeService {
         }
 
         VenteReforme saved = venteReformeRepo.save(v);
+
+        if (venteAUnClient) {
+            if (clientChanged) {
+                if (ancienClient != null) compteClientService.imputer(ancienClient);
+                if (saved.getClient() != null) compteClientService.imputer(saved.getClient());
+            } else if (saved.getClient() != null && data.getMontant() != null) {
+                compteClientService.imputer(saved.getClient());
+            }
+        }
 
         List<VenteReformeRepartition> lignesActuelles;
         if (redistribuer) {
@@ -425,9 +474,15 @@ public class VenteReformeImpl implements VenteReformeService {
             transactionService.setRemovedBySource(r.getUniqueId(), removed);
         }
 
-        if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
+        if (v.getClient() != null) {
+            if (removed) {
+                compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId,
+                        "Vente supprimée : " + v.getMotifSuppression());
+            }
+            compteClientService.imputer(v.getClient()); // l'argent libéré peut régler d'autres ventes
+        } else if (v.getCreePar() != null && v.getMontantRapporte() != null) {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
-            ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
+            soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
 
         if (currentUser != null) {
@@ -481,9 +536,13 @@ public class VenteReformeImpl implements VenteReformeService {
         for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(uniqueId)) {
             transactionService.setRemovedBySource(r.getUniqueId(), true);
         }
-        if ((v.getCreePar() != null || v.getClient() != null) && v.getMontantRapporte() != null) {
+        if (v.getClient() != null) {
+            compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId,
+                    "Vente supprimée : " + v.getMotifSuppression());
+            compteClientService.imputer(v.getClient());
+        } else if (v.getCreePar() != null && v.getMontantRapporte() != null) {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
-            ajusterEcart(v.getClient(), v.getCreePar(), v.getFarm(), -ecart);
+            soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -ecart);
         }
 
         if (currentUser != null) {

@@ -30,10 +30,20 @@ public class VenteLigneDTO {
     private String unite; // "œufs", "œufs cassés", "sujets", "sacs" ou null
     private Double prixUnitaire;
     private Double montant; // théorique
-    private Double montantRapporte; // null = pas d'écart déclaré
-    private Double montantReel; // montantRapporte, sinon montant
+    private Double montantRapporte; // null = pas d'écart déclaré, ou vente avec client (voir plus bas)
+    private Double montantReel; // montantRapporte, sinon montant ; pour une vente avec client = payé
     private String clientUniqueId;
     private String clientNom;
+    // Champs propres à une vente AVEC client (voir CompteClientService) — null pour une
+    // vente sans client (ANCIEN comportement montantRapporte/montantReel encore utilisé)
+    // et pour les ventes diverses (jamais de client).
+    private Double paye;
+    private Double resteAPayer;
+    // "PAYEE" | "PARTIELLE" | "NON_PAYEE" (vente à un client, voir ClientVenteLigneDTO) ou
+    // "COMPTANT" (vente sans client, encaissée directement — diverses comprises).
+    private String statutPaiement;
+    // Non null = cette vente est la livraison d'une Commande — voir VenteOeufs/VenteReforme.commande.
+    private String commandeUniqueId;
     private String magasinNom;
     private String creeParUniqueId;
     private String creeParNom;

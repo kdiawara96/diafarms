@@ -17,4 +17,7 @@ public class VenteReformeCreate {
     // "TETE" (défaut si absent) ou "KILO" — voir TypeVenteReforme.
     private String typeVente;
     private Double poidsTotalKg; // obligatoire si typeVente=KILO, ignoré sinon
+    // Utilisé seulement pour une vente AVEC client (le montant rapporté devient alors un
+    // paiement client) — voir VenteReformeImpl.create. Facultatif : ESPECES par défaut.
+    private String modePaiement;
 }

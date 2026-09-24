@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.VenteLigneDTO;
+import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ProduitVenteDiverse;
 import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeVenteOeufs;
@@ -56,6 +57,7 @@ public class VenteListeImpl {
     private final TransactionRepo transactionRepo;
     private final ProjetsRepo projetsRepo;
     private final OtherService otherService;
+    private final CompteClientService compteClientService;
 
     private boolean isAdmin(Utilisateurs u) {
         return u != null && u.getRoles() != null && u.getRoles().stream()
@@ -149,6 +151,8 @@ public class VenteListeImpl {
                     + (v.getMagasin() != null ? " — magasin " + v.getMagasin().getNom() : ""));
             d.setMagasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null);
             client(d, v.getClient());
+            statutPaiement(d, v.getClient(), CibleImputation.VENTE_OEUFS, v.getUniqueId(), v.getMontant());
+            d.setCommandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null);
             d.setProjets(codes(reps.stream().map(VenteOeufsRepartition::getProjet).toList()));
             d.setStatut(statut(reps.stream().map(VenteOeufsRepartition::getUniqueId).toList(), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());
@@ -166,6 +170,8 @@ public class VenteListeImpl {
                     + (v.getMagasin() != null ? " — magasin " + v.getMagasin().getNom() : ""));
             d.setMagasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null);
             client(d, v.getClient());
+            statutPaiement(d, v.getClient(), CibleImputation.VENTE_REFORME, v.getUniqueId(), v.getMontant());
+            d.setCommandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null);
             d.setProjets(codes(reps.stream().map(VenteReformeRepartition::getProjet).toList()));
             d.setStatut(statut(reps.stream().map(VenteReformeRepartition::getUniqueId).toList(), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());
@@ -180,6 +186,7 @@ public class VenteListeImpl {
             d.setUnite(fientes && v.getQuantite() != null ? "sacs" : null);
             d.setPrixUnitaire(v.getPrixUnitaire());
             d.setDescription(v.getDescription()); // brute : le web affiche "Vente de fientes" si vide
+            d.setStatutPaiement("COMPTANT"); // jamais de client sur une vente diverse
             d.setProjets(List.of());
             d.setStatut(statut(List.of(v.getUniqueId()), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());
@@ -214,6 +221,25 @@ public class VenteListeImpl {
     private static void client(VenteLigneDTO d, com.diafarms.ml.models.Client c) {
         d.setClientUniqueId(c != null ? c.getUniqueId() : null);
         d.setClientNom(c != null ? c.getNom() : null);
+    }
+
+    // Vente AVEC client : l'argent passe par des paiements/imputations (voir
+    // CompteClientService), pas par montantRapporte — payé/reste remplacent
+    // montantRapporte/montantReel, et montantRapporte est forcé à null (même s'il traîne
+    // encore une ancienne valeur en base). Sans client : COMPTANT, rien à changer (déjà
+    // posé par base()).
+    private void statutPaiement(VenteLigneDTO d, com.diafarms.ml.models.Client c, CibleImputation type, String venteUniqueId, Double montant) {
+        if (c == null) {
+            d.setStatutPaiement("COMPTANT");
+            return;
+        }
+        double paye = compteClientService.payeVente(type, venteUniqueId);
+        double reste = compteClientService.resteAPayerVente(type, venteUniqueId, nz(montant));
+        d.setPaye(paye);
+        d.setResteAPayer(reste);
+        d.setStatutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"));
+        d.setMontantReel(paye);
+        d.setMontantRapporte(null);
     }
 
     private static void suppression(VenteLigneDTO d, Utilisateurs par, java.time.LocalDateTime date, String motif) {

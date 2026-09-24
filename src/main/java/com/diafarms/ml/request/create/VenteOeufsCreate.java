@@ -16,4 +16,7 @@ public class VenteOeufsCreate {
     private Double montant; // théorique (quantité × prix, ou saisi librement)
     private Double montantRapporte; // optionnel : ce que le vendeur a réellement rapporté
     private String typeOeuf; // "BON" (défaut) ou "CASSE" — voir TypeVenteOeufs
+    // Utilisé seulement pour une vente AVEC client (le montant rapporté devient alors un
+    // paiement client) — voir VenteOeufsImpl.create. Facultatif : ESPECES par défaut.
+    private String modePaiement;
 }
