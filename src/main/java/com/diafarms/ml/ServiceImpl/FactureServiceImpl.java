@@ -3,6 +3,8 @@ package com.diafarms.ml.ServiceImpl;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -13,26 +15,34 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.FactureDTO;
+import com.diafarms.ml.DTO.FactureLigneDTO;
+import com.diafarms.ml.commons.CalculImputation;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.commons.PdfStyle;
+import com.diafarms.ml.enums.CibleImputation;
+import com.diafarms.ml.enums.ModePaiement;
+import com.diafarms.ml.enums.OriginePaiement;
+import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Commande;
 import com.diafarms.ml.models.Commande.StatutCommande;
 import com.diafarms.ml.models.Facture;
 import com.diafarms.ml.models.Facture.SourceFacture;
 import com.diafarms.ml.models.Facture.StatutFacture;
+import com.diafarms.ml.models.FactureLigne;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
-import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.CommandeRepo;
+import com.diafarms.ml.repository.FactureLigneRepo;
 import com.diafarms.ml.repository.FactureRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.FactureGenerateRequest;
-import com.diafarms.ml.services.ClientService;
+import com.diafarms.ml.request.create.FactureGenerateRequest.VenteRef;
+import com.diafarms.ml.request.others.MotifSuppressionRequest;
 import com.diafarms.ml.services.FactureService;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.MinioService;
@@ -47,19 +57,24 @@ import com.lowagie.text.pdf.PdfWriter;
 
 import lombok.RequiredArgsConstructor;
 
-// Facture = document figé généré depuis une vente ou une commande — voir Facture.java.
+// Facture = document figé généré depuis une ou plusieurs ventes (FactureLigne) ou une
+// commande — voir Facture.java/FactureLigne.java. montantPaye/statut ne sont plus
+// stockés pour les nouvelles factures (legacy = false) : ils sont recalculés à la volée
+// depuis les imputations de chaque ligne (CompteClientService.payeVente), voir toDto.
 // Permissions alignées sur la note du roadmap ("la facturation reste une action web
-// ADMIN/COMPTABLE") : génération/gestion réservées à ADMIN/RESPONSABLE/COMPTABLE, pas
-// VENTE (contrairement à Commande, où un vendeur agit sur le terrain).
+// ADMIN/COMPTABLE") : génération/paiement réservés à ADMIN/RESPONSABLE/COMPTABLE,
+// annulation réservée à ADMIN/SUPER_ADMIN/RESPONSABLE (pas COMPTABLE).
 @Service
 @RequiredArgsConstructor
 public class FactureServiceImpl implements FactureService {
 
     private final FactureRepo factureRepo;
+    private final FactureLigneRepo factureLigneRepo;
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
     private final CommandeRepo commandeRepo;
-    private final ClientService clientService;
+    private final CompteClientService compteClientService;
+    private final PaiementClientService paiementClientService;
     private final LogsServices logs;
     private final OtherService otherService;
     private final MinioService minioService;
@@ -87,14 +102,18 @@ public class FactureServiceImpl implements FactureService {
         }
     }
 
-    private double nz(Double v) {
+    private void ensureCanAnnuler(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
+            throw new IllegalArgumentException("Seul un administrateur ou un responsable peut annuler une facture.");
+        }
+    }
+
+    private static double nz(Double v) {
         return v == null ? 0.0 : v;
     }
 
-    private StatutFacture computeStatut(double montantTotal, double montantPaye) {
-        if (montantPaye >= montantTotal) return StatutFacture.PAYEE;
-        if (montantPaye > 0) return StatutFacture.PARTIELLE;
-        return StatutFacture.IMPAYEE;
+    private static boolean estActive(Initialisation init) {
+        return init == null || !Boolean.TRUE.equals(init.getRemoved());
     }
 
     private String genererNumero(Long farmId) {
@@ -108,6 +127,79 @@ public class FactureServiceImpl implements FactureService {
         return numero;
     }
 
+    // Facture/vente/commande introuvable OU d'une autre ferme -> même message, pour ne
+    // pas révéler l'existence d'un enregistrement d'une autre ferme.
+    private Facture factureFarmScoped(String uniqueId, Utilisateurs currentUser) {
+        Facture f = factureRepo.findByUniqueId(uniqueId);
+        if (f == null || currentUser == null || currentUser.getFarm() == null
+                || f.getFarm() == null || !f.getFarm().getId().equals(currentUser.getFarm().getId())) {
+            throw new IllegalArgumentException("Facture introuvable : " + uniqueId);
+        }
+        return f;
+    }
+
+    // ===================== Génération =====================
+
+    private record LigneAGenerer(CibleImputation type, String venteUniqueId, String description,
+                                  Integer quantite, Double prixUnitaire, double montant) {}
+
+    private static VenteRef ref(String type, String uniqueId) {
+        VenteRef r = new VenteRef();
+        r.setType(type);
+        r.setUniqueId(uniqueId);
+        return r;
+    }
+
+    // Détermine la liste explicite de ventes à facturer à partir de la requête — ou
+    // renvoie null si la source est une commande (voir venteRefsDeCommande, appelé
+    // séparément par genererDepuis une fois la commande résolue et vérifiée).
+    private List<VenteRef> resolveVenteRefs(FactureGenerateRequest data) {
+        if (data.getVentes() != null && !data.getVentes().isEmpty()) {
+            return data.getVentes();
+        }
+        if (data.getSourceType() != null && !data.getSourceType().isBlank()) {
+            String st = data.getSourceType().trim().toUpperCase();
+            if ("VENTE_OEUFS".equals(st) || "VENTE_REFORME".equals(st)) {
+                if (data.getSourceUniqueId() == null || data.getSourceUniqueId().isBlank()) {
+                    throw new IllegalArgumentException("La source de la facture (vente ou commande) est requise.");
+                }
+                return List.of(ref(st, data.getSourceUniqueId()));
+            }
+            if (!"COMMANDE".equals(st)) {
+                throw new IllegalArgumentException("Type de source invalide (attendu VENTE_OEUFS, VENTE_REFORME ou COMMANDE) : " + data.getSourceType());
+            }
+        }
+        return null;
+    }
+
+    private List<VenteRef> venteRefsDeCommande(Commande c) {
+        List<VenteRef> refs = new ArrayList<>();
+        if (c.getType() == TypeStockMagasin.REFORME) {
+            for (VenteReforme v : venteReformeRepo.findActivesByCommandeId(c.getId())) {
+                if (!factureLigneRepo.venteDejaFacturee(CibleImputation.VENTE_REFORME, v.getUniqueId())) {
+                    refs.add(ref("VENTE_REFORME", v.getUniqueId()));
+                }
+            }
+        } else {
+            for (VenteOeufs v : venteOeufsRepo.findActivesByCommandeId(c.getId())) {
+                if (!factureLigneRepo.venteDejaFacturee(CibleImputation.VENTE_OEUFS, v.getUniqueId())) {
+                    refs.add(ref("VENTE_OEUFS", v.getUniqueId()));
+                }
+            }
+        }
+        return refs;
+    }
+
+    private Client verifierMemeClient(Client actuel, Client nouveau, String venteUid) {
+        if (nouveau == null) {
+            throw new IllegalArgumentException("Cette vente n'a pas de client identifié — impossible de générer une facture.");
+        }
+        if (actuel != null && !actuel.getId().equals(nouveau.getId())) {
+            throw new IllegalArgumentException("Toutes les ventes doivent appartenir au même client (vente en cause : " + venteUid + ").");
+        }
+        return nouveau;
+    }
+
     @Override
     @Transactional
     public FactureDTO genererDepuis(FactureGenerateRequest data) {
@@ -116,160 +208,234 @@ public class FactureServiceImpl implements FactureService {
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
         }
-        if (data.getSourceType() == null || data.getSourceUniqueId() == null || data.getSourceUniqueId().isBlank()) {
-            throw new IllegalArgumentException("La source de la facture (vente ou commande) est requise.");
-        }
+        Long farmId = currentUser.getFarm().getId();
 
+        List<VenteRef> refs = resolveVenteRefs(data);
         SourceFacture sourceType;
-        try {
-            sourceType = SourceFacture.valueOf(data.getSourceType().toUpperCase());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Type de source invalide (attendu VENTE_OEUFS, VENTE_REFORME ou COMMANDE) : " + data.getSourceType());
-        }
-        if (factureRepo.existsBySourceTypeAndSourceUniqueId(sourceType, data.getSourceUniqueId())) {
-            throw new IllegalArgumentException("Une facture existe déjà pour cette vente/commande.");
+        String sourceUniqueIdCommande = null;
+
+        if (refs == null) {
+            if (data.getSourceUniqueId() == null || data.getSourceUniqueId().isBlank()) {
+                throw new IllegalArgumentException("La source de la facture (vente ou commande) est requise.");
+            }
+            Commande commande = commandeRepo.findByUniqueId(data.getSourceUniqueId());
+            if (commande == null || commande.getFarm() == null || !commande.getFarm().getId().equals(farmId)) {
+                throw new IllegalArgumentException("Commande introuvable : " + data.getSourceUniqueId());
+            }
+            if (commande.getStatut() == StatutCommande.ANNULEE) {
+                throw new IllegalArgumentException("Une commande annulée ne peut pas être facturée.");
+            }
+            sourceType = SourceFacture.COMMANDE;
+            sourceUniqueIdCommande = commande.getUniqueId();
+            refs = venteRefsDeCommande(commande);
+            if (refs.isEmpty()) {
+                throw new IllegalArgumentException("Aucune livraison à facturer.");
+            }
+        } else {
+            sourceType = SourceFacture.VENTES;
         }
 
-        Client client;
-        String description;
-        Integer quantite;
-        Double prixUnitaire;
-        double montantTotal;
-        double montantPaye;
+        Client client = null;
+        List<LigneAGenerer> lignesAGenerer = new ArrayList<>();
+        for (VenteRef v : refs) {
+            if (v == null || v.getType() == null || v.getUniqueId() == null || v.getUniqueId().isBlank()) {
+                throw new IllegalArgumentException("Référence de vente invalide.");
+            }
+            CibleImputation type;
+            try {
+                type = CibleImputation.valueOf(v.getType().trim().toUpperCase());
+            } catch (Exception e) {
+                type = null;
+            }
+            if (type != CibleImputation.VENTE_OEUFS && type != CibleImputation.VENTE_REFORME) {
+                throw new IllegalArgumentException("Type de vente invalide : " + v.getType());
+            }
+            if (factureLigneRepo.venteDejaFacturee(type, v.getUniqueId())) {
+                throw new IllegalArgumentException("Cette vente est déjà facturée : " + v.getUniqueId());
+            }
 
-        switch (sourceType) {
-            case VENTE_OEUFS -> {
-                VenteOeufs v = venteOeufsRepo.findByUniqueId(data.getSourceUniqueId())
-                        .orElseThrow(() -> new IllegalArgumentException("Vente introuvable : " + data.getSourceUniqueId()));
-                if (v.getClient() == null) {
-                    throw new IllegalArgumentException("Cette vente n'a pas de client identifié — impossible de générer une facture.");
+            if (type == CibleImputation.VENTE_OEUFS) {
+                VenteOeufs ve = venteOeufsRepo.findByUniqueId(v.getUniqueId())
+                        .orElseThrow(() -> new IllegalArgumentException("Vente introuvable : " + v.getUniqueId()));
+                if (ve.getFarm() == null || !ve.getFarm().getId().equals(farmId) || !estActive(ve.getInitialisation())) {
+                    throw new IllegalArgumentException("Vente introuvable : " + v.getUniqueId());
                 }
-                client = v.getClient();
-                description = "Vente d'œufs — " + v.getQuantiteOeufs() + " unité(s)";
-                quantite = v.getQuantiteOeufs();
-                prixUnitaire = v.getPrixUnitaire();
-                montantTotal = nz(v.getMontant());
-                montantPaye = nz(v.getMontantRapporte());
+                client = verifierMemeClient(client, ve.getClient(), v.getUniqueId());
+                lignesAGenerer.add(new LigneAGenerer(type, ve.getUniqueId(),
+                        "Vente d'œufs — " + ve.getQuantiteOeufs() + " unité(s)",
+                        ve.getQuantiteOeufs(), ve.getPrixUnitaire(), nz(ve.getMontant())));
+            } else {
+                VenteReforme ve = venteReformeRepo.findByUniqueId(v.getUniqueId())
+                        .orElseThrow(() -> new IllegalArgumentException("Vente introuvable : " + v.getUniqueId()));
+                if (ve.getFarm() == null || !ve.getFarm().getId().equals(farmId) || !estActive(ve.getInitialisation())) {
+                    throw new IllegalArgumentException("Vente introuvable : " + v.getUniqueId());
+                }
+                client = verifierMemeClient(client, ve.getClient(), v.getUniqueId());
+                lignesAGenerer.add(new LigneAGenerer(type, ve.getUniqueId(),
+                        "Vente de réforme — " + ve.getNombreSujets() + " sujet(s)",
+                        ve.getNombreSujets(), ve.getPrixUnitaire(), nz(ve.getMontant())));
             }
-            case VENTE_REFORME -> {
-                VenteReforme v = venteReformeRepo.findByUniqueId(data.getSourceUniqueId())
-                        .orElseThrow(() -> new IllegalArgumentException("Vente introuvable : " + data.getSourceUniqueId()));
-                if (v.getClient() == null) {
-                    throw new IllegalArgumentException("Cette vente n'a pas de client identifié — impossible de générer une facture.");
-                }
-                client = v.getClient();
-                description = "Vente de réforme — " + v.getNombreSujets() + " sujet(s)";
-                quantite = v.getNombreSujets();
-                prixUnitaire = v.getPrixUnitaire();
-                montantTotal = nz(v.getMontant());
-                montantPaye = nz(v.getMontantRapporte());
-            }
-            case COMMANDE -> {
-                Commande c = commandeRepo.findByUniqueId(data.getSourceUniqueId());
-                if (c == null) {
-                    throw new IllegalArgumentException("Commande introuvable : " + data.getSourceUniqueId());
-                }
-                if (c.getStatut() == StatutCommande.ANNULEE) {
-                    throw new IllegalArgumentException("Une commande annulée ne peut pas être facturée.");
-                }
-                client = c.getClient();
-                description = "Commande — " + c.getQuantite() + " unité(s)";
-                quantite = c.getQuantite();
-                prixUnitaire = c.getPrixUnitaireEstime();
-                montantTotal = nz(c.getMontantEstime());
-                montantPaye = nz(c.getMontantAcompte());
-            }
-            default -> throw new IllegalArgumentException("Type de source invalide.");
         }
+
+        if (lignesAGenerer.isEmpty()) {
+            throw new IllegalArgumentException("Aucune vente à facturer.");
+        }
+        if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()
+                && !data.getClientUniqueId().equals(client.getUniqueId())) {
+            throw new IllegalArgumentException("Les ventes ne correspondent pas au client indiqué.");
+        }
+
+        double montantTotal = CalculImputation.arrondi(lignesAGenerer.stream().mapToDouble(LigneAGenerer::montant).sum());
 
         Facture f = new Facture();
         f.setUniqueId(java.util.UUID.randomUUID().toString());
-        f.setNumeroFacture(genererNumero(currentUser.getFarm().getId()));
+        f.setNumeroFacture(genererNumero(farmId));
         f.setClient(client);
         f.setFarm(currentUser.getFarm());
         f.setDateEmission(LocalDate.now());
         f.setSourceType(sourceType);
-        f.setSourceUniqueId(data.getSourceUniqueId());
-        f.setDescription(description);
-        f.setQuantite(quantite);
-        f.setPrixUnitaire(prixUnitaire);
+        // VENTES n'a pas d'identifiant de source unique (plusieurs ventes) : on utilise
+        // l'identifiant de la facture elle-même — sourceUniqueId est NOT NULL en base.
+        f.setSourceUniqueId(sourceType == SourceFacture.COMMANDE ? sourceUniqueIdCommande : f.getUniqueId());
+        f.setDescription(lignesAGenerer.size() == 1 ? lignesAGenerer.get(0).description()
+                : lignesAGenerer.size() + " vente(s)");
+        f.setQuantite(lignesAGenerer.size() == 1 ? lignesAGenerer.get(0).quantite() : null);
+        f.setPrixUnitaire(lignesAGenerer.size() == 1 ? lignesAGenerer.get(0).prixUnitaire() : null);
         f.setMontantTotal(montantTotal);
-        f.setMontantPaye(montantPaye);
-        f.setStatut(computeStatut(montantTotal, montantPaye));
+        f.setMontantPaye(0.0);
+        f.setStatut(StatutFacture.IMPAYEE);
+        f.setLegacy(false);
         f.setCreePar(currentUser);
         f.setInitialisation(Initialisation.init());
 
         Facture saved = factureRepo.save(f);
+
+        for (LigneAGenerer l : lignesAGenerer) {
+            FactureLigne ligne = new FactureLigne();
+            ligne.setUniqueId(java.util.UUID.randomUUID().toString());
+            ligne.setFacture(saved);
+            ligne.setVenteType(l.type());
+            ligne.setVenteUniqueId(l.venteUniqueId());
+            ligne.setDescription(l.description());
+            ligne.setQuantite(l.quantite());
+            ligne.setPrixUnitaire(l.prixUnitaire());
+            ligne.setMontant(CalculImputation.arrondi(l.montant()));
+            ligne.setInitialisation(Initialisation.init());
+            factureLigneRepo.save(ligne);
+        }
+
         logs.addLogs(currentUser.getId(), saved.getId(), "Facture",
-                "Facture " + saved.getNumeroFacture() + " générée pour " + client.getNom());
-        return FactureDTO.fromEntity(saved);
+                "Facture " + saved.getNumeroFacture() + " générée pour " + client.getNom()
+                        + " (" + lignesAGenerer.size() + " vente(s))");
+        return toDto(saved);
     }
+
+    // ===================== Paiement =====================
 
     @Override
     @Transactional
-    public FactureDTO marquerPayee(String uniqueId, Double montant) {
+    public FactureDTO payer(String uniqueId, Double montant, String mode, LocalDate date) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
-        Facture f = factureRepo.findByUniqueId(uniqueId);
-        if (f == null) throw new IllegalArgumentException("Facture introuvable : " + uniqueId);
+        Facture f = factureFarmScoped(uniqueId, currentUser);
 
-        double reste = f.getMontantTotal() - f.getMontantPaye();
+        if (f.getStatut() == StatutFacture.ANNULEE) {
+            throw new IllegalArgumentException("Cette facture est annulée.");
+        }
+
+        List<FactureLigne> lignes = factureLigneRepo.findByFacture_Id(f.getId());
+        lignes.sort(Comparator.comparing(FactureLigne::getId));
+        double montantPaye = calculerMontantPaye(f, lignes);
+        double reste = CalculImputation.arrondi(nz(f.getMontantTotal()) - montantPaye);
         if (reste <= 0) {
             throw new IllegalArgumentException("Cette facture est déjà entièrement payée.");
         }
         double montantAPayer = (montant != null && montant > 0) ? Math.min(montant, reste) : reste;
 
-        // Réutilise ClientService.payerDette : crée une vraie Transaction ("Paiement
-        // client") et réduit SoldeClient d'autant — même mécanisme que le formulaire de
-        // paiement de ClientDetailDialog, pas une simple case cochée côté Facture.
-        clientService.payerDette(f.getClient().getUniqueId(), montantAPayer,
-                "Paiement facture " + f.getNumeroFacture());
+        // Première ligne non soldée : les suivantes sont réglées naturellement par
+        // l'ordre commande/ancienneté du FIFO client — voir CompteClientService.imputer,
+        // déclenché par PaiementClientService.enregistrerInterne. On ne fait ici que
+        // donner une priorité à la vente visée par CE paiement.
+        FactureLigne premiereNonSoldee = lignes.stream()
+                .filter(l -> CalculImputation.arrondi(compteClientService.payeVente(l.getVenteType(), l.getVenteUniqueId()))
+                        < CalculImputation.arrondi(nz(l.getMontant())))
+                .findFirst().orElse(null);
 
-        f.setMontantPaye(f.getMontantPaye() + montantAPayer);
-        f.setStatut(computeStatut(f.getMontantTotal(), f.getMontantPaye()));
-        Facture saved = factureRepo.save(f);
-
-        // Garde la page Ventes cohérente avec ce paiement : la vente d'origine (directe,
-        // ou issue d'une commande convertie) affichait encore le montant rapporté figé
-        // au moment de la vente/conversion — sans ceci, elle resterait indéfiniment
-        // "théorique 25000 / rapporté 20000" même après règlement complet du solde côté
-        // facture, ce qui a dérouté l'utilisateur (le paiement semblait "invisible" en
-        // Ventes). On met à jour directement via le repo (pas via
-        // VenteOeufsService/VenteReformeService.update) pour ne pas ajuster SoldeClient
-        // une seconde fois : payerDette ci-dessus est l'unique source de vérité pour ce
-        // paiement précis.
-        propagerPaiementVersVente(f, montantAPayer);
-
-        return FactureDTO.fromEntity(saved);
-    }
-
-    private void propagerPaiementVersVente(Facture f, double montantAPayer) {
-        switch (f.getSourceType()) {
-            case VENTE_OEUFS -> venteOeufsRepo.findByUniqueId(f.getSourceUniqueId()).ifPresent(v -> {
-                v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
-                venteOeufsRepo.save(v);
-            });
-            case VENTE_REFORME -> venteReformeRepo.findByUniqueId(f.getSourceUniqueId()).ifPresent(v -> {
-                v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
-                venteReformeRepo.save(v);
-            });
-            case COMMANDE -> {
-                Commande c = commandeRepo.findByUniqueId(f.getSourceUniqueId());
-                if (c == null || c.getVenteUniqueId() == null) return;
-                if (c.getType() == TypeStockMagasin.OEUFS) {
-                    venteOeufsRepo.findByUniqueId(c.getVenteUniqueId()).ifPresent(v -> {
-                        v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
-                        venteOeufsRepo.save(v);
-                    });
-                } else {
-                    venteReformeRepo.findByUniqueId(c.getVenteUniqueId()).ifPresent(v -> {
-                        v.setMontantRapporte(nz(v.getMontantRapporte()) + montantAPayer);
-                        venteReformeRepo.save(v);
-                    });
-                }
-            }
+        ModePaiement modePaiement;
+        try {
+            modePaiement = (mode == null || mode.isBlank()) ? ModePaiement.ESPECES : ModePaiement.valueOf(mode.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Mode de paiement inconnu : " + mode);
         }
+
+        paiementClientService.enregistrerInterne(f.getClient(), montantAPayer, modePaiement, OriginePaiement.FACTURE,
+                null, premiereNonSoldee != null ? premiereNonSoldee.getVenteType() : null,
+                premiereNonSoldee != null ? premiereNonSoldee.getVenteUniqueId() : null,
+                f, "Paiement facture " + f.getNumeroFacture(), date != null ? date : LocalDate.now());
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), f.getId(), "Facture",
+                    "Paiement de " + montantAPayer + " FCFA enregistré sur la facture " + f.getNumeroFacture());
+        }
+
+        return toDto(f);
     }
+
+    @Override
+    @Transactional
+    public FactureDTO marquerPayee(String uniqueId, Double montant) {
+        return payer(uniqueId, montant, "ESPECES", null);
+    }
+
+    // ===================== Annulation =====================
+
+    @Override
+    @Transactional
+    public FactureDTO annuler(String uniqueId, String motifBrut) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureCanAnnuler(currentUser);
+        String motif = MotifSuppressionRequest.exiger(motifBrut);
+        Facture f = factureFarmScoped(uniqueId, currentUser);
+        if (f.getStatut() == StatutFacture.ANNULEE) {
+            throw new IllegalArgumentException("Cette facture est déjà annulée.");
+        }
+
+        f.setStatut(StatutFacture.ANNULEE);
+        f.setMotifAnnulation(motif);
+        Facture saved = factureRepo.save(f);
+        // Les ventes redeviennent facturables : FactureLigneRepo.venteDejaFacturee
+        // exclut les factures ANNULEE, rien d'autre à faire. Les paiements déjà
+        // encaissés (PaiementClient) ne bougent pas.
+
+        if (currentUser != null) {
+            logs.addLogs(currentUser.getId(), saved.getId(), "Facture",
+                    "Facture " + saved.getNumeroFacture() + " annulée — motif : " + motif);
+        }
+        return toDto(saved);
+    }
+
+    // ===================== DTO / montant payé =====================
+
+    // Σ min(ligne.montant, payeVente(ligne)) — plafonné ligne par ligne. 0 pour une
+    // facture legacy (son montantPaye vient directement de la colonne, voir
+    // FactureDTO.fromEntity) ou sans ligne (ancienne facture avant la reprise Task 11 :
+    // montantPaye affichera 0 jusqu'à ce que legacy soit posé sur cette ligne, accepté).
+    private double calculerMontantPaye(Facture f, List<FactureLigne> lignes) {
+        if (Boolean.TRUE.equals(f.getLegacy())) return 0.0;
+        return CalculImputation.arrondi(lignes.stream()
+                .mapToDouble(l -> Math.min(nz(l.getMontant()), compteClientService.payeVente(l.getVenteType(), l.getVenteUniqueId())))
+                .sum());
+    }
+
+    private FactureDTO toDto(Facture f) {
+        List<FactureLigne> lignes = factureLigneRepo.findByFacture_Id(f.getId());
+        lignes.sort(Comparator.comparing(FactureLigne::getId));
+        List<FactureLigneDTO> lignesDto = lignes.stream().map(FactureLigneDTO::fromEntity).toList();
+        double payeCalcule = calculerMontantPaye(f, lignes);
+        return FactureDTO.fromEntity(f, lignesDto, payeCalcule);
+    }
+
+    // ===================== PDF =====================
 
     // Logo/tampon sont optionnels (voir Farm.logoNomMinio/tamponNomMinio) — laissés
     // vides si la ferme n'en a pas encore fourni, jamais d'espace réservé/placeholder.
@@ -284,11 +450,14 @@ public class FactureServiceImpl implements FactureService {
         }
     }
 
-    private String statutLabelFr(StatutFacture statut) {
+    private String statutLabelFr(String statut) {
+        if (statut == null) return "-";
         return switch (statut) {
-            case IMPAYEE -> "IMPAYÉE";
-            case PARTIELLE -> "PARTIELLE";
-            case PAYEE -> "PAYÉE";
+            case "IMPAYEE" -> "IMPAYÉE";
+            case "PARTIELLE" -> "PARTIELLE";
+            case "PAYEE" -> "PAYÉE";
+            case "ANNULEE" -> "ANNULÉE";
+            default -> statut;
         };
     }
 
@@ -298,6 +467,11 @@ public class FactureServiceImpl implements FactureService {
         Facture f = factureRepo.findByUniqueId(uniqueId);
         if (f == null) throw new IllegalArgumentException("Facture introuvable : " + uniqueId);
         Farm farm = f.getFarm();
+        FactureDTO dto = toDto(f);
+        // Une facture sans ligne (legacy, ou ancienne facture pas encore reprise —
+        // Task 11) : on reconstruit une ligne unique depuis les champs historiques de
+        // Facture, seule trace disponible pour cette facture — voir FactureLigne.java.
+        boolean reconstruire = dto.getLignes() == null || dto.getLignes().isEmpty();
 
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -341,7 +515,7 @@ public class FactureServiceImpl implements FactureService {
             PdfPTable statutTable = new PdfPTable(1);
             statutTable.setWidthPercentage(28);
             statutTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            statutTable.addCell(PdfStyle.badgeCell(statutLabelFr(f.getStatut()), PdfStyle.statutFactureColor(f.getStatut().name())));
+            statutTable.addCell(PdfStyle.badgeCell(statutLabelFr(dto.getStatut()), PdfStyle.statutFactureColor(dto.getStatut())));
             document.add(statutTable);
             document.add(new Paragraph(" "));
 
@@ -358,7 +532,7 @@ public class FactureServiceImpl implements FactureService {
             document.add(clientBox);
             document.add(new Paragraph(" "));
 
-            // ===== Ligne de facturation =====
+            // ===== Lignes de facturation =====
             PdfPTable table = new PdfPTable(4);
             table.setWidthPercentage(100);
             table.setWidths(new float[]{3.5f, 1.5f, 2, 2});
@@ -366,23 +540,32 @@ public class FactureServiceImpl implements FactureService {
             table.addCell(PdfStyle.tableHeaderCell("Quantité"));
             table.addCell(PdfStyle.tableHeaderCell("Prix unitaire"));
             table.addCell(PdfStyle.tableHeaderCell("Montant"));
-            table.addCell(PdfStyle.bodyCell(f.getDescription()));
-            table.addCell(PdfStyle.bodyCell(f.getQuantite() != null ? f.getQuantite().toString() : "-", Element.ALIGN_RIGHT));
-            table.addCell(PdfStyle.bodyCell(f.getPrixUnitaire() != null ? String.format("%.0f", f.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
-            table.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA", f.getMontantTotal()), Element.ALIGN_RIGHT));
+            if (reconstruire) {
+                table.addCell(PdfStyle.bodyCell(f.getDescription()));
+                table.addCell(PdfStyle.bodyCell(f.getQuantite() != null ? f.getQuantite().toString() : "-", Element.ALIGN_RIGHT));
+                table.addCell(PdfStyle.bodyCell(f.getPrixUnitaire() != null ? String.format("%.0f", f.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
+                table.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA", nz(f.getMontantTotal())), Element.ALIGN_RIGHT));
+            } else {
+                for (FactureLigneDTO l : dto.getLignes()) {
+                    table.addCell(PdfStyle.bodyCell(l.getDescription()));
+                    table.addCell(PdfStyle.bodyCell(l.getQuantite() != null ? l.getQuantite().toString() : "-", Element.ALIGN_RIGHT));
+                    table.addCell(PdfStyle.bodyCell(l.getPrixUnitaire() != null ? String.format("%.0f", l.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
+                    table.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA", nz(l.getMontant())), Element.ALIGN_RIGHT));
+                }
+            }
             document.add(table);
             document.add(new Paragraph(" "));
 
             // ===== Récapitulatif (aligné à droite) =====
-            double reste = f.getMontantTotal() - f.getMontantPaye();
+            double reste = dto.getResteAPayer() != null ? dto.getResteAPayer() : 0.0;
             PdfPTable recap = new PdfPTable(2);
             recap.setWidthPercentage(55);
             recap.setHorizontalAlignment(Element.ALIGN_RIGHT);
             recap.setWidths(new float[]{1, 1});
             recap.addCell(PdfStyle.layoutCell(new Paragraph("Montant total", PdfStyle.normal())));
-            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", f.getMontantTotal()), PdfStyle.normal()))));
+            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", nz(f.getMontantTotal())), PdfStyle.normal()))));
             recap.addCell(PdfStyle.layoutCell(new Paragraph("Montant payé", PdfStyle.normal())));
-            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", f.getMontantPaye()), PdfStyle.normal()))));
+            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", nz(dto.getMontantPaye())), PdfStyle.normal()))));
             document.add(recap);
             document.add(new Paragraph(" "));
 
@@ -415,6 +598,8 @@ public class FactureServiceImpl implements FactureService {
         return p;
     }
 
+    // ===================== Liste =====================
+
     @Override
     @Transactional(readOnly = true)
     public PaginatedResponse<FactureDTO> list(int page, int size, String statut, String clientUniqueId) {
@@ -430,7 +615,7 @@ public class FactureServiceImpl implements FactureService {
         String clientParam = (clientUniqueId == null || clientUniqueId.isBlank()) ? null : clientUniqueId;
 
         Page<Facture> facturePage = factureRepo.search(currentUser.getFarm().getId(), statutEnum, clientParam, pageable);
-        List<FactureDTO> dtoList = facturePage.getContent().stream().map(FactureDTO::fromEntity).toList();
+        List<FactureDTO> dtoList = facturePage.getContent().stream().map(this::toDto).toList();
 
         return new PaginatedResponse<>(
                 dtoList,

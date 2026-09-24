@@ -73,6 +73,10 @@ public class Facture {
     @Column(name = "montant_total", nullable = false)
     private Double montantTotal;
 
+    // Non utilisé pour une facture non-legacy (montantPaye/statut recalculés à la volée
+    // depuis les imputations des lignes — voir FactureServiceImpl.toDto/FactureDTO) :
+    // reste à 0 et n'est jamais mis à jour après la génération. Seule une facture legacy
+    // (voir `legacy` ci-dessous) affiche encore cette valeur telle quelle.
     @Column(name = "montant_paye", nullable = false, columnDefinition = "double precision not null default 0")
     private Double montantPaye = 0.0;
 
@@ -80,6 +84,21 @@ public class Facture {
     @Column(name = "statut", nullable = false, length = 20,
             columnDefinition = "varchar(20) not null default 'IMPAYEE'")
     private StatutFacture statut = StatutFacture.IMPAYEE;
+
+    // Vrai pour les factures d'avant la refonte (source unique par vente, montantPaye
+    // stocké manuellement par marquerPayee) : leur montantPaye stocké reste affiché tel
+    // quel plutôt que recalculé depuis des lignes qu'elles n'ont pas. Mis à jour par la
+    // reprise (Task 11) sur les factures existantes ; faux par défaut pour les nouvelles
+    // factures générées par cette refonte, qui ont toujours des FactureLigne.
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
+    private Boolean legacy = false;
+
+    // Motif obligatoire (voir MotifSuppressionRequest) d'une annulation de facture —
+    // voir FactureServiceImpl.annuler. Les ventes qu'elle listait redeviennent
+    // facturables (FactureLigneRepo.venteDejaFacturee exclut les factures ANNULEE) ;
+    // les paiements déjà encaissés dessus ne sont pas touchés.
+    @Column(name = "motif_annulation", columnDefinition = "TEXT")
+    private String motifAnnulation;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cree_par_id")
@@ -89,10 +108,10 @@ public class Facture {
     private Initialisation initialisation;
 
     public enum SourceFacture {
-        VENTE_OEUFS, VENTE_REFORME, COMMANDE
+        VENTE_OEUFS, VENTE_REFORME, COMMANDE, VENTES
     }
 
     public enum StatutFacture {
-        IMPAYEE, PARTIELLE, PAYEE
+        IMPAYEE, PARTIELLE, PAYEE, ANNULEE
     }
 }

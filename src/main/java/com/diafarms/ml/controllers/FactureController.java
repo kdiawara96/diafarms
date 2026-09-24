@@ -1,5 +1,6 @@
 package com.diafarms.ml.controllers;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.http.ContentDisposition;
@@ -14,6 +15,8 @@ import com.diafarms.ml.others.ApiResponse;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.create.FactureGenerateRequest;
 import com.diafarms.ml.request.others.FactureMarquerPayeeRequest;
+import com.diafarms.ml.request.others.FacturePaiementRequest;
+import com.diafarms.ml.request.others.MotifSuppressionRequest;
 import com.diafarms.ml.services.FactureService;
 
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,35 @@ public class FactureController {
         try {
             Double montant = request != null ? request.getMontant() : null;
             return ApiResponse.createResponse("Facture mise à jour", HttpStatus.OK, service.marquerPayee(uniqueId, montant), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PostMapping("/{uniqueId}/paiement")
+    public ResponseEntity<ApiResponse<FactureDTO>> payer(@PathVariable String uniqueId,
+                                                           @RequestBody FacturePaiementRequest request) {
+        try {
+            LocalDate date = (request == null || request.getDate() == null || request.getDate().isBlank())
+                    ? null : LocalDate.parse(request.getDate());
+            String mode = request != null ? request.getMode() : null;
+            Double montant = request != null ? request.getMontant() : null;
+            return ApiResponse.createResponse("Paiement enregistré", HttpStatus.OK, service.payer(uniqueId, montant, mode, date), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    @PutMapping("/{uniqueId}/annuler")
+    public ResponseEntity<ApiResponse<FactureDTO>> annuler(@PathVariable String uniqueId,
+                                                             @RequestBody(required = false) MotifSuppressionRequest request) {
+        try {
+            return ApiResponse.createResponse("Facture annulée", HttpStatus.OK,
+                    service.annuler(uniqueId, MotifSuppressionRequest.exiger(request)), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
