@@ -88,6 +88,9 @@ public class SessionPeseeImpl implements SessionPeseeService {
         if (projet.getFarm() == null || !Objects.equals(projet.getFarm().getId(), farmId)) {
             throw new IllegalArgumentException("Projet introuvable : " + projetUniqueId);
         }
+        if (projet.getInitialisation() != null && vrai(projet.getInitialisation().getRemoved())) {
+            throw new IllegalArgumentException("Ce projet a été supprimé.");
+        }
         return projet;
     }
 
@@ -190,7 +193,8 @@ public class SessionPeseeImpl implements SessionPeseeService {
             // Renvoi identique (réponse perdue) : même ensemble de pesées, aucune nouvelle
             // annulation, statut TERMINEE → on renvoie la session telle quelle.
             boolean aucuneAnnulationNouvelle = recues.entrySet().stream()
-                    .noneMatch(e -> vrai(e.getValue().getAnnulee()) && !vrai(parUid.get(e.getKey()).getAnnulee()));
+                    .noneMatch(e -> vrai(e.getValue().getAnnulee())
+                            && (parUid.get(e.getKey()) == null || !vrai(parUid.get(e.getKey()).getAnnulee())));
             boolean identique = statutDemande == StatutSessionPesee.TERMINEE
                     && inconnues.isEmpty()
                     && recues.keySet().equals(parUid.keySet())
@@ -207,6 +211,13 @@ public class SessionPeseeImpl implements SessionPeseeService {
             session.setCreePar(user);
             session.setStatut(StatutSessionPesee.EN_COURS);
             LocalDateTime debut = parseDateHeure(req.getDateDebut(), "dateDebut");
+            // À défaut : la première pesée reçue, sinon maintenant.
+            if (debut == null) {
+                for (SessionPeseeSyncRequest.PeseeItem item : recues.values()) {
+                    LocalDateTime dh = parseDateHeure(item.getDateHeure(), "dateHeure");
+                    if (dh != null && (debut == null || dh.isBefore(debut))) debut = dh;
+                }
+            }
             session.setDateDebut(debut != null ? debut : LocalDateTime.now());
             session.setInitialisation(Initialisation.init());
         }
@@ -273,7 +284,13 @@ public class SessionPeseeImpl implements SessionPeseeService {
             }
             session.setStatut(StatutSessionPesee.TERMINEE);
             LocalDateTime fin = parseDateHeure(req.getDateFin(), "dateFin");
-            session.setDateFin(fin != null ? fin : LocalDateTime.now());
+            // À défaut : la dernière pesée non annulée (pas l'heure de réception, qui
+            // peut être bien plus tardive pour une saisie hors ligne).
+            if (fin == null) fin = session.getDerniereDatePesee();
+            if (fin.isBefore(session.getDateDebut())) {
+                throw new IllegalArgumentException("La date de fin ne peut pas précéder la date de début de la session.");
+            }
+            session.setDateFin(fin);
             terminee = true;
         }
         if (!nouvelle) Initialisation.updateDate(session.getInitialisation());
@@ -326,7 +343,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
         StatutSessionPesee filtre = parseStatut(statut, null);
         Page<SessionPesee> res = sessionRepo.search(farmId, projetUniqueId.trim(), filtre != null,
                 filtre != null ? filtre : StatutSessionPesee.EN_COURS,
-                PageRequest.of(Math.max(page, 0), Math.max(size, 1)));
+                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100)));
 
         Map<Long, Integer> comptes = new HashMap<>();
         List<Long> ids = res.getContent().stream().map(SessionPesee::getId).toList();

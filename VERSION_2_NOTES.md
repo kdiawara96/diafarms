@@ -773,7 +773,10 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   sont ajoutées, une pesée existante ne peut qu'être annulée (jamais dé-annulée ni modifiée —
   les autres champs renvoyés sont ignorés). Session terminée : tout changement → 400, sauf renvoi
   identique (réponse perdue) → 200 inchangé. Terminer exige au moins une pesée non annulée.
+- **Dates** : dateDebut absente → première pesée reçue (sinon maintenant) ; dateFin absente →
+  dernière pesée non annulée (pas l'heure de réception) ; dateFin < dateDebut → 400. Projet
+  supprimé → 400. Liste plafonnée à 100 par page. Poids moyen arrondi à 3 décimales (affichage).
 - **Concurrence** : verrou `PESSIMISTIC_WRITE` sur la ligne du projet pendant la synchro +
   UNIQUE sur les uniqueId (collision résiduelle → 409).
 - **SQL** : `docs/sql/2026-09-25_pesees.sql` — rien à faire (tables nouvelles), requête de
-  vérification seulement. Tests : `scripts/scenarios-pesees.sh` (24 assertions).
+  vérification seulement. Tests : `scripts/scenarios-pesees.sh` (33 assertions ; utilise `compta@t.local` pour le refus de rôle).
