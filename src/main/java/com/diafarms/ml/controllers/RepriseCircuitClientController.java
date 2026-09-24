@@ -17,8 +17,9 @@ import com.diafarms.ml.repository.FarmsRepo;
 import lombok.RequiredArgsConstructor;
 
 // Reprise des données clients vers le circuit paiement/imputation. executer=false
-// (défaut) : simulation, rien n'est écrit. ADMIN : sa ferme uniquement ; SUPER_ADMIN :
-// la ferme farmUniqueId, ou toutes les fermes si absent.
+// (défaut) : simulation, rien n'est écrit. Réservée au SUPER_ADMIN (simulation comme
+// exécution : c'est une opération de déploiement, pas de gestion de ferme) : la ferme
+// farmUniqueId, ou toutes les fermes si absent. Tout autre rôle, ADMIN compris -> 403.
 @RestController
 @RequestMapping("/diafarms/api/v1")
 @RequiredArgsConstructor
@@ -47,11 +48,9 @@ public class RepriseCircuitClientController {
                 } else {
                     farms = farmsRepo.findAll();
                 }
-            } else if (hasRole(u, "ADMIN") && u.getFarm() != null) {
-                farms = List.of(u.getFarm());
             } else {
                 return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null,
-                        List.of("Réservé à l'administrateur de la ferme."));
+                        List.of("Réservé au super-administrateur."));
             }
             RepriseRapportDTO rapport = service.lancer(farms, executer, u);
             return ApiResponse.createResponse(executer ? "Reprise exécutée" : "Simulation de la reprise (rien n'a été écrit)",

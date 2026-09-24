@@ -39,6 +39,16 @@ public class RepriseCircuitClientService {
     static final List<String> CATEGORIES_PAIEMENT = List.of("Remboursement client", "Acompte client", "Paiement client");
     static final String CATEGORIE_REMBOURSEMENT = "Remboursement au client";
     static final String PREFIXE_FACTURE = "Paiement facture ";
+    // Toutes les observations des paiements créés par la reprise commencent par ce mot :
+    // PaiementClientRepo.sumActifsHorsRepriseByFactureId s'en sert pour ne pas compter
+    // deux fois, sur une facture legacy, un paiement déjà inclus dans son montant payé.
+    public static final String PREFIXE_OBSERVATIONS = "Reprise";
+    // Log écrit à chaque exécution réelle (entité Farm) : marque la ferme comme reprise.
+    static final String ACTION_LOG_EXECUTION = "Reprise du circuit de l'argent client exécutée";
+    // Ventes à un client SANS montant rapporté : possibles seulement avec l'ancien code
+    // d'avant le 22/08/2026 (commit 14f3c30 : montant rapporté obligatoire). Au-delà, une
+    // vente à un client sans montant rapporté est une vente de la refonte (à crédit).
+    static final java.time.LocalDateTime FIN_MONTANT_RAPPORTE_FACULTATIF = java.time.LocalDateTime.of(2026, 8, 23, 0, 0);
 
     @PersistenceContext
     private EntityManager em;
@@ -83,8 +93,7 @@ public class RepriseCircuitClientService {
                 txTemplate.executeWithoutResult(status -> {
                     traiterFerme(farmId, partiel, prefixe);
                     if (executer) {
-                        if (lanceur != null) logs.addLogs(lanceur.getId(), farmId, "Farm",
-                                "Reprise du circuit de l'argent client exécutée");
+                        if (lanceur != null) logs.addLogs(lanceur.getId(), farmId, "Farm", ACTION_LOG_EXECUTION);
                     } else {
                         status.setRollbackOnly(); // simulation : rien n'est écrit
                     }
@@ -100,6 +109,11 @@ public class RepriseCircuitClientService {
             rapport.setRemboursementsCrees(rapport.getRemboursementsCrees() + partiel.getRemboursementsCrees());
             rapport.setRecopiesFacturesRetirees(rapport.getRecopiesFacturesRetirees() + partiel.getRecopiesFacturesRetirees());
             rapport.setVentesConverties(rapport.getVentesConverties() + partiel.getVentesConverties());
+            rapport.setLignesFacturesCreees(rapport.getLignesFacturesCreees() + partiel.getLignesFacturesCreees());
+            for (RepriseRapportDTO.VenteSansMontantRapporte v : partiel.getVentesSansMontantRapporte()) {
+                v.setClientNom(prefixe + v.getClientNom());
+                rapport.getVentesSansMontantRapporte().add(v);
+            }
         }
         return rapport;
     }
@@ -140,9 +154,15 @@ public class RepriseCircuitClientService {
         List<RemboursementClient> remboursements = reprendreRemboursements(farmId, suivis, avert, prefixe);
         rapport.setRemboursementsCrees(rapport.getRemboursementsCrees() + remboursements.size());
 
-        // 4. Recopies de « marquer payée » dans montantRapporte, factures existantes -> legacy.
+        // 4. Recopies de « marquer payée » dans montantRapporte, factures existantes -> legacy
+        //    avec une ligne (leur vente).
         rapport.setRecopiesFacturesRetirees(rapport.getRecopiesFacturesRetirees()
-                + retirerRecopiesFactures(farmId, suivis, avert, prefixe));
+                + retirerRecopiesFactures(farmId, suivis, avert, prefixe, rapport));
+
+        // 4 bis. Ventes à un client sans montant rapporté (ancien modèle : payées) -> paiement
+        //    client du montant de la vente. AVANT l'étape 5, qui remet à null les montants
+        //    rapportés à 0 (une vente à 0 est une dette, pas une vente payée).
+        payerVentesSansMontantRapporte(farmId, suivis, rapport, prefixe);
 
         // 5. montantRapporte des ventes avec client -> paiement client.
         int[] ventes = convertirMontantsRapportes(farmId, suivis);
@@ -251,6 +271,11 @@ public class RepriseCircuitClientService {
                         + ", " + t.getClient().getNom() + ", " + t.getDate() + ") supprimée : ignorée.");
                 continue;
             }
+            if (t.getStatut() == StatutTransaction.EN_ATTENTE) {
+                avert.add(prefixe + "Transaction " + t.getRef() + " (" + t.getCategorie() + ", " + fcfa(nz(t.getMontant()))
+                        + ", " + t.getClient().getNom() + ", " + t.getDate() + ") en attente : ignorée, à valider ou rejeter avant la reprise.");
+                continue;
+            }
             if (t.getStatut() == StatutTransaction.REJETE) {
                 avert.add(prefixe + "Transaction " + t.getRef() + " (" + t.getCategorie() + ", " + fcfa(nz(t.getMontant()))
                         + ", " + t.getClient().getNom() + ", " + t.getDate() + ") rejetée : ignorée.");
@@ -293,7 +318,7 @@ public class RepriseCircuitClientService {
             p.setOrigine(origine);
             p.setCommande(commande);
             p.setFacture(facture);
-            p.setObservations("Reprise de la transaction " + t.getRef() + " (" + t.getCategorie() + ")"
+            p.setObservations(PREFIXE_OBSERVATIONS + " de la transaction " + t.getRef() + " (" + t.getCategorie() + ")"
                     + (desc.isBlank() ? "" : " : " + desc));
             p.setRecuPar(t.getCreePar());
             p.setStatut(StatutMouvement.ACTIF);
@@ -370,14 +395,19 @@ public class RepriseCircuitClientService {
 
     // --- Étape 4 -------------------------------------------------------------------
 
-    private int retirerRecopiesFactures(Long farmId, Map<Long, Suivi> suivis, List<String> avert, String prefixe) {
-        // Factures d'avant la refonte : pas encore legacy et sans lignes.
+    private int retirerRecopiesFactures(Long farmId, Map<Long, Suivi> suivis, List<String> avert, String prefixe,
+                                        RepriseRapportDTO rapport) {
+        // Factures d'avant la refonte : sans lignes (toute facture de la refonte en a).
+        // Celles déjà legacy (reprise antérieure à la création des lignes) reçoivent
+        // seulement leur ligne ; la recopie n'est retirée qu'une fois (legacy = false).
         List<Facture> factures = em.createQuery(
-                "SELECT f FROM Facture f JOIN FETCH f.client WHERE f.farm.id = :f AND f.legacy = false " +
+                "SELECT f FROM Facture f JOIN FETCH f.client WHERE f.farm.id = :f " +
                 "AND NOT EXISTS (SELECT l FROM FactureLigne l WHERE l.facture = f) ORDER BY f.id", Facture.class)
                 .setParameter("f", farmId).getResultList();
         int n = 0;
         for (Facture f : factures) {
+            if (creerLigneLegacy(f, avert, prefixe)) rapport.setLignesFacturesCreees(rapport.getLignesFacturesCreees() + 1);
+            if (Boolean.TRUE.equals(f.getLegacy())) continue;
             // Indépendant du statut actuel : une facture payée puis ANNULEE a quand même eu
             // ses paiements recopiés dans montantRapporte. Même libellé que l'ancien
             // marquerPayee : "Paiement facture <numéro>". Chaque paiement a été recopié tel
@@ -404,6 +434,51 @@ public class RepriseCircuitClientService {
             em.merge(f);
         }
         return n;
+    }
+
+    // Une ligne par facture d'avant la refonte, sur la vente d'origine : sourceType
+    // VENTE_OEUFS / VENTE_REFORME -> sourceUniqueId ; COMMANDE -> commande.venteUniqueId,
+    // c.-à-d. la DERNIÈRE livraison seulement (l'ancien modèle ne gardait qu'elle).
+    // Montant = total de la facture (figé, comme toute ligne). Sans ligne, la vente pouvait
+    // être refacturée et le paiement de la facture n'avait aucune vente à viser.
+    private boolean creerLigneLegacy(Facture f, List<String> avert, String prefixe) {
+        CibleImputation type;
+        String uid;
+        switch (f.getSourceType()) {
+            case VENTE_OEUFS -> { type = CibleImputation.VENTE_OEUFS; uid = f.getSourceUniqueId(); }
+            case VENTE_REFORME -> { type = CibleImputation.VENTE_REFORME; uid = f.getSourceUniqueId(); }
+            case COMMANDE -> {
+                Commande c = em.createQuery("SELECT c FROM Commande c WHERE c.uniqueId = :u", Commande.class)
+                        .setParameter("u", f.getSourceUniqueId()).getResultStream().findFirst().orElse(null);
+                if (c == null || c.getVenteUniqueId() == null || c.getVenteUniqueId().isBlank()) {
+                    avert.add(prefixe + "Facture " + f.getNumeroFacture() + " : commande sans vente, aucune ligne créée.");
+                    return false;
+                }
+                type = c.getType() == TypeStockMagasin.OEUFS ? CibleImputation.VENTE_OEUFS : CibleImputation.VENTE_REFORME;
+                uid = c.getVenteUniqueId();
+            }
+            default -> {
+                avert.add(prefixe + "Facture " + f.getNumeroFacture() + " : source " + f.getSourceType() + " inattendue, aucune ligne créée.");
+                return false;
+            }
+        }
+        boolean existe = type == CibleImputation.VENTE_OEUFS ? venteOeufs(uid) != null : venteReforme(uid) != null;
+        if (!existe) {
+            avert.add(prefixe + "Facture " + f.getNumeroFacture() + " : vente " + uid + " introuvable, aucune ligne créée.");
+            return false;
+        }
+        FactureLigne l = new FactureLigne();
+        l.setUniqueId(UUID.randomUUID().toString());
+        l.setFacture(f);
+        l.setVenteType(type);
+        l.setVenteUniqueId(uid);
+        l.setDescription(f.getDescription());
+        l.setQuantite(f.getQuantite());
+        l.setPrixUnitaire(f.getPrixUnitaire());
+        l.setMontant(r2(nz(f.getMontantTotal())));
+        l.setInitialisation(Initialisation.init());
+        em.persist(l);
+        return true;
     }
 
     private boolean retirerDeLaVente(Facture f, double recopie, Suivi s, List<String> avert, String prefixe) {
@@ -485,6 +560,71 @@ public class RepriseCircuitClientService {
                               Map<Long, Suivi> suivis) {
         double montant = r2(nz(montantRapporte));
         if (montant <= 0) return false;
+        creerPaiementVente(c, montant, date, creePar, commande, type, venteUid,
+                PREFIXE_OBSERVATIONS + " : montant rapporté de la " + libelle);
+        suivi(suivis, c).notes.add("Montant rapporté de la " + libelle + " (" + fcfa(montant) + ") converti en paiement client.");
+        return true;
+    }
+
+    // --- Étape 4 bis ------------------------------------------------------------------
+
+    /** Une seule fois par ferme (avant sa première exécution réelle) : après, toutes les
+     * ventes à un client ont un montant rapporté null (étape 5) et on ne pourrait plus
+     * distinguer une ancienne vente payée d'une vente à 0 rapporté. */
+    private void payerVentesSansMontantRapporte(Long farmId, Map<Long, Suivi> suivis, RepriseRapportDTO rapport, String prefixe) {
+        Long dejaExecutee = em.createQuery(
+                "SELECT COUNT(l) FROM Logs l WHERE l.entityType = 'Farm' AND l.entityId = :f AND l.action = :a", Long.class)
+                .setParameter("f", farmId).setParameter("a", ACTION_LOG_EXECUTION).getSingleResult();
+        if (dejaExecutee != null && dejaExecutee > 0) return;
+
+        String filtre = " JOIN FETCH v.client c WHERE c.farm.id = :f AND v.montantRapporte IS NULL " +
+                "AND (v.initialisation.removed IS NULL OR v.initialisation.removed = false) " +
+                "AND (v.initialisation.createdAt IS NULL OR v.initialisation.createdAt < :limite) " +
+                "AND NOT EXISTS (SELECT p FROM PaiementClient p WHERE p.venteCibleUniqueId = v.uniqueId) " +
+                "ORDER BY v.date, v.id";
+        for (VenteOeufs v : em.createQuery("SELECT v FROM VenteOeufs v" + filtre, VenteOeufs.class)
+                .setParameter("f", farmId).setParameter("limite", FIN_MONTANT_RAPPORTE_FACULTATIF).getResultList()) {
+            payerVenteSansMontantRapporte(v.getClient(), v.getMontant(), v.getDate(), v.getCreePar(), v.getCommande(),
+                    CibleImputation.VENTE_OEUFS, v.getUniqueId(), "vente d'œufs du " + v.getDate(), suivis, rapport);
+        }
+        for (VenteReforme v : em.createQuery("SELECT v FROM VenteReforme v" + filtre, VenteReforme.class)
+                .setParameter("f", farmId).setParameter("limite", FIN_MONTANT_RAPPORTE_FACULTATIF).getResultList()) {
+            payerVenteSansMontantRapporte(v.getClient(), v.getMontant(), v.getDate(), v.getCreePar(), v.getCommande(),
+                    CibleImputation.VENTE_REFORME, v.getUniqueId(), "vente de réforme du " + v.getDate(), suivis, rapport);
+        }
+
+        // Signalement : des ventes à un client sans montant rapporté créées APRÈS la fin de
+        // l'ancien modèle ne sont pas touchées (ventes à crédit de la refonte, normalement).
+        String recentes = " JOIN v.client c WHERE c.farm.id = :f AND v.montantRapporte IS NULL " +
+                "AND (v.initialisation.removed IS NULL OR v.initialisation.removed = false) " +
+                "AND v.initialisation.createdAt >= :limite";
+        long n = em.createQuery("SELECT COUNT(v) FROM VenteOeufs v" + recentes, Long.class)
+                .setParameter("f", farmId).setParameter("limite", FIN_MONTANT_RAPPORTE_FACULTATIF).getSingleResult()
+                + em.createQuery("SELECT COUNT(v) FROM VenteReforme v" + recentes, Long.class)
+                .setParameter("f", farmId).setParameter("limite", FIN_MONTANT_RAPPORTE_FACULTATIF).getSingleResult();
+        if (n > 0) {
+            rapport.getAvertissements().add(prefixe + n + " vente(s) à un client sans montant rapporté créée(s) depuis le "
+                    + FIN_MONTANT_RAPPORTE_FACULTATIF.toLocalDate() + " : laissées dues (ventes à crédit de la refonte ; sinon à vérifier).");
+        }
+    }
+
+    private void payerVenteSansMontantRapporte(Client c, Double montantVente, java.time.LocalDate date, Utilisateurs creePar,
+                                               Commande commande, CibleImputation type, String venteUid, String libelle,
+                                               Map<Long, Suivi> suivis, RepriseRapportDTO rapport) {
+        double montant = r2(nz(montantVente));
+        if (montant <= 0) return;
+        creerPaiementVente(c, montant, date, creePar, commande, type, venteUid,
+                PREFIXE_OBSERVATIONS + " : " + libelle + " sans montant rapporté, payée dans l'ancien modèle");
+        suivi(suivis, c).notes.add("La " + libelle + " (" + fcfa(montant)
+                + ") n'avait pas de montant rapporté : considérée payée (paiement client créé).");
+        rapport.setPaiementsCrees(rapport.getPaiementsCrees() + 1);
+        rapport.getVentesSansMontantRapporte().add(new RepriseRapportDTO.VenteSansMontantRapporte(
+                type.name(), venteUid, c.getUniqueId(), c.getNom(), date, montant));
+    }
+
+    /** Paiement client « à la vente » visant la vente, avec sa transaction « Paiement client ». */
+    private void creerPaiementVente(Client c, double montant, java.time.LocalDate date, Utilisateurs creePar,
+                                    Commande commande, CibleImputation type, String venteUid, String observations) {
         PaiementClient p = new PaiementClient();
         p.setUniqueId(UUID.randomUUID().toString());
         p.setFarm(c.getFarm());
@@ -496,7 +636,7 @@ public class RepriseCircuitClientService {
         p.setCommande(commande);
         p.setVenteCibleType(type);
         p.setVenteCibleUniqueId(venteUid);
-        p.setObservations("Reprise : montant rapporté de la " + libelle);
+        p.setObservations(observations);
         p.setRecuPar(creePar);
         p.setStatut(StatutMouvement.ACTIF);
         p.setInitialisation(Initialisation.init());
@@ -504,8 +644,6 @@ public class RepriseCircuitClientService {
         transactionService.createMouvementClient(TypeTransaction.ENTREE, c.getFarm(), c, montant, "Paiement client", date,
                 "Paiement de " + c.getNom() + " (à la vente, " + ModePaiement.ESPECES + ") — reprise",
                 SourceTransaction.PAIEMENT_CLIENT, p.getUniqueId(), creePar);
-        suivi(suivis, c).notes.add("Montant rapporté de la " + libelle + " (" + fcfa(montant) + ") converti en paiement client.");
-        return true;
     }
 
     // --- Étape 7 (remboursements) ----------------------------------------------------
