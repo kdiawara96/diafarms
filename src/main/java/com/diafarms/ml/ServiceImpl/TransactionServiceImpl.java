@@ -132,6 +132,9 @@ public class TransactionServiceImpl implements TransactionService {
         if (TransactionDTO.isSourceVente(t.getSourceType())) {
             throw new IllegalArgumentException("Cette transaction vient d'une vente : modifiez ou supprimez la vente depuis la page Ventes.");
         }
+        if (t.getSourceType() == SourceTransaction.PAIEMENT_CLIENT || t.getSourceType() == SourceTransaction.REMBOURSEMENT_CLI) {
+            throw new IllegalArgumentException("Cette transaction vient d'un paiement ou d'un remboursement client : annulez-le depuis la fiche du client.");
+        }
     }
 
     /**
@@ -380,6 +383,33 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
+    public TransactionDTO createMouvementClient(TypeTransaction type, Farm farm, Client client, Double montant,
+            String categorie, java.time.LocalDate date, String description, SourceTransaction sourceType,
+            String sourceUniqueId, Utilisateurs creePar) {
+        Transaction t = new Transaction();
+        t.setUniqueId(java.util.UUID.randomUUID().toString());
+        t.setRef(generateRef());
+        t.setType(type);
+        t.setDate(date != null ? date : java.time.LocalDate.now());
+        t.setDescription(description);
+        t.setMontant(montant);
+        t.setCategorie(categorie);
+        t.setStatut(StatutTransaction.VALIDE);
+        t.setValidateur(creePar);
+        t.setDateValidation(LocalDateTime.now());
+        t.setClient(client);
+        t.setSourceType(sourceType);
+        t.setSourceUniqueId(sourceUniqueId);
+        t.setFarm(farm);
+        t.setCreePar(creePar);
+        t.setInitialisation(Initialisation.init());
+
+        Transaction saved = transactionRepo.save(t);
+        return TransactionDTO.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
     public void setRemovedBySource(String sourceUniqueId, boolean removed) {
         transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
             t.getInitialisation().setRemoved(removed);
@@ -564,15 +594,9 @@ public class TransactionServiceImpl implements TransactionService {
         transactionRepo.save(t);
         boolean removed = t.getInitialisation().getRemoved();
 
-        // Un client n'est renseigné sur une transaction QUE via ClientServiceImpl.payerDette
-        // (remboursement, acompte de commande, paiement de facture — voir create() ci-dessus),
-        // qui ajuste toujours SoldeClient de -montant au moment de la création. Sans ce
-        // rattrapage, supprimer/restaurer une telle transaction laissait le solde du client
-        // définitivement faux (contrairement à VenteOeufsImpl/VenteReformeImpl.deleteOrRecover,
-        // qui reversent bien ajusterEcart).
-        if (t.getClient() != null) {
-            soldeClientService.ajusterSolde(t.getClient(), t.getFarm(), removed ? t.getMontant() : -t.getMontant());
-        }
+        // Le solde client n'est plus un compteur ajusté à la volée : il se recalcule
+        // entièrement à partir des ventes/paiements/imputations/remboursements actifs
+        // (voir CompteClientService). Rien à rattraper ici.
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), t.getId(), "Transaction",

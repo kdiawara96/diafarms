@@ -47,6 +47,12 @@ public interface TransactionService {
     TransactionDTO createSortieCommune(Farm farm, Double montant, String categorie, LocalDate date,
                                         String description, SourceTransaction sourceType, String sourceUniqueId, Utilisateurs creePar);
 
+    /** Entrée (paiement) ou sortie (remboursement) d'argent d'un client, commune à la
+     * ferme, validée, tracée jusqu'à sa source et rattachée au client. */
+    TransactionDTO createMouvementClient(TypeTransaction type, Farm farm, com.diafarms.ml.models.Client client,
+            Double montant, String categorie, LocalDate date, String description,
+            SourceTransaction source, String sourceUniqueId, Utilisateurs creePar);
+
     /** Bascule removed sur la transaction liée à une vente supprimée/restaurée
      * (retrouvée via sourceUniqueId) — pas de recette fantôme après suppression. */
     /** Aligne le `removed` de la transaction générée par une source (aliment, soins,

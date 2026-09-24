@@ -79,6 +79,10 @@ public class TransactionDTO {
     // se modifie ni ne se supprime depuis la Comptabilité, seulement via sa vente (voir
     // TransactionServiceImpl.ensurePasLieeAUneVente), sinon vente et comptabilité divergent.
     private boolean lieeAUneVente;
+    // true = transaction verrouillée comptablement : générée par une vente OU par un
+    // paiement/remboursement client — ne se modifie ni ne se supprime depuis la
+    // Comptabilité, seulement via sa source (vente, paiement, remboursement).
+    private boolean verrouillee;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -114,6 +118,7 @@ public class TransactionDTO {
                 .dateDemandeSuppression(t.getDateDemandeSuppression())
                 .motifSuppression(t.getMotifSuppression())
                 .lieeAUneVente(isSourceVente(t.getSourceType()))
+                .verrouillee(isSourceVerrouillee(t.getSourceType()))
                 // Une vente diverse n'a qu'une transaction, pointant directement vers elle ;
                 // œufs/réforme passent par leur ligne de répartition (enrichMontantReel).
                 .venteUniqueId(t.getSourceType() == SourceTransaction.VENTE_DIVERSE ? t.getSourceUniqueId() : null)
@@ -123,5 +128,11 @@ public class TransactionDTO {
     public static boolean isSourceVente(SourceTransaction s) {
         return s == SourceTransaction.VENTE_OEUFS || s == SourceTransaction.VENTE_REFORME
                 || s == SourceTransaction.VENTE_DIVERSE;
+    }
+
+    // Verrou comptable étendu : ventes + paiements/remboursements client — voir
+    // TransactionServiceImpl.ensurePasLieeAUneVente.
+    public static boolean isSourceVerrouillee(SourceTransaction s) {
+        return isSourceVente(s) || s == SourceTransaction.PAIEMENT_CLIENT || s == SourceTransaction.REMBOURSEMENT_CLI;
     }
 }
