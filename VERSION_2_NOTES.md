@@ -678,3 +678,23 @@ client — seule la transaction avait été supprimée, la vente (`ventes_oeufs`
   "Bâtiment (nom)" : vide accepté seulement si le projet n'a qu'un poulailler, le serveur refuse sinon).
 - Mobile APK 1.24 (versionCode 25) : pas de choix "Aucun" pour ces 5 types, présélection s'il n'y a qu'un poulailler,
   libellé "Poulailler *" ; "Vente" retirée des catégories d'entrée d'argent.
+
+---
+
+## Mise à jour 2026-09-24 (circuit de l'argent client)
+
+**Modèle comptable** : `PaiementClient` (client + date + montant), `ImputationPaiement` (imputation d'un paiement sur une facture), `RemboursementClient` (remboursement facture annulée), `CompteClientService` et `CalculImputation` (calcul du solde — plus de `SoldeClient` écrit en base).
+
+**Adaptateurs compatibilité** : anciennes transactions MANUEL avec catégories "Payer dette client" / "Rembourser client" sont relues ; acompte et montantRapporte des ventes réutilisés pour reporter argent du client.
+
+**Commandes** : livraisons multiples via `Commande.quantiteLivree` et `POST /commandes/{uid}/livrer`, états EN_LIVRAISON et CLOTUREE, annulation générant un `RemboursementClient` du montant payé.
+
+**Factures** : lignes (une par facture de base), statut calculé (IMPAYEE/PARTIELLE/PAYEE/ANNULEE), héritage des anciennes transactions facturées, annulation et suppression.
+
+**Comptabilité** : nouvelle vue "Compte client" (vendu/encaissé/remboursé/dû/avances par client) ; verrou comptable sur PAIEMENT_CLIENT et REMBOURSEMENT_CLI (modification/suppression seules depuis leurs endpoints).
+
+**Reprise** : endpoint `POST /diafarms/api/v1/admin/reprise-circuit-client?executer=false|true` (simulation puis exécution), crée les paiements/imputations/remboursements manquants, script test `scripts/scenarios-circuit-client.sh` (13/13 scénarios bout en bout).
+
+**SQL** : `docs/sql/2026-09-24_circuit_client.sql` (contraintes source_type, commandes.statut, factures.statut|source_type) à lancer après redémarrage, avant la reprise.
+
+**Ouvert** : web UI "Compte client" + gestion des paiements/remboursements (Phase B) et mobile (Phase C) non encore implémentés ; `UtilisateurImpl.generateUsername` échoue sur un fullName avec espace (bug préexistant non corrigé) ; anciennes commandes avec plusieurs livraisons ne relient que la dernière.
