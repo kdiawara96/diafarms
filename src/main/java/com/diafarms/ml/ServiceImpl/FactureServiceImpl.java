@@ -361,6 +361,14 @@ public class FactureServiceImpl implements FactureService {
 
         List<FactureLigne> lignes = factureLigneRepo.findByFacture_Id(f.getId());
         lignes.sort(Comparator.comparing(FactureLigne::getId));
+        if (lignes.isEmpty()) {
+            // Facture ancienne (pré-refonte) jamais reprise : sans ligne, le paiement ne
+            // vise aucune vente et le circuit argent client (PaiementClient/SoldeClient)
+            // n'a rien de cohérent à enregistrer — mieux vaut refuser clairement que
+            // créer silencieusement un paiement orphelin. Voir genererFacture, qui crée
+            // toujours au moins une ligne pour une facture générée par le nouveau circuit.
+            throw new IllegalArgumentException("Cette facture ancienne n'est pas encore reprise dans le nouveau circuit : lancez la reprise des données avant de l'encaisser.");
+        }
         for (FactureLigne l : lignes) {
             if (!venteActive(l)) {
                 throw new IllegalArgumentException("Une vente de cette facture a été supprimée : annulez la facture.");
