@@ -220,7 +220,13 @@ public class VenteReformeImpl implements VenteReformeService {
         if (typeVente == TypeVenteReforme.KILO && (data.getPoidsTotalKg() == null || data.getPoidsTotalKg() <= 0)) {
             throw new IllegalArgumentException("Le poids total (kg) est obligatoire pour une vente au kilo.");
         }
-        if (data.getMontantRapporte() == null || data.getMontantRapporte() < 0) {
+        // Vente SANS client : montantRapporte sert au contrôle du vendeur (voir
+        // SoldeVendeurServiceImpl), donc obligatoire. Vente AVEC client : l'argent reçu est
+        // un paiement client (voir plus bas, PaiementClientService) ; montantRapporte n'est
+        // pas utilisé (client résolu plus bas, donc on teste directement clientUniqueId ici).
+        // Symétrique de VenteOeufsImpl.create.
+        boolean sansClient = data.getClientUniqueId() == null || data.getClientUniqueId().isBlank();
+        if (sansClient && (data.getMontantRapporte() == null || data.getMontantRapporte() < 0)) {
             throw new IllegalArgumentException("Le montant rapporté est obligatoire.");
         }
         if (data.getMagasinUniqueId() == null || data.getMagasinUniqueId().isBlank()) {
