@@ -16,11 +16,15 @@ public interface CommandeRepo extends JpaRepository<Commande, Long> {
 
     // Pas d'ORDER BY ici : le tri vient du Pageable (Sort.by("dateCommande") côté
     // service) — un ORDER BY explicite en plus provoquerait un conflit.
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel :
+    // "(:x IS NULL OR ...)" fait planter Postgres ("could not determine data type of
+    // parameter", voir TransactionRepo.search / FactureRepo.search). statut et
+    // clientUniqueId reçoivent une valeur factice non nulle quand hasX = false.
     @Query("SELECT c FROM Commande c WHERE c.farm.id = :farmId AND c.initialisation.removed = false " +
-        "AND (:statut IS NULL OR c.statut = :statut) " +
-        "AND (:clientUniqueId IS NULL OR c.client.uniqueId = :clientUniqueId)")
+        "AND (:hasStatut = false OR c.statut = :statut) " +
+        "AND (:hasClient = false OR c.client.uniqueId = :clientUniqueId)")
     Page<Commande> search(@Param("farmId") Long farmId,
-                           @Param("statut") Commande.StatutCommande statut,
-                           @Param("clientUniqueId") String clientUniqueId,
+                           @Param("hasStatut") boolean hasStatut, @Param("statut") Commande.StatutCommande statut,
+                           @Param("hasClient") boolean hasClient, @Param("clientUniqueId") String clientUniqueId,
                            Pageable pageable);
 }

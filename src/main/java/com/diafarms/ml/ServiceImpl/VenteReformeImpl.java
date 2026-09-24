@@ -68,6 +68,7 @@ public class VenteReformeImpl implements VenteReformeService {
     private final TransactionService transactionService;
     private final PaiementClientService paiementClientService;
     private final CompteClientService compteClientService;
+    private final LivraisonCommandeService livraisonCommandeService;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -249,7 +250,8 @@ public class VenteReformeImpl implements VenteReformeService {
         Client client = null;
         if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
             client = clientRepo.findByUniqueId(data.getClientUniqueId());
-            if (client == null) {
+            // Client d'une autre ferme : même message qu'introuvable.
+            if (client == null || client.getFarm() == null || !client.getFarm().getId().equals(farm.getId())) {
                 throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
             }
         }
@@ -308,6 +310,28 @@ public class VenteReformeImpl implements VenteReformeService {
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
 
+        // Client visé par la modification (null = inchangé). Passer de « sans client » à
+        // « un client » (ou l'inverse) casserait le modèle d'argent : l'écart du vendeur
+        // resterait dans son solde, le montant rapporté ne deviendrait pas un paiement
+        // client, ou au contraire l'argent déjà reçu du client serait compté une deuxième
+        // fois comme espèces rapportées. Refusé : on supprime la vente et on la ressaisit.
+        // Changer de client (A -> B) reste permis.
+        Client clientDemande = null;
+        if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
+            clientDemande = clientRepo.findByUniqueId(data.getClientUniqueId());
+            if (clientDemande == null || clientDemande.getFarm() == null || v.getFarm() == null
+                    || !clientDemande.getFarm().getId().equals(v.getFarm().getId())) {
+                throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
+            }
+        }
+        if (data.getClientUniqueId() != null
+                && (v.getClient() == null) != (clientDemande == null)) {
+            throw new IllegalArgumentException("Pour ajouter ou retirer le client d'une vente, supprimez-la et ressaisissez-la.");
+        }
+        // Verrou des clients concernés AVANT de toucher aux imputations (voir
+        // CompteClientService.verrouiller) : ancien et nouveau client en cas de changement.
+        compteClientService.verrouiller(v.getClient(), clientDemande);
+
         Double ancienMontant = v.getMontant();
         Double ancienMontantRapporte = v.getMontantRapporte();
         Client ancienClient = v.getClient();
@@ -353,16 +377,9 @@ public class VenteReformeImpl implements VenteReformeService {
             v.setMontant(data.getMontant());
         }
 
-        if (data.getClientUniqueId() != null) {
-            if (data.getClientUniqueId().isBlank()) {
-                v.setClient(null);
-            } else {
-                Client client = clientRepo.findByUniqueId(data.getClientUniqueId());
-                if (client == null) {
-                    throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
-                }
-                v.setClient(client);
-            }
+        // Client A -> client B seulement (ajout/retrait refusés plus haut).
+        if (clientDemande != null) {
+            v.setClient(clientDemande);
         }
 
         // Vente à un client (avant OU après cette modification) : plus de montantRapporte
@@ -396,9 +413,9 @@ public class VenteReformeImpl implements VenteReformeService {
                 }
             }
         } else if (clientChanged) {
-            // L'argent déjà imputé sur cette vente doit migrer de l'ancien client vers le
-            // nouveau (ou simplement redevenir une avance si le client est retiré) —
-            // ré-imputé plus bas, une fois la vente sauvegardée.
+            // Client A -> client B : l'argent de A déjà imputé sur cette vente redevient
+            // une avance de A, et l'avance éventuelle de B règle la vente — ré-imputé plus
+            // bas, une fois la vente sauvegardée.
             compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId, "Client de la vente modifié");
         } else if (data.getMontant() != null && v.getMontant() < nz(ancienMontant)) {
             // Montant corrigé à la baisse : les imputations excédentaires sont annulées
@@ -471,6 +488,11 @@ public class VenteReformeImpl implements VenteReformeService {
         boolean removed = !v.getInitialisation().getRemoved();
         // Motif exigé pour supprimer, pas pour restaurer.
         if (removed) v.setMotifSuppression(MotifSuppressionRequest.exiger(motif));
+        // Restaurer une livraison : la commande doit pouvoir la reprendre (voir
+        // LivraisonCommandeService), vérifié avant toute écriture.
+        if (!removed) livraisonCommandeService.verifierRestauration(v.getCommande(), v.getNombreSujets());
+        // Verrou client avant de toucher aux imputations (voir CompteClientService.verrouiller).
+        compteClientService.verrouiller(v.getClient());
         v.getInitialisation().setRemoved(removed);
         venteReformeRepo.save(v);
 
@@ -490,6 +512,10 @@ public class VenteReformeImpl implements VenteReformeService {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
+
+        // Livraison d'une commande : sa quantité quitte (ou retrouve) la commande.
+        if (removed) livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
+        else livraisonCommandeService.livraisonRestauree(v.getCommande(), v.getNombreSujets());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme",
@@ -535,6 +561,10 @@ public class VenteReformeImpl implements VenteReformeService {
         if (v.getDemandeSuppressionPar() == null) {
             throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
         }
+        if (Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
+            throw new IllegalArgumentException("Cette vente est déjà supprimée.");
+        }
+        compteClientService.verrouiller(v.getClient()); // voir deleteOrRecover
 
         v.getInitialisation().setRemoved(true);
         venteReformeRepo.save(v);
@@ -550,6 +580,7 @@ public class VenteReformeImpl implements VenteReformeService {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -ecart);
         }
+        livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme", "Suppression confirmée pour une vente réforme — motif : " + v.getMotifSuppression());

@@ -102,6 +102,20 @@ public class CompteClientService {
         }
     }
 
+    /** Verrouille les lignes client (PESSIMISTIC_WRITE) AVANT de lire ou d'annuler des
+     * imputations : sans ça, un remboursement simultané (rembourserInterne, qui verrouille
+     * aussi) pouvait prendre de l'argent qu'on était en train de libérer ou de retirer, et
+     * laisser une avance négative. Toujours dans l'ordre des id (deux clients à la fois :
+     * changement de client d'une vente) pour ne jamais s'interbloquer. Les null sont ignorés. */
+    @Transactional
+    public void verrouiller(Client... clients) {
+        java.util.TreeSet<Long> ids = new java.util.TreeSet<>();
+        for (Client c : clients) if (c != null && c.getId() != null) ids.add(c.getId());
+        for (Long id : ids) {
+            clientRepo.findByIdForUpdate(id).orElseThrow(() -> new IllegalArgumentException("Client introuvable."));
+        }
+    }
+
     /** Enregistre des affectations déjà calculées (imputer, remboursement). */
     @Transactional
     public void enregistrer(Client client, CalculImputation.Affectation a) {

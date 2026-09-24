@@ -15,6 +15,7 @@ import com.diafarms.ml.DTO.CommandeDTO;
 import com.diafarms.ml.DTO.VenteOeufsDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.commons.CalculImputation;
+import com.diafarms.ml.commons.DateSaisie;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ModePaiement;
@@ -117,6 +118,18 @@ public class CommandeServiceImpl implements CommandeService {
         if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE") && !hasRole(u, "VENTE")) {
             throw new IllegalArgumentException("Vous n'avez pas les droits pour enregistrer un paiement client.");
         }
+    }
+
+    // Commande introuvable OU d'une autre ferme -> même message (même principe que
+    // FactureServiceImpl.factureFarmScoped) : sans ce contrôle, un utilisateur d'une ferme
+    // pouvait livrer, encaisser, annuler... la commande d'une autre ferme par son uniqueId.
+    private Commande commandeFarmScoped(String uniqueId, Utilisateurs u) {
+        Commande c = commandeRepo.findByUniqueId(uniqueId);
+        if (c == null || u == null || u.getFarm() == null
+                || c.getFarm() == null || !c.getFarm().getId().equals(u.getFarm().getId())) {
+            throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        }
+        return c;
     }
 
     private double nz(Double v) {
@@ -226,7 +239,7 @@ public class CommandeServiceImpl implements CommandeService {
         }
 
         Client client = clientRepo.findByUniqueId(data.getClientUniqueId());
-        if (client == null) {
+        if (client == null || client.getFarm() == null || !client.getFarm().getId().equals(currentUser.getFarm().getId())) {
             throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
         }
         Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
@@ -250,10 +263,8 @@ public class CommandeServiceImpl implements CommandeService {
         c.setPrixUnitaireEstime(data.getPrixUnitaireEstime());
         c.setMontantEstime(data.getMontantEstime());
         c.setMontantAcompte(data.getMontantAcompte());
-        c.setDateCommande(data.getDateCommande() != null && !data.getDateCommande().isBlank()
-                ? LocalDate.parse(data.getDateCommande()) : LocalDate.now());
-        c.setDateLivraisonPrevue(data.getDateLivraisonPrevue() != null && !data.getDateLivraisonPrevue().isBlank()
-                ? LocalDate.parse(data.getDateLivraisonPrevue()) : null);
+        c.setDateCommande(DateSaisie.parse(data.getDateCommande(), LocalDate.now()));
+        c.setDateLivraisonPrevue(DateSaisie.parse(data.getDateLivraisonPrevue(), null));
         c.setStatut(StatutCommande.EN_ATTENTE);
         c.setCreePar(currentUser);
         c.setFarm(currentUser.getFarm());
@@ -280,10 +291,7 @@ public class CommandeServiceImpl implements CommandeService {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
 
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) {
-            throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
-        }
+        Commande c = commandeFarmScoped(uniqueId, currentUser);
         if (c.getStatut() != StatutCommande.EN_ATTENTE) {
             throw new IllegalArgumentException("Seule une commande en attente peut être modifiée.");
         }
@@ -315,7 +323,7 @@ public class CommandeServiceImpl implements CommandeService {
         }
 
         if (data.getDateLivraisonPrevue() != null) {
-            c.setDateLivraisonPrevue(data.getDateLivraisonPrevue().isBlank() ? null : LocalDate.parse(data.getDateLivraisonPrevue()));
+            c.setDateLivraisonPrevue(DateSaisie.parse(data.getDateLivraisonPrevue(), null));
         }
         if (data.getMagasinUniqueId() != null && !data.getMagasinUniqueId().isBlank()) {
             Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
@@ -336,8 +344,7 @@ public class CommandeServiceImpl implements CommandeService {
     public CommandeDTO confirmer(String uniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, currentUser);
         if (c.getStatut() != StatutCommande.EN_ATTENTE) {
             throw new IllegalArgumentException("Seule une commande en attente peut être confirmée.");
         }
@@ -351,8 +358,7 @@ public class CommandeServiceImpl implements CommandeService {
         Utilisateurs u = getCurrentUserSafe();
         ensureCanDecider(u);
         String motif = MotifSuppressionRequest.exiger(motifBrut);
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, u);
         if (nz(c.getQuantiteLivree()) == 0) {
             throw new IllegalArgumentException("Rien n'a été livré : annulez la commande au lieu de la clôturer.");
         }
@@ -374,8 +380,7 @@ public class CommandeServiceImpl implements CommandeService {
         Utilisateurs u = getCurrentUserSafe();
         ensureCanDecider(u);
         String motif = MotifSuppressionRequest.exiger(motifBrut);
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, u);
         if (nz(c.getQuantiteLivree()) > 0) {
             throw new IllegalArgumentException("Cette commande a déjà été livrée en partie : clôturez-la au lieu de l'annuler.");
         }
@@ -412,8 +417,7 @@ public class CommandeServiceImpl implements CommandeService {
     public CommandeDTO livrer(String uniqueId, Integer quantiteDemandee, Double montantRecu, String modeBrut) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, currentUser);
         if (c.getStatut() == StatutCommande.CLOTUREE) {
             throw new IllegalArgumentException("Cette commande est clôturée, elle ne peut plus être livrée.");
         }
@@ -519,8 +523,7 @@ public class CommandeServiceImpl implements CommandeService {
     public CommandeDTO enregistrerPaiement(String uniqueId, PaiementClientCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanEncaisser(currentUser);
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, currentUser);
         if (c.getStatut() == StatutCommande.CLOTUREE || c.getStatut() == StatutCommande.ANNULEE) {
             throw new IllegalArgumentException("Cette commande est terminée, elle ne peut plus recevoir de paiement.");
         }
@@ -530,7 +533,7 @@ public class CommandeServiceImpl implements CommandeService {
         // Rien encore livré : c'est un acompte (avant même la première vente) ; une fois
         // la livraison entamée, tout nouveau paiement est un règlement ordinaire.
         OriginePaiement origine = nz(c.getQuantiteLivree()) == 0 ? OriginePaiement.ACOMPTE : OriginePaiement.REGLEMENT;
-        LocalDate date = data.getDate() == null || data.getDate().isBlank() ? LocalDate.now() : LocalDate.parse(data.getDate());
+        LocalDate date = DateSaisie.parse(data.getDate(), LocalDate.now());
         paiementClientService.enregistrerInterne(c.getClient(), data.getMontant(), mode(data.getMode()), origine,
                 c, null, null, null, data.getObservations(), date);
         return enrichir(c);
@@ -541,8 +544,7 @@ public class CommandeServiceImpl implements CommandeService {
     public String deleteOrRecover(String uniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanDelete(currentUser);
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
-        if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, currentUser);
         if (!c.getInitialisation().getRemoved() && c.getStatut() != StatutCommande.EN_ATTENTE) {
             throw new IllegalArgumentException("Seule une commande en attente peut être supprimée — annulez-la plutôt.");
         }
@@ -564,9 +566,14 @@ public class CommandeServiceImpl implements CommandeService {
 
         StatutCommande statutEnum = (statut == null || statut.isBlank() || "tous".equalsIgnoreCase(statut))
                 ? null : StatutCommande.valueOf(statut.toUpperCase());
-        String clientParam = (clientUniqueId == null || clientUniqueId.isBlank()) ? null : clientUniqueId;
+        // hasX + valeur factice non nulle : jamais de "(:x IS NULL OR ...)" (crash Postgres),
+        // voir CommandeRepo.search.
+        boolean hasStatut = statutEnum != null;
+        boolean hasClient = clientUniqueId != null && !clientUniqueId.isBlank();
 
-        Page<Commande> commandePage = commandeRepo.search(currentUser.getFarm().getId(), statutEnum, clientParam, pageable);
+        Page<Commande> commandePage = commandeRepo.search(currentUser.getFarm().getId(),
+                hasStatut, hasStatut ? statutEnum : StatutCommande.EN_ATTENTE,
+                hasClient, hasClient ? clientUniqueId : "", pageable);
         List<CommandeDTO> dtoList = commandePage.getContent().stream().map(this::enrichir).toList();
 
         return new PaginatedResponse<>(
