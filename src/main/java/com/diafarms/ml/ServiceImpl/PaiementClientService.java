@@ -2,7 +2,9 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -223,5 +225,35 @@ public class PaiementClientService {
         compteClientService.imputer(r.getClient());
         if (u != null) logs.addLogs(u.getId(), r.getId(), "RemboursementClient", "Remboursement annulé — motif : " + motif);
         return RemboursementClientDTO.fromEntity(r);
+    }
+
+    // Compte complet d'un client : chiffres + historique (annulés compris). Anciennement
+    // assemblé dans PaiementClientController, hors transaction : avec open-in-view=false,
+    // les associations paresseuses (p.client, r.effectuePar, i.paiement) n'étaient plus
+    // chargeables au moment du mapping vers les DTO -> LazyInitializationException. Toute
+    // la lecture + le mapping se fait maintenant ici, dans une seule transaction en lecture
+    // seule.
+    @Transactional(readOnly = true)
+    public Map<String, Object> compteComplet(String uid) {
+        Utilisateurs u = user();
+        Client c = client(uid, u);
+
+        List<PaiementClientDTO> paiements = paiementRepo.findAllByClientIdForHistorique(c.getId()).stream()
+                .map((PaiementClient p) -> PaiementClientDTO.fromEntity(p,
+                        CalculImputation.arrondi(imputationRepo.sumActivesByPaiementId(p.getId()))))
+                .toList();
+        List<RemboursementClientDTO> remboursements = remboursementRepo.findAllByClientId(c.getId()).stream()
+                .map(RemboursementClientDTO::fromEntity)
+                .toList();
+        List<ImputationDTO> imputations = imputationRepo.findAllByClientId(c.getId()).stream()
+                .map(ImputationDTO::fromEntity)
+                .toList();
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("compte", compteClientService.compte(c));
+        data.put("paiements", paiements);
+        data.put("remboursements", remboursements);
+        data.put("imputations", imputations);
+        return data;
     }
 }
