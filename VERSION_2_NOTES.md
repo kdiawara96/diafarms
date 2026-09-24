@@ -758,3 +758,22 @@ seule, lignes renvoyées = incohérences). Tests : `scripts/scenarios-circuit-cl
 préexistant) ; anciennes commandes à plusieurs livraisons : seule la dernière est reliée ;
 un remboursement ancien non couvert par des paiements repris reste visible au contrôle 1
 (signalé par la reprise, à arbitrer).
+
+## Mise à jour 2026-09-25 (sessions de pesée)
+
+- **Modèle** : `SessionPesee` (table `sessions_pesee`) et `Pesee` (table `pesees`), identifiants
+  UUID **générés par le téléphone** (UNIQUE). Statut `EN_COURS` → `TERMINEE` (définitif).
+  Totaux (`nombreTotalSujets`, `poidsTotalKg`, `poidsMoyenKg` arrondi à 3 décimales,
+  `derniereDatePesee`) **toujours recalculés** depuis les pesées non annulées.
+- **API** `/diafarms/api/v1/pesees` : `POST /sessions/sync` (ADMIN, SUPER_ADMIN, RESPONSABLE,
+  PRODUCTION), `GET /sessions/list?projetUniqueId&statut&page&size` (EN_COURS d'abord),
+  `GET /sessions/{uniqueId}` (pesées annulées incluses, signalées), `GET /evolution?projetUniqueId`
+  (sessions terminées par dateFin). Tout est limité à la ferme de l'utilisateur.
+- **Synchro idempotente** : le téléphone renvoie la session entière ; seules les pesées nouvelles
+  sont ajoutées, une pesée existante ne peut qu'être annulée (jamais dé-annulée ni modifiée —
+  les autres champs renvoyés sont ignorés). Session terminée : tout changement → 400, sauf renvoi
+  identique (réponse perdue) → 200 inchangé. Terminer exige au moins une pesée non annulée.
+- **Concurrence** : verrou `PESSIMISTIC_WRITE` sur la ligne du projet pendant la synchro +
+  UNIQUE sur les uniqueId (collision résiduelle → 409).
+- **SQL** : `docs/sql/2026-09-25_pesees.sql` — rien à faire (tables nouvelles), requête de
+  vérification seulement. Tests : `scripts/scenarios-pesees.sh` (24 assertions).
