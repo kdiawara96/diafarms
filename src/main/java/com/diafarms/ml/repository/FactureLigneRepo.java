@@ -20,4 +20,12 @@ public interface FactureLigneRepo extends JpaRepository<FactureLigne, Long> {
     @Query("SELECT COUNT(l) > 0 FROM FactureLigne l WHERE l.venteType = :t AND l.venteUniqueId = :u " +
         "AND l.facture.statut <> com.diafarms.ml.models.Facture.StatutFacture.ANNULEE")
     boolean venteDejaFacturee(@Param("t") CibleImputation t, @Param("u") String u);
+
+    // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente — jumeau de
+    // venteDejaFacturee, pour l'afficher dans la fiche client (voir
+    // ClientServiceImpl.getReport). Au plus un résultat en pratique : une vente n'est
+    // jamais facturée deux fois tant qu'une facture active existe déjà dessus.
+    @Query("SELECT l.facture.numeroFacture FROM FactureLigne l WHERE l.venteType = :t AND l.venteUniqueId = :u " +
+        "AND l.facture.statut <> com.diafarms.ml.models.Facture.StatutFacture.ANNULEE")
+    List<String> numeroFactureActive(@Param("t") CibleImputation t, @Param("u") String u);
 }

@@ -28,6 +28,10 @@ public class ClientVenteLigneDTO {
     private Double paye;
     private Double resteAPayer;
     private String statutPaiement; // "PAYEE" | "PARTIELLE" | "NON_PAYEE"
+    private Integer quantite; // quantiteOeufs / nombreSujets — null hors ventes
+    // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente, null si aucune —
+    // voir FactureLigneRepo.numeroFactureActive.
+    private String factureNumero;
 
     // Lignes "PAIEMENT"/"REMBOURSEMENT".
     private String mode; // ModePaiement

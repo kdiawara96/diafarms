@@ -30,6 +30,7 @@ import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ClientRepo;
+import com.diafarms.ml.repository.FactureLigneRepo;
 import com.diafarms.ml.repository.PaiementClientRepo;
 import com.diafarms.ml.repository.RemboursementClientRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
@@ -53,6 +54,7 @@ public class ClientServiceImpl implements ClientService {
     private final VenteReformeRepo venteReformeRepo;
     private final PaiementClientRepo paiementClientRepo;
     private final RemboursementClientRepo remboursementClientRepo;
+    private final FactureLigneRepo factureLigneRepo;
     private final SoldeClientServiceImpl soldeClientService;
     private final CompteClientService compteClientService;
     private final LogsServices logs;
@@ -247,6 +249,14 @@ public class ClientServiceImpl implements ClientService {
         return v == null ? 0.0 : v;
     }
 
+    // Numéro de la facture ACTIVE (non ANNULEE) portant cette vente, null si aucune —
+    // voir FactureLigneRepo.numeroFactureActive. Au plus une facture active par vente
+    // (FactureServiceImpl.genererDepuis l'empêche), on prend la première par sécurité.
+    private String factureNumeroActive(CibleImputation type, String venteUniqueId) {
+        List<String> numeros = factureLigneRepo.numeroFactureActive(type, venteUniqueId);
+        return numeros.isEmpty() ? null : numeros.get(0);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public ClientReportDTO getReport(String uniqueId) {
@@ -280,6 +290,8 @@ public class ClientServiceImpl implements ClientService {
                     .resteAPayer(reste)
                     .statutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"))
                     .commandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null)
+                    .quantite(v.getQuantiteOeufs())
+                    .factureNumero(factureNumeroActive(CibleImputation.VENTE_OEUFS, v.getUniqueId()))
                     .build());
         }
         for (VenteReforme v : ventesReforme) {
@@ -296,6 +308,8 @@ public class ClientServiceImpl implements ClientService {
                     .resteAPayer(reste)
                     .statutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"))
                     .commandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null)
+                    .quantite(v.getNombreSujets())
+                    .factureNumero(factureNumeroActive(CibleImputation.VENTE_REFORME, v.getUniqueId()))
                     .build());
         }
         // Paiements/avances directs (voir payerDette) : pas de vente associée, donc
