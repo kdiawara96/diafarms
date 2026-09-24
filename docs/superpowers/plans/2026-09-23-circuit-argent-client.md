@@ -2079,14 +2079,33 @@ git add src/services/api.ts && git commit -m "Circuit client: API web paiements,
 
 ### Task 18: Déploiement dans l'ordre
 
-- [ ] **Step 1:** sauvegarde de la base (`backup_all.sh` du serveur) — **demander à
+(Réécrit après la revue finale du 2026-09-24 : SQL des contraintes AVANT le backend,
+reprise réservée au SUPER_ADMIN, contrôle SQL après la reprise.)
+
+- [ ] **Step 1 — sauvegarde** de la base (`backup_all.sh` du serveur) — **demander à
   l'utilisateur**.
-- [ ] **Step 2:** backend (`deploy.sh`), puis SQL des contraintes (Task 12), puis
-  **simulation** de la reprise : `POST /admin/reprise-circuit-client?executer=false` ;
-  transmettre le rapport à l'utilisateur (écarts de solde par client) et **attendre sa
-  validation**.
-- [ ] **Step 3:** exécution de la reprise ; relance de la simulation (0 création attendue).
-- [ ] **Step 4:** web (dist → `/home/app/diafarms_web`, `docker compose build && up -d`),
-  APK 1.25 sur le téléphone.
-- [ ] **Step 5:** contrôle en production sur un client réel choisi avec l'utilisateur :
+- [ ] **Step 2 — SQL AVANT le déploiement du backend** (contraintes CHECK élargies
+  seulement, sans effet pour l'ancien jar) : `docs/sql/2026-09-23_ventes_diverses.sql`
+  (la table `ventes_diverses` n'existe pas encore : seule la contrainte s'applique, les
+  étapes de reprise des fientes sont sautées avec une NOTICE) puis
+  `docs/sql/2026-09-24_circuit_client.sql`.
+- [ ] **Step 3 — (facultatif) essai à blanc** : restaurer la sauvegarde sur une base de
+  staging, y lancer le nouveau jar, relancer `2026-09-23_ventes_diverses.sql` puis la
+  **simulation** de la reprise (SUPER_ADMIN) ; lire le rapport.
+- [ ] **Step 4 — fenêtre de maintenance** (personne ne saisit pendant ce temps) :
+  1. déployer le backend (`deploy.sh`) ;
+  2. relancer `docs/sql/2026-09-23_ventes_diverses.sql` (la table existe maintenant : les
+     anciennes « Vente fientes » / « Autre vente » deviennent des ventes) ;
+  3. **simulation** : `POST /admin/reprise-circuit-client?executer=false` en SUPER_ADMIN
+     (toutes les fermes, ou `&farmUniqueId=`) ; transmettre le rapport à l'utilisateur
+     (écarts par client, `ventesSansMontantRapporte`, avertissements — dont les
+     transactions EN_ATTENTE à valider ou rejeter d'abord) et **attendre sa validation** ;
+  4. **exécution** : `?executer=true` ;
+  5. **simulation à nouveau** : 0 création attendue partout ;
+  6. **contrôle** : `docs/sql/2026-09-24_controle_circuit_client.sql` (lecture seule,
+     résultat vide attendu ; un remboursement ancien non couvert ressort au contrôle 1,
+     déjà signalé par la reprise) ;
+  7. déployer le web (dist → `/home/app/diafarms_web`, `docker compose build && up -d`) ;
+  8. installer l'APK 1.25 sur le téléphone.
+- [ ] **Step 5 — contrôle en production** sur un client réel choisi avec l'utilisateur :
   fiche client, commande, facture, Comptabilité — les deux invariants tiennent.

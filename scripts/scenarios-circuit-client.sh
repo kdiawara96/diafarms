@@ -710,6 +710,166 @@ scenario12() {
   invariants "$COMPTE" "S12"
 }
 
+# Vérifie qu'un message d'erreur ($1 = libellé) contient $2 (dans errors.0 du dernier BODY).
+message_contient() {
+  local msg
+  msg=$(jpath "$BODY" "errors.0")
+  if [[ "$msg" == *"$2"* ]]; then
+    echo "OK    $1 (contient « $2 »)"
+  else
+    echo "ECHEC $1 : obtenu=$msg"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+scenario14() {
+  echo "== Scénario 14 : ajouter ou retirer le client d'une vente est refusé =="
+  local client vsans vavec
+  nouveau_client "Scenario 14"
+  client="$CLIENT_UID"
+  # Vente directe (sans client), montant rapporté complet.
+  call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"quantiteOeufs\":2,\"prixUnitaire\":1000,\"montant\":2000,\"montantRapporte\":2000}"
+  vsans=$(jpath "$BODY" "data.uniqueId")
+  verifier "S14 vente sans client HTTP" "201" "$HTTP_STATUS"
+  call PUT "/ventes-oeufs/update/$vsans" "{\"clientUniqueId\":\"$client\"}"
+  verifier "S14 ajout d'un client HTTP" "400" "$HTTP_STATUS"
+  message_contient "S14 message ajout" "supprimez-la et ressaisissez-la"
+
+  # Vente au client, puis tentative de retrait du client ("" = retirer).
+  call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"clientUniqueId\":\"$client\",\"quantiteOeufs\":3,\"prixUnitaire\":1000,\"montant\":3000}"
+  vavec=$(jpath "$BODY" "data.uniqueId")
+  verifier "S14 vente avec client HTTP" "201" "$HTTP_STATUS"
+  call PUT "/ventes-oeufs/update/$vavec" '{"clientUniqueId":""}'
+  verifier "S14 retrait du client HTTP" "400" "$HTTP_STATUS"
+  message_contient "S14 message retrait" "supprimez-la et ressaisissez-la"
+
+  compte "$client"
+  verifier "S14 totalVendu (seule la vente au client)" "3000" "$(champ "$COMPTE" totalVendu)"
+  verifier "S14 resteAPayer" "3000" "$(champ "$COMPTE" resteAPayer)"
+  invariants "$COMPTE" "S14"
+}
+
+scenario15() {
+  echo "== Scénario 15 : facture de 2 ventes payée en entier, vente plus ancienne hors facture =="
+  local client s0 l1 l2 facture
+  nouveau_client "Scenario 15"
+  client="$CLIENT_UID"
+  # Vente plus ancienne, impayée, NON facturée : l'imputation automatique la servirait
+  # en premier si le paiement de la facture ne visait pas ses lignes.
+  call POST /ventes-oeufs/create "{\"date\":\"2026-09-01\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"clientUniqueId\":\"$client\",\"quantiteOeufs\":5,\"prixUnitaire\":1000,\"montant\":5000}"
+  s0=$(jpath "$BODY" "data.uniqueId")
+  call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"clientUniqueId\":\"$client\",\"quantiteOeufs\":3,\"prixUnitaire\":1000,\"montant\":3000}"
+  l1=$(jpath "$BODY" "data.uniqueId")
+  call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"clientUniqueId\":\"$client\",\"quantiteOeufs\":4,\"prixUnitaire\":1000,\"montant\":4000}"
+  l2=$(jpath "$BODY" "data.uniqueId")
+
+  call POST /factures/generer "{\"ventes\":[{\"type\":\"VENTE_OEUFS\",\"uniqueId\":\"$l1\"},{\"type\":\"VENTE_OEUFS\",\"uniqueId\":\"$l2\"}]}"
+  verifier "S15 génération facture 2 lignes HTTP" "201" "$HTTP_STATUS"
+  facture=$(jpath "$BODY" "data.uniqueId")
+  verifier "S15 montantTotal facture" "7000" "$(jpath "$BODY" "data.montantTotal")"
+
+  call POST "/factures/$facture/paiement" '{"montant":7000,"mode":"ORANGE_MONEY"}'
+  verifier "S15 paiement facture HTTP" "200" "$HTTP_STATUS"
+  verifier "S15 statut facture" "PAYEE" "$(jpath "$BODY" "data.statut")"
+  verifier "S15 montantPaye facture" "7000" "$(jpath "$BODY" "data.montantPaye")"
+
+  compte "$client"
+  verifier "S15 totalVendu" "12000" "$(champ "$COMPTE" totalVendu)"
+  verifier "S15 totalPaye" "7000" "$(champ "$COMPTE" totalPaye)"
+  verifier "S15 resteAPayer (vente ancienne toujours due)" "5000" "$(champ "$COMPTE" resteAPayer)"
+  verifier "S15 avance" "0" "$(champ "$COMPTE" avance)"
+  invariants "$COMPTE" "S15"
+  # La vente ancienne n'a reçu aucune imputation active.
+  verifier "S15 imputations actives sur la vente ancienne" "0" \
+    "$(psql_run "select count(*) from imputations_paiement where cible_unique_id='$s0' and statut='ACTIF'")"
+  # Un paiement client par ligne, chacun visant sa ligne.
+  verifier "S15 paiements de la facture (un par ligne)" "2" \
+    "$(psql_run "select count(*) from paiements_client p join factures f on f.id=p.facture_id where f.unique_id='$facture' and p.statut='ACTIF'")"
+
+  call POST "/factures/$facture/paiement" '{"montant":1000,"mode":"ESPECES"}'
+  verifier "S15 second paiement d'une facture soldée HTTP" "400" "$HTTP_STATUS"
+
+  # Facture dont une vente a été supprimée : paiement refusé.
+  local v3 f3
+  call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"clientUniqueId\":\"$client\",\"quantiteOeufs\":1,\"prixUnitaire\":1000,\"montant\":1000}"
+  v3=$(jpath "$BODY" "data.uniqueId")
+  call POST /factures/generer "{\"sourceType\":\"VENTE_OEUFS\",\"sourceUniqueId\":\"$v3\"}"
+  f3=$(jpath "$BODY" "data.uniqueId")
+  call PUT "/ventes-oeufs/deleteOrRecover/$v3" '{"motif":"Vente saisie en double"}'
+  verifier "S15 suppression de la vente facturée HTTP" "200" "$HTTP_STATUS"
+  call POST "/factures/$f3/paiement" '{"montant":1000,"mode":"ESPECES"}'
+  verifier "S15 paiement d'une facture à vente supprimée HTTP" "400" "$HTTP_STATUS"
+  message_contient "S15 message vente supprimée" "annulez la facture"
+}
+
+scenario16() {
+  echo "== Scénario 16 : suppression / restauration d'une livraison, contrôles d'entrée =="
+  local client autre cmd cmdautre vente
+  nouveau_client "Scenario 16"
+  client="$CLIENT_UID"
+  nouveau_client "Scenario 16 autre"
+  autre="$CLIENT_UID"
+  call POST /commandes/create "{\"clientUniqueId\":\"$client\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"type\":\"OEUFS\",\"quantite\":100,\"prixUnitaireEstime\":100,\"montantEstime\":10000}"
+  cmd=$(jpath "$BODY" "data.uniqueId")
+  call PUT "/commandes/$cmd/confirmer"
+  call POST "/commandes/$cmd/livrer?quantite=40"
+  verifier "S16 livraison HTTP" "200" "$HTTP_STATUS"
+  vente=$(jpath "$BODY" "data.livraisons.0.venteUniqueId")
+  verifier "S16 statut après livraison" "EN_LIVRAISON" "$(jpath "$BODY" "data.statut")"
+
+  call GET "/commandes/list?statut=EN_LIVRAISON&clientUniqueId=$client&size=5"
+  verifier "S16 liste filtrée statut+client HTTP" "200" "$HTTP_STATUS"
+  verifier "S16 liste filtrée : 1 commande" "1" "$(jpath "$BODY" "data.totalItems")"
+
+  call PUT "/ventes-oeufs/deleteOrRecover/$vente" '{"motif":"Livraison saisie par erreur"}'
+  verifier "S16 suppression de la livraison HTTP" "200" "$HTTP_STATUS"
+  call GET "/commandes/list?clientUniqueId=$client&size=5"
+  verifier "S16 quantiteLivree après suppression" "0" "$(jpath "$BODY" "data.data.0.quantiteLivree")"
+  verifier "S16 statut après suppression" "CONFIRMEE" "$(jpath "$BODY" "data.data.0.statut")"
+
+  call PUT "/ventes-oeufs/deleteOrRecover/$vente"
+  verifier "S16 restauration de la livraison HTTP" "200" "$HTTP_STATUS"
+  call GET "/commandes/list?clientUniqueId=$client&size=5"
+  verifier "S16 quantiteLivree après restauration" "40" "$(jpath "$BODY" "data.data.0.quantiteLivree")"
+  verifier "S16 statut après restauration" "EN_LIVRAISON" "$(jpath "$BODY" "data.data.0.statut")"
+
+  # Paiement d'un client rattaché à la commande d'un AUTRE client : refusé.
+  call POST /paiements-client/create "{\"clientUniqueId\":\"$autre\",\"montant\":1000,\"mode\":\"ESPECES\",\"commandeUniqueId\":\"$cmd\"}"
+  verifier "S16 paiement sur la commande d'un autre client HTTP" "400" "$HTTP_STATUS"
+  # Date mal formée : 400, pas 500.
+  call POST /paiements-client/create "{\"clientUniqueId\":\"$client\",\"montant\":1000,\"mode\":\"ESPECES\",\"date\":\"2026-13-45\"}"
+  verifier "S16 date invalide HTTP" "400" "$HTTP_STATUS"
+
+  compte "$client"
+  verifier "S16 totalVendu (livraison restaurée)" "4000" "$(champ "$COMPTE" totalVendu)"
+  invariants "$COMPTE" "S16"
+}
+
+# Contrôles indépendants de compte() : exécutés directement en SQL sur la base, avec le
+# même fichier que celui prévu pour la production (docs/sql/2026-09-24_controle_circuit_client.sql).
+# Chaque ligne renvoyée est une incohérence.
+controles_independants() {
+  echo "== Contrôles indépendants (SQL) =="
+  local dir fichier args out
+  dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  fichier="$dir/docs/sql/2026-09-24_controle_circuit_client.sql"
+  args=(-p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE")
+  [ -n "${PGHOST:-}" ] && args=(-h "$PGHOST" "${args[@]}")
+  if ! out=$(psql "${args[@]}" -v ON_ERROR_STOP=1 -At -F ' | ' -f "$fichier" 2>&1); then
+    echo "ECHEC contrôles SQL : erreur d'exécution : $out"
+    FAILURES=$((FAILURES + 1))
+    return
+  fi
+  if [ -z "$out" ]; then
+    echo "OK    contrôles SQL (remboursé = Σ remboursements, avances ≥ 0, ventes et paiements non surimputés, aucune imputation orpheline, comptabilité = paiements/remboursements, aucun montant rapporté sur vente à un client)"
+  else
+    while IFS= read -r ligne; do
+      echo "ECHEC contrôle SQL : $ligne"
+      FAILURES=$((FAILURES + 1))
+    done <<< "$out"
+  fi
+}
+
 scenario1
 scenario2
 scenario3
@@ -722,6 +882,10 @@ scenario9_et_13
 scenario10
 scenario11
 scenario12
+scenario14
+scenario15
+scenario16
+controles_independants
 
 echo
 if [ "$FAILURES" -eq 0 ]; then

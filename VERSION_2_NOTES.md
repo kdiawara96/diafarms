@@ -683,18 +683,78 @@ client — seule la transaction avait été supprimée, la vente (`ventes_oeufs`
 
 ## Mise à jour 2026-09-24 (circuit de l'argent client)
 
-**Modèle comptable** : `PaiementClient` (client + date + montant), `ImputationPaiement` (imputation d'un paiement sur une facture), `RemboursementClient` (remboursement facture annulée), `CompteClientService` et `CalculImputation` (calcul du solde — plus de `SoldeClient` écrit en base).
+Conception : `docs/superpowers/specs/2026-09-23-circuit-argent-client-design.md` ; plan :
+`docs/superpowers/plans/2026-09-23-circuit-argent-client.md`. Principe : une seule source
+par information, aucun montant existant modifié pour « faire tomber juste ».
 
-**Adaptateurs compatibilité** : anciennes transactions MANUEL avec catégories "Payer dette client" / "Rembourser client" sont relues ; acompte et montantRapporte des ventes réutilisés pour reporter argent du client.
+**Modèle** : `PaiementClient` (argent reçu d'un client : date, montant, mode obligatoire,
+origine acompte/livraison/vente/règlement/facture/reprise ; jamais modifié, annulable avec
+motif), `ImputationPaiement` (quel paiement règle quelle **vente** — œufs ou réforme — ou
+quel remboursement, pour combien ; automatique, annulable), `RemboursementClient` (argent
+rendu au client, pris sur son **avance** via des imputations ; refusé au-delà de l'avance
+disponible). `CompteClientService` calcule tout, rien n'est stocké : avance = Σ paiements
+− Σ imputations ; reste à payer = Σ ventes actives − Σ imputations sur ventes ; solde =
+reste − avance (positif = le client doit). `soldes_client` n'est plus écrit.
+`CalculImputation` : pour chaque paiement, d'abord la vente qu'il vise, puis les ventes de
+sa commande, puis les plus anciennes du client. Verrou de la ligne client
+(`findByIdForUpdate` / `CompteClientService.verrouiller`) avant toute lecture ou
+annulation d'imputations (paiement, remboursement, modification/suppression de vente,
+paiement de facture).
 
-**Commandes** : livraisons multiples via `Commande.quantiteLivree` et `POST /commandes/{uid}/livrer`, états EN_LIVRAISON et CLOTUREE, annulation générant un `RemboursementClient` du montant payé.
+**Ventes** : une vente à un client est payée par des paiements clients (`montantRapporte`
+n'est plus utilisé pour elle) ; une vente sans client garde `montantRapporte` et l'écart
+au solde du vendeur. Modifier une vente peut changer de client (A → B : l'argent de A
+redevient son avance) mais **pas** ajouter ni retirer le client (400 « supprimez-la et
+ressaisissez-la »). Supprimer/restaurer une livraison met à jour la quantité livrée et le
+statut de sa commande.
 
-**Factures** : lignes (une par facture de base), statut calculé (IMPAYEE/PARTIELLE/PAYEE/ANNULEE), héritage des anciennes transactions facturées, annulation et suppression.
+**Commandes** : livraisons multiples (`quantiteLivree`, `POST /commandes/{uid}/livrer`,
+1 livraison = 1 vente qui porte `commande`), états EN_LIVRAISON, CONVERTIE (« Livrée »),
+CLOTUREE (livrée en partie, motif), ANNULEE (rien livré, motif). L'acompte est un vrai
+paiement ; annuler une commande peut, sur demande, rembourser l'acompte **encore
+disponible** (non imputé) — sinon il reste en avance. Toutes les actions sont limitées à
+la ferme de l'utilisateur.
 
-**Comptabilité** : nouvelle vue "Compte client" (vendu/encaissé/remboursé/dû/avances par client) ; verrou comptable sur PAIEMENT_CLIENT et REMBOURSEMENT_CLI (modification/suppression seules depuis leurs endpoints).
+**Factures** : 1..n ventes du même client (`FactureLigne`, une vente jamais facturée deux
+fois tant que la facture n'est pas annulée) ; payé/statut calculés depuis les imputations
+des lignes. Payer une facture crée un paiement client par ligne non soldée (chacun vise
+sa vente), jusqu'à épuisement ; refusé si une vente de la facture a été supprimée.
+Factures d'avant la refonte (`legacy`) : la reprise leur crée une ligne ; payé = montant
+payé historique + paiements reçus sur elles depuis, plafonné au total.
 
-**Reprise** : endpoint `POST /diafarms/api/v1/admin/reprise-circuit-client?executer=false|true` (simulation puis exécution), crée les paiements/imputations/remboursements manquants, script test `scripts/scenarios-circuit-client.sh` (13/13 scénarios bout en bout).
+**Comptabilité** : « Paiement client » (source `PAIEMENT_CLIENT`) et « Remboursement au
+client » (`REMBOURSEMENT_CLI`) verrouillées en Comptabilité (on annule le paiement /
+remboursement lui-même). Vendu / encaissé / remboursé / dû / avances séparés.
 
-**SQL** : `docs/sql/2026-09-24_circuit_client.sql` (contraintes source_type, commandes.statut, factures.statut|source_type) à lancer après redémarrage, avant la reprise.
+**Écrans** : phases B (web : fiche client avec compte, paiements, remboursements ;
+commandes ; factures ; Comptabilité) et C (mobile, APK 1.25) faites.
 
-**Ouvert** : web UI "Compte client" + gestion des paiements/remboursements (Phase B) et mobile (Phase C) non encore implémentés ; `UtilisateurImpl.generateUsername` échoue sur un fullName avec espace (bug préexistant non corrigé) ; anciennes commandes avec plusieurs livraisons ne relient que la dernière.
+**Reprise** : `POST /diafarms/api/v1/admin/reprise-circuit-client?executer=false|true
+[&farmUniqueId=]`, **SUPER_ADMIN uniquement** (simulation comme exécution). Transactions
+manuelles d'acompte / paiement / remboursement → paiements et remboursements (EN_ATTENTE
+ignorées avec avertissement : à valider ou rejeter avant) ; recopies de « marquer payée »
+retirées de `montantRapporte` ; montants rapportés des ventes à un client → paiements ;
+ventes à un client d'août 2026 sans montant rapporté → considérées payées (paiement créé,
+listées dans `ventesSansMontantRapporte`) ; factures anciennes → legacy + une ligne ;
+rapport « solde avant / solde recalculé » par client. Idempotente (2e passage : 0
+création). Contrôle après : `docs/sql/2026-09-24_controle_circuit_client.sql` (lecture
+seule, lignes renvoyées = incohérences). Tests : `scripts/scenarios-circuit-client.sh`
+(scénarios 1-16 + contrôles SQL indépendants), `scripts/reprise-circuit-client-seed-test.sql`.
+
+**Ordre de déploiement** (voir aussi Task 18 du plan) :
+1. sauvegarde de la base ;
+2. AVANT le backend : `docs/sql/2026-09-23_ventes_diverses.sql` (contrainte seulement —
+   la table `ventes_diverses` n'existe pas encore, étapes suivantes sautées) puis
+   `docs/sql/2026-09-24_circuit_client.sql` (contraintes CHECK élargies, sans effet pour
+   l'ancien jar) ;
+3. facultatif : restaurer la sauvegarde sur une base de staging, y lancer le nouveau jar
+   et la simulation ;
+4. fenêtre de maintenance : déployer le backend ; relancer
+   `2026-09-23_ventes_diverses.sql` (reprise des fientes) ; simulation sur la prod ;
+   validation par l'utilisateur ; exécution ; simulation à nouveau (0 création) ; contrôle
+   SQL ; déployer le web ; installer l'APK.
+
+**Ouvert** : `UtilisateurImpl.generateUsername` échoue sur un fullName avec espace (bug
+préexistant) ; anciennes commandes à plusieurs livraisons : seule la dernière est reliée ;
+un remboursement ancien non couvert par des paiements repris reste visible au contrôle 1
+(signalé par la reprise, à arbitrer).

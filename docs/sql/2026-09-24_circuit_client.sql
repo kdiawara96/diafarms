@@ -1,20 +1,23 @@
--- Circuit de l'argent client (2026-09-24)
+-- Circuit de l'argent client (2026-09-24) — contraintes CHECK des nouvelles valeurs d'enum.
 --
--- À lancer APRÈS le redémarrage qui crée les nouvelles tables/colonnes :
--- - PaiementClient, ImputationPaiement, RemboursementClient (modèle)
--- - transactions.source_type : nouveau type PAIEMENT_CLIENT/REMBOURSEMENT_CLI
--- - commandes.statut : nouveaux états EN_LIVRAISON, CLOTUREE
--- - factures.statut : nouvel état ANNULEE
---
--- À lancer AVANT l'endpoint de reprise : POST /diafarms/api/v1/admin/reprise-circuit-client
+-- À lancer AVANT le déploiement du nouveau backend (voir l'ordre complet dans
+-- VERSION_2_NOTES.md, section 2026-09-24) : ce script ne fait qu'ÉLARGIR des contraintes
+-- sur des tables qui existent déjà (transactions, commandes, factures) — sans effet pour
+-- l'ancien jar, qui n'écrit aucune des nouvelles valeurs. Rejouable (DROP IF EXISTS).
+-- Sans lui, le nouveau backend échoue dès la première écriture d'une nouvelle valeur
+-- (ddl-auto=update ne met jamais à jour une contrainte CHECK existante) :
+-- - transactions.source_type : PAIEMENT_CLIENT, REMBOURSEMENT_CLI (+ VENTE_DIVERSE)
+-- - commandes.statut : EN_LIVRAISON, CLOTUREE
+-- - factures.statut : ANNULEE ; factures.source_type : VENTES
+-- Les nouvelles tables (paiements_client, imputations_paiement, remboursements_client,
+-- factures_lignes) sont créées par le backend avec leurs contraintes à jour.
 --
 -- Vérifier d'abord les noms réels des contraintes :
 -- SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
 -- WHERE conrelid IN ('transactions'::regclass,'commandes'::regclass,'factures'::regclass)
 -- AND contype='c';
 --
--- Note : le script docs/sql/2026-09-23_ventes_diverses.sql doit avoir été exécuté avant celui-ci
--- (il ajoute VENTE_DIVERSE à transactions.source_type ; la contrainte ci-dessous l'inclut déjà).
+-- Même liste transactions.source_type que docs/sql/2026-09-23_ventes_diverses.sql (étape 1).
 
 BEGIN;
 
@@ -37,12 +40,7 @@ ALTER TABLE factures ADD CONSTRAINT factures_statut_check CHECK (statut IN (
 
 COMMIT;
 
---
--- Utilisation - Endpoint de reprise
---
--- 1. Simulation (examiner les changements, pas d'effet de bord) :
---    POST /diafarms/api/v1/admin/reprise-circuit-client?executer=false
---
--- 2. Exécution (applique les changements) :
---    POST /diafarms/api/v1/admin/reprise-circuit-client?executer=true
---
+-- Ensuite : reprise (SUPER_ADMIN uniquement), simulation puis exécution —
+--   POST /diafarms/api/v1/admin/reprise-circuit-client?executer=false[&farmUniqueId=...]
+--   POST /diafarms/api/v1/admin/reprise-circuit-client?executer=true[&farmUniqueId=...]
+-- puis contrôle : docs/sql/2026-09-24_controle_circuit_client.sql (lecture seule).
