@@ -96,10 +96,16 @@ public class Commande {
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
 
+    // Motif de clôture (livrée en partie, on arrête là) ou d'annulation (rien livré) —
+    // voir CommandeServiceImpl.cloturer/annuler. Obligatoire (MotifSuppressionRequest),
+    // mais nullable en base : vide tant que la commande suit son cours normal.
+    @Column(name = "motif_fin", columnDefinition = "TEXT")
+    private String motifFin;
+
     @Embedded
     private Initialisation initialisation;
 
     public enum StatutCommande {
-        EN_ATTENTE, CONFIRMEE, CONVERTIE, ANNULEE
+        EN_ATTENTE, CONFIRMEE, EN_LIVRAISON, CONVERTIE, CLOTUREE, ANNULEE
     }
 }

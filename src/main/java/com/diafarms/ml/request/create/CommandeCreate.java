@@ -13,4 +13,5 @@ public class CommandeCreate {
     private Double montantAcompte; // optionnel
     private String dateCommande; // optionnel, défaut = aujourd'hui
     private String dateLivraisonPrevue; // optionnel
+    private String modePaiement; // ModePaiement de l'acompte, optionnel — défaut ESPECES
 }

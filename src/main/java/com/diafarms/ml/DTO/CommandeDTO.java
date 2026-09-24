@@ -2,6 +2,7 @@ package com.diafarms.ml.DTO;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import com.diafarms.ml.models.Commande;
 
@@ -33,9 +34,35 @@ public class CommandeDTO {
     private LocalDate dateCommande;
     private LocalDate dateLivraisonPrevue;
     private String statut;
+    // Historique du premier acompte, plus mis à jour ensuite — voir Commande.venteUniqueId.
     private String venteUniqueId;
     private String creeParNom;
     private LocalDateTime createdAt;
+
+    // Champs enrichis — calculés par CommandeServiceImpl.enrichir(Commande), jamais
+    // stockés : reflètent l'état réel de l'argent/des livraisons de cette commande.
+    private Double montantLivre; // Σ montants des ventes actives de la commande
+    private Double acompteRecu; // Σ paiements ACTIFS d'origine ACOMPTE de la commande
+    private Double payeSurCommande; // Σ imputations actives sur ses ventes livrées
+    private Double resteAPayerLivre; // montantLivre - payeSurCommande
+    private Integer resteALivrer; // quantite - quantiteLivree
+    private List<LivraisonDTO> livraisons;
+    private String motifFin;
+    private String statutLibelle;
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class LivraisonDTO {
+        private String venteUniqueId;
+        private LocalDate date;
+        private Integer quantite;
+        private Double montant;
+        private Double paye;
+        private String statutPaiement; // "PAYEE" | "PARTIELLE" | "NON_PAYEE"
+    }
 
     public static CommandeDTO fromEntity(Commande c) {
         if (c == null) return null;
@@ -60,6 +87,7 @@ public class CommandeDTO {
                 .venteUniqueId(c.getVenteUniqueId())
                 .creeParNom(c.getCreePar() != null ? c.getCreePar().getFullName() : null)
                 .createdAt(c.getInitialisation() != null ? c.getInitialisation().getCreatedAt() : null)
+                .motifFin(c.getMotifFin())
                 .build();
     }
 }
