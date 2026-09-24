@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.diafarms.ml.commons.CalculImputation;
 import com.diafarms.ml.models.Facture;
 
 import lombok.AllArgsConstructor;
@@ -56,7 +57,7 @@ public class FactureDTO {
         boolean legacy = Boolean.TRUE.equals(f.getLegacy());
         double montantTotal = nz(f.getMontantTotal());
         double montantPaye = legacy ? nz(f.getMontantPaye()) : payeCalcule;
-        double resteAPayer = montantTotal - montantPaye;
+        double resteAPayer = CalculImputation.arrondi(montantTotal - montantPaye);
 
         String statut;
         if (f.getStatut() == Facture.StatutFacture.ANNULEE) {

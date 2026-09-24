@@ -93,6 +93,7 @@ public final class PdfStyle {
     public static Color statutFactureColor(String statut) {
         if ("PAYEE".equals(statut)) return new Color(22, 130, 78);
         if ("PARTIELLE".equals(statut)) return new Color(202, 138, 4);
+        if ("ANNULEE".equals(statut)) return new Color(107, 114, 128);
         return new Color(185, 45, 45); // IMPAYEE
     }
 

@@ -464,8 +464,7 @@ public class FactureServiceImpl implements FactureService {
     @Override
     @Transactional(readOnly = true)
     public byte[] genererPdf(String uniqueId) {
-        Facture f = factureRepo.findByUniqueId(uniqueId);
-        if (f == null) throw new IllegalArgumentException("Facture introuvable : " + uniqueId);
+        Facture f = factureFarmScoped(uniqueId, getCurrentUserSafe());
         Farm farm = f.getFarm();
         FactureDTO dto = toDto(f);
         // Une facture sans ligne (legacy, ou ancienne facture pas encore reprise —
@@ -604,17 +603,44 @@ public class FactureServiceImpl implements FactureService {
     @Transactional(readOnly = true)
     public PaginatedResponse<FactureDTO> list(int page, int size, String statut, String clientUniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateEmission"));
-
         if (currentUser == null || currentUser.getFarm() == null) {
             return new PaginatedResponse<>(List.of(), 1, 0, 0, size);
         }
+        Long farmId = currentUser.getFarm().getId();
 
-        StatutFacture statutEnum = (statut == null || statut.isBlank() || "tous".equalsIgnoreCase(statut))
-                ? null : StatutFacture.valueOf(statut.toUpperCase());
-        String clientParam = (clientUniqueId == null || clientUniqueId.isBlank()) ? null : clientUniqueId;
+        String statutNorm = (statut == null || statut.isBlank() || "tous".equalsIgnoreCase(statut))
+                ? null : statut.trim().toUpperCase();
+        // Valide le statut demandé (lève IllegalArgumentException -> 400 si inconnu),
+        // même comportement qu'avant.
+        StatutFacture statutEnum = statutNorm == null ? null : StatutFacture.valueOf(statutNorm);
+        boolean hasClient = clientUniqueId != null && !clientUniqueId.isBlank();
+        String clientParam = hasClient ? clientUniqueId : "";
 
-        Page<Facture> facturePage = factureRepo.search(currentUser.getFarm().getId(), statutEnum, clientParam, pageable);
+        // PAYEE/PARTIELLE/IMPAYEE ne sont plus des colonnes fiables pour les factures
+        // non-legacy : FactureDTO.fromEntity les recalcule depuis les imputations des
+        // lignes, la colonne Facture.statut en base n'est plus mise à jour après la
+        // génération (voir toDto). On ne peut donc pas les filtrer en base : on charge
+        // toutes les factures correspondant aux AUTRES filtres, on calcule leur DTO, on
+        // filtre par dto.getStatut() en mémoire, puis on pagine nous-mêmes. ANNULEE
+        // reste un vrai statut stocké (annuler() l'écrit) : filtré directement en base.
+        if (statutEnum != null && statutEnum != StatutFacture.ANNULEE) {
+            List<Facture> toutes = factureRepo.searchToutes(farmId, false, StatutFacture.IMPAYEE, hasClient, clientParam,
+                    Sort.by(Sort.Direction.DESC, "dateEmission"));
+            List<FactureDTO> filtres = toutes.stream().map(this::toDto)
+                    .filter(dto -> statutNorm.equals(dto.getStatut()))
+                    .toList();
+            int totalItems = filtres.size();
+            int totalPages = size > 0 ? (int) Math.ceil(totalItems / (double) size) : 0;
+            int from = Math.min(page * size, totalItems);
+            int to = Math.min(from + size, totalItems);
+            List<FactureDTO> pageContent = from < to ? filtres.subList(from, to) : List.of();
+            return new PaginatedResponse<>(pageContent, page + 1, totalPages, totalItems, size);
+        }
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateEmission"));
+        boolean hasStatut = statutEnum != null;
+        StatutFacture statutParam = hasStatut ? statutEnum : StatutFacture.IMPAYEE;
+        Page<Facture> facturePage = factureRepo.search(farmId, hasStatut, statutParam, hasClient, clientParam, pageable);
         List<FactureDTO> dtoList = facturePage.getContent().stream().map(this::toDto).toList();
 
         return new PaginatedResponse<>(
