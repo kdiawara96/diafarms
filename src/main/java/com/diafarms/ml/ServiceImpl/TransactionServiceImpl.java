@@ -68,6 +68,8 @@ public class TransactionServiceImpl implements TransactionService {
     private final VenteOeufsRepartitionRepo venteOeufsRepartitionRepo;
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
     private final SoldeClientServiceImpl soldeClientService;
+    private final com.diafarms.ml.repository.PaiementClientRepo paiementClientRepo;
+    private final com.diafarms.ml.repository.RemboursementClientRepo remboursementClientRepo;
     // @Lazy : évite tout risque de cycle de construction avec CompteClientService (lui-même
     // consommé par PaiementClientService, ServiceImpl côté ventes/clients) — seul le ratio
     // réel/théorique d'une vente à client en a besoin, voir ratio(RepartitionRatioDTO).
@@ -904,6 +906,9 @@ public class TransactionServiceImpl implements TransactionService {
                     .totalEntreesValidees(0.0).totalSortiesValidees(0.0)
                     .totalVenteOeufs(0.0).totalVenteReforme(0.0)
                     .totalMontantRecuVentes(0.0).totalDuParVendeurs(0.0).totalDuParClients(0.0)
+                    .totalVendu(0.0).totalEncaisse(0.0).totalRembourse(0.0)
+                    .totalDuClients(0.0).totalAvancesClients(0.0)
+                    .vueParProjet(true)
                     .build();
         }
 
@@ -932,15 +937,53 @@ public class TransactionServiceImpl implements TransactionService {
         }
 
         // Ferme entière, jamais scopé par projet/comptable (voir TransactionStatsDTO) —
-        // le montant réellement rapporté et la dette vendeur sont des notions de
-        // vendeur/ferme, pas de projet. La décomposition PAR PROJET existe quand même
-        // séparément (voir getVentesReelParProjet ci-dessous, consommée par
-        // Reporting.tsx) : ces deux chiffres-ci restent volontairement un simple
-        // complément global à "Total entrées", pas un rapport scopé.
-        double montantRecuVentes = nz(venteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dDeb, dFin))
-                + nz(venteReformeRepo.sumMontantRapporteByFarmIdAndDateRange(farmId, dDeb, dFin));
+        // le montant réellement rapporté, la dette vendeur et la dette client sont des
+        // notions de vendeur/client/ferme, pas de projet. La décomposition PAR PROJET
+        // existe quand même séparément (voir getVentesReelParProjet ci-dessous,
+        // consommée par Reporting.tsx) : ces chiffres-ci restent volontairement un
+        // simple complément global, pas un rapport scopé. totalMontantRecuVentes ne
+        // compte plus le théorique rapporté des ventes À CLIENT (celles-ci sont payées
+        // via PaiementClient, plus jamais via montantRapporte — voir
+        // VenteOeufsRepo/VenteReformeRepo.sumRapporteSansClient), sous peine de
+        // double-compter le même encaissement.
+        Farm farm = currentUser != null ? currentUser.getFarm() : null;
+        double rapporteSansClientOeufs = nz(venteOeufsRepo.sumRapporteSansClient(farmId, dDeb, dFin));
+        double rapporteSansClientReforme = nz(venteReformeRepo.sumRapporteSansClient(farmId, dDeb, dFin));
+        double venteDiverseValidee = nz(transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_DIVERSE, dDeb, dFin));
+        double paiementsClients = nz(paiementClientRepo.sumActifsByFarmAndDates(farmId, dDeb, dFin));
+
+        double montantRecuVentes = paiementsClients + rapporteSansClientOeufs + rapporteSansClientReforme + venteDiverseValidee;
         double duParVendeurs = nz(soldeVendeurRepo.sumSoldePositifByFarmId(farmId));
-        double duParClients = nz(soldeClientRepo.sumSoldePositifByFarmId(farmId));
+        // STALE : soldeClientRepo.sumSoldePositifByFarmId lisait une table de solde qui
+        // n'est plus tenue à jour (voir SoldeClientServiceImpl) — le solde est désormais
+        // entièrement recalculé à partir des ventes/paiements/imputations/remboursements actifs.
+        double duParClients = soldeClientService.sumSoldePositif(farm);
+        double avancesClients = soldeClientService.sumAvances(farm);
+
+        // Vendu/Encaissé/Remboursé/Dû/Avances (circuit argent client) : uniquement en
+        // vue ferme entière (jamais scopée) — encaissé/remboursé/dû/avances ne peuvent
+        // pas être rattachés fiablement à un seul projet (paiements et remboursements
+        // clients n'ont pas de projet).
+        boolean vueParProjet = scopedProjetIds != null;
+        double vendu;
+        double encaisse;
+        double rembourse;
+        double totalDuClients;
+        double totalAvancesClients;
+        if (vueParProjet) {
+            vendu = nz(totalVenteOeufs) + nz(totalVenteReforme);
+            encaisse = 0.0;
+            rembourse = 0.0;
+            totalDuClients = 0.0;
+            totalAvancesClients = 0.0;
+        } else {
+            vendu = nz(totalVenteOeufs) + nz(totalVenteReforme) + venteDiverseValidee;
+            encaisse = nz(transactionRepo.sumEntreesHorsVentesStock(farmId, dDeb, dFin))
+                    + rapporteSansClientOeufs + rapporteSansClientReforme;
+            rembourse = nz(remboursementClientRepo.sumActifsByFarmAndDates(farmId, dDeb, dFin));
+            totalDuClients = duParClients;
+            totalAvancesClients = avancesClients;
+        }
 
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)
@@ -953,6 +996,12 @@ public class TransactionServiceImpl implements TransactionService {
                 .totalDuParClients(duParClients)
                 .totalVenteOeufs(totalVenteOeufs != null ? totalVenteOeufs : 0.0)
                 .totalVenteReforme(totalVenteReforme != null ? totalVenteReforme : 0.0)
+                .totalVendu(vendu)
+                .totalEncaisse(encaisse)
+                .totalRembourse(rembourse)
+                .totalDuClients(totalDuClients)
+                .totalAvancesClients(totalAvancesClients)
+                .vueParProjet(vueParProjet)
                 .build();
     }
 

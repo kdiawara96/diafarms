@@ -30,4 +30,16 @@ public class TransactionStatsDTO {
     // un client identifié plutôt qu'au vendeur (voir SoldeClient, Option A retenue
     // dans ROADMAP_CLIENTS_COMMANDES_FACTURATION.md).
     private Double totalDuParClients;
+
+    // Circuit argent client (voir TransactionServiceImpl.getStats) : vue ferme entière
+    // uniquement (vueParProjet = false) — sinon vendu seul est renseigné (théorique
+    // œufs+réforme) et les autres valent 0, faute de pouvoir scoper encaissé/remboursé/
+    // dû/avances par projet (paiements et remboursements clients ne sont pas rattachés
+    // à un projet précis).
+    private Double totalVendu;
+    private Double totalEncaisse;
+    private Double totalRembourse;
+    private Double totalDuClients;
+    private Double totalAvancesClients;
+    private boolean vueParProjet;
 }

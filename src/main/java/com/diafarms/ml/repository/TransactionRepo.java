@@ -227,4 +227,15 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     // [sourceUniqueId, statut], transactions supprimées comprises.
     @Query("SELECT t.sourceUniqueId, t.statut FROM Transaction t WHERE t.sourceUniqueId IN :sourceIds")
     List<Object[]> findStatutsBySourceIds(@Param("sourceIds") List<String> sourceIds);
+
+    // Circuit argent client (Comptabilité, TransactionServiceImpl.getStats) : entrées
+    // d'argent hors transactions de vente (paiements clients, entrées manuelles, ventes
+    // diverses au comptant) — exclut VENTE_OEUFS/VENTE_REFORME qui portent le montant
+    // THÉORIQUE (quantité×prix), pas l'argent réellement encaissé.
+    @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.farm.id = :farmId " +
+           "AND t.initialisation.removed = false AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+           "AND t.type = com.diafarms.ml.enums.TypeTransaction.ENTREE " +
+           "AND t.sourceType NOT IN (com.diafarms.ml.enums.SourceTransaction.VENTE_OEUFS, com.diafarms.ml.enums.SourceTransaction.VENTE_REFORME) " +
+           "AND t.date >= :dateDebut AND t.date <= :dateFin")
+    Double sumEntreesHorsVentesStock(@Param("farmId") Long farmId, @Param("dateDebut") LocalDate dateDebut, @Param("dateFin") LocalDate dateFin);
 }
