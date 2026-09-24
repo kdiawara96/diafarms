@@ -109,6 +109,16 @@ public class CommandeServiceImpl implements CommandeService {
         }
     }
 
+    // Enregistrer un paiement (acompte/règlement) : mêmes rôles que
+    // PaiementClientService.ensureCanEncaisser — distinct de ensureCanManage, qui gère
+    // les commandes elles-mêmes (création, livraison) mais pas qui peut encaisser
+    // l'argent d'un client.
+    private void ensureCanEncaisser(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE") && !hasRole(u, "VENTE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour enregistrer un paiement client.");
+        }
+    }
+
     private double nz(Double v) {
         return v == null ? 0.0 : v;
     }
@@ -508,7 +518,7 @@ public class CommandeServiceImpl implements CommandeService {
     @Transactional
     public CommandeDTO enregistrerPaiement(String uniqueId, PaiementClientCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        ensureCanManage(currentUser);
+        ensureCanEncaisser(currentUser);
         Commande c = commandeRepo.findByUniqueId(uniqueId);
         if (c == null) throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
         if (c.getStatut() == StatutCommande.CLOTUREE || c.getStatut() == StatutCommande.ANNULEE) {

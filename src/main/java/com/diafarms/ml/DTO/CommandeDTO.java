@@ -30,11 +30,17 @@ public class CommandeDTO {
     private Integer quantiteRestante;
     private Double prixUnitaireEstime;
     private Double montantEstime;
+    // Historique du tout premier acompte versé à la création — plus jamais réécrit
+    // ensuite, voir CommandeServiceImpl.update (un acompte supplémentaire est un
+    // paiement à part entière, pas un nouveau montantAcompte).
     private Double montantAcompte;
     private LocalDate dateCommande;
     private LocalDate dateLivraisonPrevue;
     private String statut;
-    // Historique du premier acompte, plus mis à jour ensuite — voir Commande.venteUniqueId.
+    // Historique legacy : dernière vente créée par une conversion pré-refonte
+    // (une seule livraison possible avant ce changement). Plus jamais écrit depuis
+    // livrer() — une commande peut désormais avoir plusieurs livraisons, voir
+    // le champ `livraisons` ci-dessous pour la liste à jour.
     private String venteUniqueId;
     private String creeParNom;
     private LocalDateTime createdAt;
