@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -14,23 +16,27 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.ClientDTO;
 import com.diafarms.ml.DTO.ClientReportDTO;
 import com.diafarms.ml.DTO.ClientVenteLigneDTO;
+import com.diafarms.ml.DTO.CompteClientDTO;
 import com.diafarms.ml.DTO.SoldeClientDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.CibleImputation;
+import com.diafarms.ml.enums.ModePaiement;
+import com.diafarms.ml.enums.OriginePaiement;
 import com.diafarms.ml.models.Client;
+import com.diafarms.ml.models.PaiementClient;
+import com.diafarms.ml.models.RemboursementClient;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.others.PaginatedResponse;
-import com.diafarms.ml.models.Transaction;
 import com.diafarms.ml.repository.ClientRepo;
-import com.diafarms.ml.repository.TransactionRepo;
+import com.diafarms.ml.repository.PaiementClientRepo;
+import com.diafarms.ml.repository.RemboursementClientRepo;
 import com.diafarms.ml.repository.VenteOeufsRepo;
 import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.request.create.ClientCreate;
-import com.diafarms.ml.request.create.TransactionCreate;
 import com.diafarms.ml.services.ClientService;
 import com.diafarms.ml.services.LogsServices;
-import com.diafarms.ml.services.TransactionService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -45,11 +51,18 @@ public class ClientServiceImpl implements ClientService {
     private final ClientRepo clientRepo;
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
-    private final TransactionRepo transactionRepo;
+    private final PaiementClientRepo paiementClientRepo;
+    private final RemboursementClientRepo remboursementClientRepo;
     private final SoldeClientServiceImpl soldeClientService;
-    private final TransactionService transactionService;
+    private final CompteClientService compteClientService;
     private final LogsServices logs;
     private final OtherService otherService;
+
+    // @Lazy évite un cycle : PaiementClientService → TransactionService, et
+    // ClientServiceImpl ← CommandeServiceImpl → ... → PaiementClientService.
+    @Autowired
+    @Lazy
+    private PaiementClientService paiementClientService;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -251,12 +264,10 @@ public class ClientServiceImpl implements ClientService {
         List<VenteReforme> ventesReforme = venteReformeRepo.findByClientUniqueIdAndFarmId(uniqueId, farmId);
 
         List<ClientVenteLigneDTO> historique = new java.util.ArrayList<>();
-        double totalAchete = 0.0;
-        double totalPaye = 0.0;
 
         for (VenteOeufs v : ventesOeufs) {
-            totalAchete += nz(v.getMontant());
-            totalPaye += v.getMontantRapporte() != null ? v.getMontantRapporte() : nz(v.getMontant());
+            double paye = compteClientService.payeVente(CibleImputation.VENTE_OEUFS, v.getUniqueId());
+            double reste = compteClientService.resteAPayerVente(CibleImputation.VENTE_OEUFS, v.getUniqueId(), nz(v.getMontant()));
             historique.add(ClientVenteLigneDTO.builder()
                     .uniqueId(v.getUniqueId())
                     .date(v.getDate())
@@ -264,11 +275,15 @@ public class ClientServiceImpl implements ClientService {
                     .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
                     .montant(v.getMontant())
                     .montantRapporte(v.getMontantRapporte())
+                    .paye(paye)
+                    .resteAPayer(reste)
+                    .statutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"))
+                    .commandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null)
                     .build());
         }
         for (VenteReforme v : ventesReforme) {
-            totalAchete += nz(v.getMontant());
-            totalPaye += v.getMontantRapporte() != null ? v.getMontantRapporte() : nz(v.getMontant());
+            double paye = compteClientService.payeVente(CibleImputation.VENTE_REFORME, v.getUniqueId());
+            double reste = compteClientService.resteAPayerVente(CibleImputation.VENTE_REFORME, v.getUniqueId(), nz(v.getMontant()));
             historique.add(ClientVenteLigneDTO.builder()
                     .uniqueId(v.getUniqueId())
                     .date(v.getDate())
@@ -276,34 +291,59 @@ public class ClientServiceImpl implements ClientService {
                     .magasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null)
                     .montant(v.getMontant())
                     .montantRapporte(v.getMontantRapporte())
+                    .paye(paye)
+                    .resteAPayer(reste)
+                    .statutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"))
+                    .commandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null)
                     .build());
         }
         // Paiements/avances directs (voir payerDette) : pas de vente associée, donc
         // absents de venteOeufsRepo/venteReformeRepo, mais ils affectent bien le solde
-        // ci-dessous — sans ça, le solde du client change sans qu'aucune ligne de
-        // l'historique n'explique pourquoi (ce que remontait l'utilisateur : un client
-        // avec un solde non nul mais "aucun achat pour l'instant").
-        for (Transaction t : transactionRepo.findByClient_UniqueIdAndFarm_IdAndInitialisation_RemovedFalse(uniqueId, farmId)) {
-            totalPaye += nz(t.getMontant());
+        // (compte, ci-dessous) — sans ça, le solde du client change sans qu'aucune ligne
+        // de l'historique n'explique pourquoi (ce que remontait l'utilisateur : un client
+        // avec un solde non nul mais "aucun achat pour l'instant"). Les paiements annulés
+        // sont inclus (statut ANNULE) pour que l'historique reste complet, mais seuls les
+        // paiements actifs comptent dans les totaux (compte, calculé côté CompteClientService).
+        for (PaiementClient p : paiementClientRepo.findAllByClientIdForHistorique(client.getId())) {
             historique.add(ClientVenteLigneDTO.builder()
-                    .uniqueId(t.getUniqueId())
-                    .date(t.getDate())
+                    .uniqueId(p.getUniqueId())
+                    .date(p.getDate())
                     .type("PAIEMENT")
-                    .magasinNom(null)
-                    .montant(t.getMontant())
-                    .montantRapporte(t.getMontant())
+                    .montant(p.getMontant())
+                    .mode(p.getMode() != null ? p.getMode().name() : null)
+                    .origine(p.getOrigine() != null ? p.getOrigine().name() : null)
+                    .statut(p.getStatut() != null ? p.getStatut().name() : null)
+                    .commandeUniqueId(p.getCommande() != null ? p.getCommande().getUniqueId() : null)
                     .build());
         }
-        historique.sort((a, b) -> b.getDate().compareTo(a.getDate()));
+        // Remboursements : montant affiché négatif (argent qui sort de l'avance du client).
+        for (RemboursementClient r : remboursementClientRepo.findAllByClientId(client.getId())) {
+            historique.add(ClientVenteLigneDTO.builder()
+                    .uniqueId(r.getUniqueId())
+                    .date(r.getDate())
+                    .type("REMBOURSEMENT")
+                    .montant(r.getMontant() != null ? -r.getMontant() : null)
+                    .mode(r.getMode() != null ? r.getMode().name() : null)
+                    .statut(r.getStatut() != null ? r.getStatut().name() : null)
+                    .commandeUniqueId(r.getCommande() != null ? r.getCommande().getUniqueId() : null)
+                    .build());
+        }
+        historique.sort((a, b) -> {
+            if (a.getDate() == null && b.getDate() == null) return 0;
+            if (a.getDate() == null) return 1;
+            if (b.getDate() == null) return -1;
+            return b.getDate().compareTo(a.getDate());
+        });
 
-        double solde = soldeClientService.getSolde(client).getSolde();
+        CompteClientDTO compte = compteClientService.compte(client);
 
         return ClientReportDTO.builder()
                 .clientUniqueId(client.getUniqueId())
                 .clientNom(client.getNom())
-                .totalAchete(totalAchete)
-                .totalPaye(totalPaye)
-                .solde(solde)
+                .totalAchete(compte.getTotalVendu())
+                .totalPaye(compte.getTotalPaye())
+                .solde(compte.getSolde())
+                .compte(compte)
                 .historique(historique)
                 .build();
     }
@@ -332,31 +372,14 @@ public class ClientServiceImpl implements ClientService {
             throw new IllegalArgumentException("Le montant payé doit être positif.");
         }
         Client client = clientRepo.findByUniqueId(uniqueId);
-        if (client == null) {
-            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
-        }
-
-        TransactionCreate txData = new TransactionCreate();
-        txData.setType("ENTREE");
-        txData.setCommun(true);
-        txData.setDate(java.time.LocalDate.now());
-        txData.setMontant(montant);
-        txData.setCategorie(categorie != null && !categorie.isBlank() ? categorie : "Remboursement client");
-        txData.setClientUniqueId(client.getUniqueId());
-        txData.setDescription((description != null && !description.isBlank())
-                ? description
-                : "Paiement de dette — " + client.getNom());
-        transactionService.create(txData);
-
-        soldeClientService.ajusterSolde(client, currentUser.getFarm(), -montant);
-
-        if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), client.getId(), "Client",
-                    "Paiement de " + montant + " FCFA enregistré pour " + client.getNom());
-        }
-
+        if (client == null) throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        OriginePaiement origine = "Acompte client".equals(categorie) ? OriginePaiement.ACOMPTE
+                : (description != null && description.startsWith("Paiement facture")) ? OriginePaiement.FACTURE
+                : OriginePaiement.REGLEMENT;
+        paiementClientService.enregistrerInterne(client, montant, ModePaiement.ESPECES, origine,
+                null, null, null, null, description, java.time.LocalDate.now());
         ClientDTO dto = ClientDTO.fromEntity(client);
-        dto.setSolde(soldeClientService.getSolde(client).getSolde());
+        dto.setSolde(compteClientService.compte(client).getSolde());
         return dto;
     }
 
@@ -384,47 +407,14 @@ public class ClientServiceImpl implements ClientService {
             throw new IllegalArgumentException("Client introuvable : " + uniqueId);
         }
 
-        double soldeActuel = soldeClientService.getSolde(client).getSolde();
-        if (soldeActuel >= 0) {
-            throw new IllegalArgumentException(
-                "Ce client n'a aucune avance à rembourser (son solde est " + (soldeActuel == 0 ? "à zéro" : "positif : il doit encore de l'argent à la ferme") + ")."
-            );
-        }
-        double avanceDisponible = -soldeActuel;
-        if (montant > avanceDisponible) {
-            throw new IllegalArgumentException(
-                "Le remboursement (" + montant + " FCFA) dépasse l'avance disponible de ce client (" + avanceDisponible + " FCFA)."
-            );
-        }
-
-        TransactionCreate txData = new TransactionCreate();
-        txData.setType("SORTIE");
-        txData.setCommun(true);
-        txData.setDate(java.time.LocalDate.now());
-        txData.setMontant(montant);
-        // Catégorie volontairement absente de "Nouvelle transaction" (liste manuelle) —
-        // même raison que "Salaire" : passer par cet écran dédié applique le contrôle
-        // ci-dessus (plafond à l'avance réellement disponible), une transaction manuelle
-        // le contournerait.
-        txData.setCategorie("Remboursement au client");
-        txData.setClientUniqueId(client.getUniqueId());
-        txData.setDescription((description != null && !description.isBlank())
-                ? description
-                : "Remboursement d'une avance — " + client.getNom());
-        transactionService.create(txData);
-
-        // Le remboursement CONSOMME l'avance : le solde remonte vers zéro (même sens
-        // que l'écart d'une vente qui consomme une avance, voir VenteOeufsImpl.ajusterEcart) —
-        // jamais un -montant, qui creuserait l'avance au lieu de la réduire.
-        soldeClientService.ajusterSolde(client, currentUser.getFarm(), montant);
-
-        if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), client.getId(), "Client",
-                    "Remboursement de " + montant + " FCFA enregistré pour " + client.getNom());
-        }
+        // Plafond à l'avance réellement disponible appliqué par
+        // PaiementClientService.rembourserInterne (CalculImputation.prelever).
+        paiementClientService.rembourserInterne(client, montant, ModePaiement.ESPECES,
+                (description != null && description.trim().length() >= 3) ? description.trim() : "Remboursement d'une avance",
+                null);
 
         ClientDTO dto = ClientDTO.fromEntity(client);
-        dto.setSolde(soldeClientService.getSolde(client).getSolde());
+        dto.setSolde(compteClientService.compte(client).getSolde());
         return dto;
     }
 }

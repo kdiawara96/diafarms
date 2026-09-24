@@ -24,4 +24,5 @@ public class ClientReportDTO {
     private double totalPaye; // réel, COALESCE(montantRapporte, montant) par vente
     private double solde; // positif = le client doit encore, voir SoldeClient
     private List<ClientVenteLigneDTO> historique;
+    private CompteClientDTO compte; // détail complet du compte, voir CompteClientService
 }
