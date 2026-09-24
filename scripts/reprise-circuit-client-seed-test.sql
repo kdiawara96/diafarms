@@ -26,13 +26,16 @@
 --   Rep L4 rembourst  : avant 5000,  après 0     (écart -5000 : remboursement non couvert)
 --   Rep L5 cmd+fact.  : avant 0,     après 0     (écart 0, 1 recopie retirée)
 --   Rep L6 paiement   : avant -3000, après -3000 (écart 0)
+--   Rep L7 cmd annulée: avant 50000, après 50000 (écart 0 : le remboursement est imputé
+--                       sur l'acompte AVANT que la vente postérieure ne l'absorbe)
+--   Rep L8 fact.annul.: avant 0,     après 0     (écart 0 : recopie retirée malgré ANNULEE)
 -- Compteurs attendus pour ces clients (première exécution) :
---   paiementsCrees = 11 (7 transactions reprises : L1 acompte, L2 ×3, L3, L5, L6 ;
---                        + 4 ventes à montant rapporté > 0 : rep-vo-1b, rep-vo-2, rep-vo-2b, rep-vr-5)
---   remboursementsCrees = 2 (L3, L4) ; recopiesFacturesRetirees = 3 ;
---   ventesConverties = 6 (les 4 ci-dessus + rep-vo-1a et rep-vr-3 à 0) ;
---   avertissements : REP-007 rejetée, commande rep-cmd-1 (livraison antérieure non
---   rattachée), remboursement L4 non couvert.
+--   paiementsCrees = 14 (9 transactions reprises : L1 acompte, L2 ×3, L3, L5, L6, L7, L8 ;
+--                        + 5 ventes à montant rapporté > 0 : rep-vo-1b, rep-vo-2, rep-vo-2b, rep-vr-5, rep-vo-8)
+--   remboursementsCrees = 3 (L3, L4, L7) ; recopiesFacturesRetirees = 4 ;
+--   ventesConverties = 8 (les 5 ci-dessus + rep-vo-1a, rep-vr-3, rep-vo-7 à 0) ;
+--   avertissements : REP-007 rejetée, REP-008 supprimée, commande rep-cmd-1 (livraison
+--   antérieure non rattachée), remboursement L4 non couvert.
 -- Deuxième exécution : 0 partout (idempotence).
 
 BEGIN;
@@ -55,7 +58,9 @@ INSERT INTO clients (unique_id, nom, telephone, farm_id, removed, archive, creat
  ('rep-cli-3', 'Rep L3 avance',    '79000003', :farm, false, false, now()),
  ('rep-cli-4', 'Rep L4 rembourst', '79000004', :farm, false, false, now()),
  ('rep-cli-5', 'Rep L5 cmd+fact',  '79000005', :farm, false, false, now()),
- ('rep-cli-6', 'Rep L6 paiement',  '79000006', :farm, false, false, now());
+ ('rep-cli-6', 'Rep L6 paiement',  '79000006', :farm, false, false, now()),
+ ('rep-cli-7', 'Rep L7 cmd annulee', '79000007', :farm, false, false, now()),
+ ('rep-cli-8', 'Rep L8 fact annulee', '79000008', :farm, false, false, now());
 
 -- ---------------------------------------------------------------------------------
 -- L1 : commande 100 œufs à 1000, acompte 40000, deux livraisons de 30 (0 puis 5000
@@ -152,6 +157,41 @@ INSERT INTO transactions (unique_id, ref, date, type, montant, categorie, statut
  ('rep-tx-6', 'REP-011', '2026-09-10', 'ENTREE', 3000, 'Paiement client', 'VALIDE', 'MANUEL',
   'Avance versée', (SELECT id FROM clients WHERE unique_id='rep-cli-6'), :farm, :admin, false, false, now());
 
+-- ---------------------------------------------------------------------------------
+-- L7 : acompte 40000 sur une commande, commande annulée et acompte remboursé (40000),
+-- puis plus tard une vente à crédit de 50000 (rien reçu). Ancien solde :
+-- -40000 + 40000 + 50000 = 50000. Le remboursement doit consommer l'acompte (reçu
+-- avant lui), pas laisser la vente l'absorber (sinon solde 10000).
+INSERT INTO commandes (unique_id, client_id, magasin_id, type, quantite, quantite_livree, prix_unitaire_estime, montant_estime,
+                       montant_acompte, date_commande, statut, vente_unique_id, cree_par_id, farm_id, removed, archive, created_at) VALUES
+ ('rep-cmd-7', (SELECT id FROM clients WHERE unique_id='rep-cli-7'), :magasin, 'OEUFS', 40, 0, 1000, 40000,
+  40000, '2026-08-01', 'ANNULEE', NULL, :admin, :farm, false, false, now());
+INSERT INTO transactions (unique_id, ref, date, type, montant, categorie, statut, source_type, description,
+                          client_id, farm_id, cree_par_id, removed, archive, created_at) VALUES
+ ('rep-tx-7a', 'REP-012', '2026-08-01', 'ENTREE', 40000, 'Acompte client', 'VALIDE', 'MANUEL',
+  'Acompte sur commande — 40 (OEUFS)', (SELECT id FROM clients WHERE unique_id='rep-cli-7'), :farm, :admin, false, false, now()),
+ ('rep-tx-7b', 'REP-013', '2026-08-05', 'SORTIE', 40000, 'Remboursement au client', 'VALIDE', 'MANUEL',
+  'Commande annulée, acompte rendu', (SELECT id FROM clients WHERE unique_id='rep-cli-7'), :farm, :admin, false, false, now());
+INSERT INTO ventes_oeufs (unique_id, date, montant, montant_rapporte, quantite_oeufs, prix_unitaire, type_oeuf,
+                          client_id, farm_id, magasin_id, cree_par_id, removed, archive, created_at) VALUES
+ ('rep-vo-7', '2026-09-01', 50000, 0, 50, 1000, 'BON', (SELECT id FROM clients WHERE unique_id='rep-cli-7'), :farm, :magasin, :vendeur, false, false, now());
+
+-- ---------------------------------------------------------------------------------
+-- L8 : vente 20000 (5000 rapportés), facture FAC-REP-0003 payée 15000 via marquerPayee
+-- (recopié : 5000 -> 20000), puis facture ANNULEE (entre le déploiement et la reprise).
+-- La recopie doit être retirée quand même. Ancien solde : (20000-5000) - 15000 = 0.
+INSERT INTO ventes_oeufs (unique_id, date, montant, montant_rapporte, quantite_oeufs, prix_unitaire, type_oeuf,
+                          client_id, farm_id, magasin_id, cree_par_id, removed, archive, created_at) VALUES
+ ('rep-vo-8', '2026-09-02', 20000, 20000, 20, 1000, 'BON', (SELECT id FROM clients WHERE unique_id='rep-cli-8'), :farm, :magasin, :vendeur, false, false, now());
+INSERT INTO factures (unique_id, numero_facture, client_id, farm_id, date_emission, source_type, source_unique_id, description,
+                      quantite, prix_unitaire, montant_total, montant_paye, statut, legacy, motif_annulation, cree_par_id, removed, archive, created_at) VALUES
+ ('rep-fac-3', 'FAC-REP-0003', (SELECT id FROM clients WHERE unique_id='rep-cli-8'), :farm, '2026-09-02', 'VENTE_OEUFS', 'rep-vo-8',
+  '20 œufs', 20, 1000, 20000, 15000, 'ANNULEE', false, 'Erreur de facturation', :admin, false, false, now());
+INSERT INTO transactions (unique_id, ref, date, type, montant, categorie, statut, source_type, description,
+                          client_id, farm_id, cree_par_id, removed, archive, created_at) VALUES
+ ('rep-tx-8', 'REP-014', '2026-09-06', 'ENTREE', 15000, 'Remboursement client', 'VALIDE', 'MANUEL',
+  'Paiement facture FAC-REP-0003', (SELECT id FROM clients WHERE unique_id='rep-cli-8'), :farm, :admin, false, false, now());
+
 -- Vente SANS client avec montant rapporté : ne doit pas être touchée par la reprise.
 INSERT INTO ventes_oeufs (unique_id, date, montant, montant_rapporte, quantite_oeufs, prix_unitaire, type_oeuf,
                           client_id, farm_id, magasin_id, cree_par_id, removed, archive, created_at) VALUES
@@ -161,7 +201,8 @@ INSERT INTO ventes_oeufs (unique_id, date, montant, montant_rapporte, quantite_o
 INSERT INTO soldes_client (unique_id, client_id, farm_id, solde, removed, archive, created_at)
 SELECT 'rep-sc-' || c.unique_id, c.id, :farm, v.solde, false, false, now()
 FROM clients c JOIN (VALUES ('rep-cli-1', 15000.0), ('rep-cli-2', 0.0), ('rep-cli-3', -4000.0),
-                            ('rep-cli-4', 5000.0), ('rep-cli-5', 0.0), ('rep-cli-6', -3000.0)) v(uid, solde)
+                            ('rep-cli-4', 5000.0), ('rep-cli-5', 0.0), ('rep-cli-6', -3000.0),
+                            ('rep-cli-7', 50000.0), ('rep-cli-8', 0.0)) v(uid, solde)
   ON v.uid = c.unique_id;
 
 COMMIT;

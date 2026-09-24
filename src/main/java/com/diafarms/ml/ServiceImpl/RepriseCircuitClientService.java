@@ -17,6 +17,8 @@ import com.diafarms.ml.commons.CalculImputation;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.*;
 import com.diafarms.ml.models.*;
+import com.diafarms.ml.repository.ImputationPaiementRepo;
+import com.diafarms.ml.repository.PaiementClientRepo;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.TransactionService;
 
@@ -45,13 +47,18 @@ public class RepriseCircuitClientService {
     private final CompteClientService compteClientService;
     private final TransactionService transactionService;
     private final LogsServices logs;
+    private final PaiementClientRepo paiementRepo;
+    private final ImputationPaiementRepo imputationRepo;
 
     public RepriseCircuitClientService(PlatformTransactionManager txManager, CompteClientService compteClientService,
-                                       TransactionService transactionService, LogsServices logs) {
+                                       TransactionService transactionService, LogsServices logs,
+                                       PaiementClientRepo paiementRepo, ImputationPaiementRepo imputationRepo) {
         this.txTemplate = new TransactionTemplate(txManager);
         this.compteClientService = compteClientService;
         this.transactionService = transactionService;
         this.logs = logs;
+        this.paiementRepo = paiementRepo;
+        this.imputationRepo = imputationRepo;
     }
 
     private static double nz(Double v) { return v == null ? 0.0 : v; }
@@ -67,16 +74,32 @@ public class RepriseCircuitClientService {
         boolean plusieurs = farms.size() > 1;
         for (Farm farm : farms) {
             Long farmId = farm.getId();
-            String prefixe = plusieurs ? "[" + farm.getNom() + "] " : "";
-            txTemplate.executeWithoutResult(status -> {
-                traiterFerme(farmId, rapport, prefixe);
-                if (executer) {
-                    if (lanceur != null) logs.addLogs(lanceur.getId(), farmId, "Farm",
-                            "Reprise du circuit de l'argent client exécutée");
-                } else {
-                    status.setRollbackOnly(); // simulation : rien n'est écrit
-                }
-            });
+            String nomFerme = farm.getNom() != null && !farm.getNom().isBlank() ? farm.getNom() : farm.getUniqueId();
+            String prefixe = plusieurs ? "[" + nomFerme + "] " : "";
+            // Rapport partiel par ferme, fusionné seulement si la ferme aboutit : un échec
+            // (rollback de toute la ferme) ne laisse ni compteurs ni lignes trompeurs.
+            RepriseRapportDTO partiel = new RepriseRapportDTO();
+            try {
+                txTemplate.executeWithoutResult(status -> {
+                    traiterFerme(farmId, partiel, prefixe);
+                    if (executer) {
+                        if (lanceur != null) logs.addLogs(lanceur.getId(), farmId, "Farm",
+                                "Reprise du circuit de l'argent client exécutée");
+                    } else {
+                        status.setRollbackOnly(); // simulation : rien n'est écrit
+                    }
+                });
+            } catch (RuntimeException e) {
+                rapport.getAvertissements().add("Ferme " + nomFerme
+                        + " : échec, rien n'a été appliqué pour cette ferme — " + e.getMessage());
+                continue;
+            }
+            rapport.getLignes().addAll(partiel.getLignes());
+            rapport.getAvertissements().addAll(partiel.getAvertissements());
+            rapport.setPaiementsCrees(rapport.getPaiementsCrees() + partiel.getPaiementsCrees());
+            rapport.setRemboursementsCrees(rapport.getRemboursementsCrees() + partiel.getRemboursementsCrees());
+            rapport.setRecopiesFacturesRetirees(rapport.getRecopiesFacturesRetirees() + partiel.getRecopiesFacturesRetirees());
+            rapport.setVentesConverties(rapport.getVentesConverties() + partiel.getVentesConverties());
         }
         return rapport;
     }
@@ -126,11 +149,14 @@ public class RepriseCircuitClientService {
         rapport.setVentesConverties(rapport.getVentesConverties() + ventes[0]);
         rapport.setPaiementsCrees(rapport.getPaiementsCrees() + ventes[1]);
 
-        // 7. Imputations : ventes d'abord (idempotent), puis les remboursements repris
-        // sur ce qui reste (un remboursement n'a jamais porté que sur une avance).
-        for (Suivi s : suivis.values()) compteClientService.imputer(s.client);
+        // 7. Imputations. Les remboursements repris D'ABORD, dans l'ordre des dates, chacun
+        // sur l'argent reçu À SA DATE (paiements datés au plus tard du remboursement, moins
+        // ce que les remboursements précédents ont déjà pris) : sinon des ventes
+        // postérieures absorberaient l'avance qui a réellement été rendue, et le
+        // remboursement disparaîtrait de la dette. PUIS les ventes (imputer, idempotent).
         remboursements.sort(Comparator.comparing(RemboursementClient::getDate).thenComparing(RemboursementClient::getId));
         for (RemboursementClient r : remboursements) imputerRemboursement(r, suivis, avert, prefixe);
+        for (Suivi s : suivis.values()) compteClientService.imputer(s.client);
 
         // 8. Rapport par client.
         for (Suivi s : suivis.values()) {
@@ -220,7 +246,11 @@ public class RepriseCircuitClientService {
                 .setParameter("manuel", SourceTransaction.MANUEL).getResultList();
         List<Transaction> out = new ArrayList<>();
         for (Transaction t : brutes) {
-            if (t.getInitialisation() != null && Boolean.TRUE.equals(t.getInitialisation().getRemoved())) continue;
+            if (t.getInitialisation() != null && Boolean.TRUE.equals(t.getInitialisation().getRemoved())) {
+                avert.add(prefixe + "Transaction " + t.getRef() + " (" + t.getCategorie() + ", " + fcfa(nz(t.getMontant()))
+                        + ", " + t.getClient().getNom() + ", " + t.getDate() + ") supprimée : ignorée.");
+                continue;
+            }
             if (t.getStatut() == StatutTransaction.REJETE) {
                 avert.add(prefixe + "Transaction " + t.getRef() + " (" + t.getCategorie() + ", " + fcfa(nz(t.getMontant()))
                         + ", " + t.getClient().getNom() + ", " + t.getDate() + ") rejetée : ignorée.");
@@ -348,27 +378,27 @@ public class RepriseCircuitClientService {
                 .setParameter("f", farmId).getResultList();
         int n = 0;
         for (Facture f : factures) {
-            if (f.getStatut() != Facture.StatutFacture.ANNULEE) {
-                // Même libellé que l'ancien marquerPayee : "Paiement facture <numéro>". Chaque
-                // paiement a été recopié tel quel dans montantRapporte au moment où il a été
-                // saisi : on compte donc aussi les transactions rejetées/supprimées depuis.
-                String libelle = PREFIXE_FACTURE + f.getNumeroFacture();
-                List<Transaction> txs = em.createQuery(
-                        "SELECT t FROM Transaction t WHERE t.client.id = :c AND t.type = :e AND t.description LIKE :d",
-                        Transaction.class)
-                        .setParameter("c", f.getClient().getId()).setParameter("e", TypeTransaction.ENTREE)
-                        .setParameter("d", libelle + "%").getResultList();
-                double recopie = r2(txs.stream()
-                        .filter(t -> t.getDescription().equals(libelle) || t.getDescription().startsWith(libelle + " "))
-                        .mapToDouble(t -> nz(t.getMontant())).sum());
-                Suivi s = suivi(suivis, f.getClient());
-                if (Math.abs(recopie - nz(f.getMontantPaye())) >= 0.01) {
-                    avert.add(prefixe + "Facture " + f.getNumeroFacture() + " : paiements trouvés " + fcfa(recopie)
-                            + " ≠ montant payé enregistré " + fcfa(nz(f.getMontantPaye())) + " (on retire les paiements trouvés).");
-                }
-                if (recopie > 0) {
-                    if (retirerDeLaVente(f, recopie, s, avert, prefixe)) n++;
-                }
+            // Indépendant du statut actuel : une facture payée puis ANNULEE a quand même eu
+            // ses paiements recopiés dans montantRapporte. Même libellé que l'ancien
+            // marquerPayee : "Paiement facture <numéro>". Chaque paiement a été recopié tel
+            // quel au moment où il a été saisi : on compte donc aussi les transactions
+            // rejetées/supprimées depuis.
+            String libelle = PREFIXE_FACTURE + f.getNumeroFacture();
+            List<Transaction> txs = em.createQuery(
+                    "SELECT t FROM Transaction t WHERE t.client.id = :c AND t.type = :e AND t.description LIKE :d",
+                    Transaction.class)
+                    .setParameter("c", f.getClient().getId()).setParameter("e", TypeTransaction.ENTREE)
+                    .setParameter("d", libelle + "%").getResultList();
+            double recopie = r2(txs.stream()
+                    .filter(t -> t.getDescription().equals(libelle) || t.getDescription().startsWith(libelle + " "))
+                    .mapToDouble(t -> nz(t.getMontant())).sum());
+            Suivi s = suivi(suivis, f.getClient());
+            if (Math.abs(recopie - nz(f.getMontantPaye())) >= 0.01) {
+                avert.add(prefixe + "Facture " + f.getNumeroFacture() + " : paiements trouvés " + fcfa(recopie)
+                        + " ≠ montant payé enregistré " + fcfa(nz(f.getMontantPaye())) + " (on retire les paiements trouvés).");
+            }
+            if (recopie > 0) {
+                if (retirerDeLaVente(f, recopie, s, avert, prefixe)) n++;
             }
             f.setLegacy(true);
             em.merge(f);
@@ -482,7 +512,7 @@ public class RepriseCircuitClientService {
 
     private void imputerRemboursement(RemboursementClient r, Map<Long, Suivi> suivis, List<String> avert, String prefixe) {
         Client c = r.getClient();
-        List<CalculImputation.Source> sources = compteClientService.sourcesDisponibles(c);
+        List<CalculImputation.Source> sources = sourcesALaDate(c, r.getDate());
         double dispo = r2(sources.stream().mapToDouble(s -> Math.max(0, s.reste())).sum());
         double pris = r2(Math.min(dispo, r.getMontant()));
         if (pris > 0) {
@@ -494,9 +524,22 @@ public class RepriseCircuitClientService {
         double manque = r2(r.getMontant() - pris);
         if (manque > 0) {
             String msg = "Remboursement du " + r.getDate() + " (" + fcfa(r.getMontant()) + ") à " + c.getNom()
-                    + " : avance disponible " + fcfa(pris) + ", " + fcfa(manque) + " non couverts par des paiements.";
+                    + " : argent reçu disponible à cette date " + fcfa(pris) + ", " + fcfa(manque) + " non couverts par des paiements.";
             avert.add(prefixe + msg);
             suivi(suivis, c).notes.add(msg);
         }
+    }
+
+    /** Argent du client encore libre, reçu au plus tard à cette date (plus anciens
+     * d'abord, comme CompteClientService.sourcesDisponibles). */
+    private List<CalculImputation.Source> sourcesALaDate(Client c, java.time.LocalDate date) {
+        List<CalculImputation.Source> sources = new ArrayList<>();
+        for (PaiementClient p : paiementRepo.findActifsByClientId(c.getId())) {
+            if (date != null && p.getDate() != null && p.getDate().isAfter(date)) continue;
+            double reste = r2(p.getMontant() - nz(imputationRepo.sumActivesByPaiementId(p.getId())));
+            if (reste > 0) sources.add(new CalculImputation.Source(p.getUniqueId(), reste,
+                    p.getCommande() != null ? p.getCommande().getUniqueId() : null, p.getVenteCibleUniqueId()));
+        }
+        return sources;
     }
 }
