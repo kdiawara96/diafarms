@@ -255,7 +255,8 @@ public class ClientServiceImpl implements ClientService {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
         }
         Client client = clientRepo.findByUniqueId(uniqueId);
-        if (client == null) {
+        if (client == null || client.getFarm() == null
+                || !client.getFarm().getId().equals(currentUser.getFarm().getId())) {
             throw new IllegalArgumentException("Client introuvable : " + uniqueId);
         }
         Long farmId = currentUser.getFarm().getId();
@@ -372,7 +373,10 @@ public class ClientServiceImpl implements ClientService {
             throw new IllegalArgumentException("Le montant payé doit être positif.");
         }
         Client client = clientRepo.findByUniqueId(uniqueId);
-        if (client == null) throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        if (client == null || client.getFarm() == null
+                || !client.getFarm().getId().equals(currentUser.getFarm().getId())) {
+            throw new IllegalArgumentException("Client introuvable : " + uniqueId);
+        }
         OriginePaiement origine = "Acompte client".equals(categorie) ? OriginePaiement.ACOMPTE
                 : (description != null && description.startsWith("Paiement facture")) ? OriginePaiement.FACTURE
                 : OriginePaiement.REGLEMENT;
@@ -403,7 +407,8 @@ public class ClientServiceImpl implements ClientService {
             throw new IllegalArgumentException("Le montant remboursé doit être positif.");
         }
         Client client = clientRepo.findByUniqueId(uniqueId);
-        if (client == null) {
+        if (client == null || client.getFarm() == null
+                || !client.getFarm().getId().equals(currentUser.getFarm().getId())) {
             throw new IllegalArgumentException("Client introuvable : " + uniqueId);
         }
 
