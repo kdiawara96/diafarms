@@ -780,3 +780,22 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   UNIQUE sur les uniqueId (collision résiduelle → 409).
 - **SQL** : `docs/sql/2026-09-25_pesees.sql` — rien à faire (tables nouvelles), requête de
   vérification seulement. Tests : `scripts/scenarios-pesees.sh` (33 assertions ; utilise `compta@t.local` pour le refus de rôle).
+
+## Mise à jour 2026-09-25 (pesées depuis le web + journal)
+
+- **Web** (ADMIN, SUPER_ADMIN, RESPONSABLE, PRODUCTION ; même verrou projet que la synchro) :
+  `POST /pesees/sessions` {projetUniqueId, nombreParDefaut} ; `POST /sessions/{uid}/pesees`
+  {nombreSujets, poidsKg} ; `PUT /sessions/{uid}/pesees/{peseeUid}` ; `POST
+  /sessions/{uid}/pesees/{peseeUid}/annuler` ; `POST /sessions/{uid}/terminer` {dateFin?}. Chacune
+  renvoie le SessionPeseeDTO complet. Ajout/modif/annulation seulement EN_COURS.
+- **Journal** : `SessionPeseeEvenement` (table `sessions_pesee_evenements`), une ligne par action
+  web (CREATION/AJOUT/MODIFICATION/ANNULATION/TERMINAISON_WEB) avec phrase lisible ; la synchro
+  mobile n'en écrit jamais. DTO : `evenements[]`, `version`, `origine` ; pesée : `origine`, `modifiee`.
+- **version** (compteur simple, pas @Version JPA) : +1 à chaque action web ou synchro ayant changé
+  quelque chose ; le téléphone la compare pour prévenir l'utilisateur.
+- **Synchro** : le serveur prime toujours. Session TERMINEE sur le serveur → 200 sans rien écrire,
+  les nouvelles pesées du téléphone listées dans `peseesRefusees` (plus de 400 « terminée » en
+  synchro) ; statut EN_COURS/TERMINEE demandé ignoré. Bornes ajoutées (synchro et web) : 1–10 000
+  sujets, poids > 0 après arrondi à 3 déc., ≤ 100 000 kg.
+- **SQL** : `docs/sql/2026-09-25_pesees_web.sql` — rien à faire (table et colonnes nouvelles,
+  nullables ou avec défaut). Tests : `scripts/scenarios-pesees.sh` (59 assertions).

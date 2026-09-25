@@ -22,6 +22,11 @@ public interface SessionPeseeRepo extends JpaRepository<SessionPesee, Long> {
 
     Optional<SessionPesee> findByUniqueId(String uniqueId);
 
+    // Scalaire (ne charge pas la session dans le contexte) : on verrouille le projet
+    // AVANT de lire la session.
+    @Query("SELECT s.projet.id FROM SessionPesee s WHERE s.uniqueId = :uniqueId AND s.farm.id = :farmId")
+    Optional<Long> findProjetIdByUniqueIdAndFarm(@Param("uniqueId") String uniqueId, @Param("farmId") Long farmId);
+
     // Sérialise les synchronisations d'un même projet : deux envois simultanés de la même
     // session (renvoi après réponse perdue) ne doivent ni créer deux sessions ni
     // dupliquer des pesées.

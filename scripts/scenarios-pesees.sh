@@ -38,6 +38,9 @@ psql_run() {
 
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 
+# jval "expression python sur d" → valeur tirée de la dernière réponse
+jval() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$TMP/body" "$1"; }
+
 # check "libellé" "expression python sur d (réponse JSON) et code (statut HTTP)"
 check() {
   local label="$1" expr="$2"
@@ -67,6 +70,12 @@ post_sync() { # $1 = corps JSON, $2 = jeton facultatif (défaut : admin)
   curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/pesees/sessions/sync" \
     -H "Authorization: Bearer ${2:-$TOKEN}" -H 'Content-Type: application/json' \
     -H 'X-Client-Type: mobile' -d "$1" > "$TMP/code"
+}
+
+web() { # $1 = méthode, $2 = chemin relatif à BASE, $3 = corps JSON (ou ""), $4 = jeton facultatif
+  curl -s -o "$TMP/body" -w '%{http_code}' -X "$1" "$BASE$2" \
+    -H "Authorization: Bearer ${4:-$TOKEN}" -H 'Content-Type: application/json' \
+    -H 'X-Client-Type: web' ${3:+-d "$3"} > "$TMP/code"
 }
 
 get() { # $1 = chemin relatif à BASE
@@ -175,18 +184,21 @@ check "TERMINEE avec dateFin $FIN" \
 
 echo "== 7. Renvoi identique de la session terminée"
 post_sync "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A")"
-check "200, inchangée" \
-  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'].startswith('$FIN') and len(d['data']['pesees']) == 3 and d['data']['nombreTotalSujets'] == 5"
+check "200, inchangée, peseesRefusees vide" \
+  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'].startswith('$FIN') and len(d['data']['pesees']) == 3 and d['data']['nombreTotalSujets'] == 5 and d['data']['peseesRefusees'] == []"
+V_S1="$(jval "d['data']['version']")"
 
-echo "== 8. Nouvelle pesée après la fin"
+echo "== 8. Nouvelle pesée après la fin (depuis le 2026-09-25 web : 200 + peseesRefusees)"
 post_sync "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A;$P4|2|4.0|$T4|false")"
-check "400 « session terminée »" \
-  "code == 400 and 'terminée' in ' '.join(d.get('errors') or [])"
+check "200, peseesRefusees = [P4], rien d'écrit (3 pesées, 5 sujets, version inchangée)" \
+  "code == 200 and d['data']['peseesRefusees'] == ['$P4'] and len(d['data']['pesees']) == 3 and d['data']['nombreTotalSujets'] == 5 and d['data']['version'] == $V_S1"
 post_sync "$(payload "$S1" "$PROJET" EN_COURS "" "$PES3A")"
-check "400 aussi pour une réouverture (statut EN_COURS)" "code == 400"
-post_sync "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A;$(uuid)|2|4.0|$T4|true")"
-check "nouvelle pesée DÉJÀ annulée après la fin : 400 « session terminée » (pas 500)" \
-  "code == 400 and 'terminée' in ' '.join(d.get('errors') or [])"
+check "réouverture demandée (statut EN_COURS) : 200, reste TERMINEE" \
+  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['peseesRefusees'] == [] and d['data']['version'] == $V_S1"
+PDA="$(uuid)"
+post_sync "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A;$PDA|2|4.0|$T4|true")"
+check "nouvelle pesée DÉJÀ annulée après la fin : 200, dans peseesRefusees (pas 500)" \
+  "code == 200 and d['data']['peseesRefusees'] == ['$PDA'] and len(d['data']['pesees']) == 3"
 
 echo "== 9. Terminer une session vide"
 S2="$(uuid)"
@@ -268,6 +280,102 @@ check "contient S1 (date = dateFin, moyenne 2.08, 5 sujets), uniquement des sess
   "code == 200 and any(e['sessionUniqueId'] == '$S1' and e['date'].startswith('$FIN') and e['poidsMoyenKg'] == 2.08 and e['nombreTotalSujets'] == 5 for e in d['data']) and not any(e['sessionUniqueId'] == '$S4' for e in d['data'])"
 get "/pesees/evolution?projetUniqueId=$AUTRE_PROJET"
 check "projet d'une autre ferme : 400" "code == 400"
+
+# ---------------------------------------------------------------------------
+# Web + journal (2026-09-25) : session menée depuis le web, puis synchro du téléphone
+# ---------------------------------------------------------------------------
+echo "== 14. Web : ouverture d'une session"
+web POST /pesees/sessions "{\"projetUniqueId\": \"$PROJET\", \"nombreParDefaut\": 3}"
+check "200, EN_COURS, origine WEB, version 1, événement CREATION_WEB, uniqueId serveur" \
+  "code == 200 and d['data']['statut'] == 'EN_COURS' and d['data']['origine'] == 'WEB' and d['data']['version'] == 1 and [e['type'] for e in d['data']['evenements']] == ['CREATION_WEB'] and len(d['data']['uniqueId']) == 36 and d['data']['nombreParDefaut'] == 3 and d['data']['peseesRefusees'] == []"
+WS="$(jval "d['data']['uniqueId']")"
+
+echo "== 15. Web : deux pesées 3/6.3 et 3/6.7"
+web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 3, "poidsKg": 6.3}'
+check "200, 1 pesée origine WEB non modifiée, version 2" \
+  "code == 200 and len(d['data']['pesees']) == 1 and d['data']['pesees'][0]['origine'] == 'WEB' and d['data']['pesees'][0]['modifiee'] is False and d['data']['version'] == 2"
+W1="$(jval "d['data']['pesees'][0]['uniqueId']")"
+web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 3, "poidsKg": 6.7}'
+check "6 sujets, 13.0 kg, 2.167, version 3, événement « Pesée n°2 ajoutée : 3 sujets 6,7 kg par … »" \
+  "code == 200 and d['data']['nombreTotalSujets'] == 6 and d['data']['poidsTotalKg'] == 13.0 and d['data']['poidsMoyenKg'] == 2.167 and d['data']['version'] == 3 and d['data']['evenements'][-1]['type'] == 'AJOUT_WEB' and d['data']['evenements'][-1]['description'].startswith('Pesée n°2 ajoutée : 3 sujets 6,7 kg par ')"
+W2="$(jval "[p for p in d['data']['pesees'] if p['uniqueId'] != '$W1'][0]['uniqueId']")"
+web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 3, "poidsKg": 0.0004}'
+check "poids nul après arrondi à 3 déc. : 400" "code == 400 and 'supérieur à 0' in ' '.join(d.get('errors') or [])"
+web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 0, "poidsKg": 5}'
+check "nombreSujets 0 : 400" "code == 400"
+
+echo "== 16. Web : correction de la pesée 1 (6.3 → 6.1)"
+web PUT "/pesees/sessions/$WS/pesees/$W1" '{"nombreSujets": 3, "poidsKg": 6.1}'
+check "pesée 1 = 6.1, modifiee, 12.8 kg, version 4, événement MODIFICATION_WEB ancien/nouveau + phrase" \
+  "code == 200 and (lambda p: p['poidsKg'] == 6.1 and p['modifiee'] is True)([p for p in d['data']['pesees'] if p['uniqueId'] == '$W1'][0]) and d['data']['poidsTotalKg'] == 12.8 and d['data']['version'] == 4 and (lambda e: e['type'] == 'MODIFICATION_WEB' and e['peseeUniqueId'] == '$W1' and e['ancienNombre'] == 3 and e['ancienPoids'] == 6.3 and e['nouveauNombre'] == 3 and e['nouveauPoids'] == 6.1 and e['description'].startswith('Pesée n°1 modifiée : 3 sujets 6,3 kg → 3 sujets 6,1 kg par ') and e['parNom'])(d['data']['evenements'][-1])"
+web PUT "/pesees/sessions/$WS/pesees/$W1" '{"nombreSujets": 3, "poidsKg": 6.1}'
+check "même valeur renvoyée : 200 sans nouvel événement ni nouvelle version" \
+  "code == 200 and d['data']['version'] == 4 and len(d['data']['evenements']) == 4"
+
+echo "== 17. Web : annulation de la pesée 2"
+web POST "/pesees/sessions/$WS/pesees/$W2/annuler" ""
+check "pesée 2 annulée, 3 sujets 6.1 kg, version 5, événement ANNULATION_WEB" \
+  "code == 200 and [p for p in d['data']['pesees'] if p['uniqueId'] == '$W2'][0]['annulee'] is True and d['data']['nombreTotalSujets'] == 3 and d['data']['poidsTotalKg'] == 6.1 and d['data']['version'] == 5 and d['data']['evenements'][-1]['type'] == 'ANNULATION_WEB' and d['data']['evenements'][-1]['peseeUniqueId'] == '$W2'"
+web PUT "/pesees/sessions/$WS/pesees/$W2" '{"nombreSujets": 3, "poidsKg": 6.0}'
+check "modifier une pesée annulée : 400" "code == 400 and 'annulée' in ' '.join(d.get('errors') or [])"
+
+echo "== 18. Synchro du téléphone sur la session web (valeur ancienne pour la pesée 1, pesée 2 absente, 1 nouvelle)"
+M1="$(uuid)"; TM="$(date +%Y-%m-%dT%H:%M:%S)"
+post_sync "$(payload "$WS" "$PROJET" EN_COURS "" "$W1|3|6.3|$TM|false;$M1|3|6.5|$TM|false")"
+check "200 : pesée 1 garde 6.1 (serveur prime), pesée 2 toujours là et annulée, M1 acceptée (MOBILE), 6 sujets 12.6 kg, version 6, aucun événement ajouté" \
+  "code == 200 and [p for p in d['data']['pesees'] if p['uniqueId'] == '$W1'][0]['poidsKg'] == 6.1 and [p for p in d['data']['pesees'] if p['uniqueId'] == '$W2'][0]['annulee'] is True and [p for p in d['data']['pesees'] if p['uniqueId'] == '$M1'][0]['origine'] == 'MOBILE' and len(d['data']['pesees']) == 3 and d['data']['nombreTotalSujets'] == 6 and d['data']['poidsTotalKg'] == 12.6 and d['data']['version'] == 6 and len(d['data']['evenements']) == 5 and d['data']['peseesRefusees'] == [] and d['data']['origine'] == 'WEB'"
+post_sync "$(payload "$WS" "$PROJET" EN_COURS "" "$W1|3|6.3|$TM|false;$M1|3|6.5|$TM|false")"
+check "renvoi identique : version inchangée (6)" "code == 200 and d['data']['version'] == 6"
+
+echo "== 19. Web : terminer"
+web POST "/pesees/sessions/$WS/terminer" ""
+check "TERMINEE, dateFin renseignée, version 7, événement TERMINAISON_WEB" \
+  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'] and d['data']['version'] == 7 and d['data']['evenements'][-1]['type'] == 'TERMINAISON_WEB' and d['data']['evenements'][-1]['description'].startswith('Session terminée : 6 sujets, 12,6 kg, poids moyen 2,1 kg par ')"
+
+echo "== 20. Synchro du téléphone après la terminaison web"
+M2="$(uuid)"
+post_sync "$(payload "$WS" "$PROJET" EN_COURS "" "$W1|3|6.3|$TM|false;$M1|3|6.5|$TM|false;$M2|2|4.4|$TM|false")"
+check "200, peseesRefusees = [M2], reste TERMINEE, 3 pesées, version 7" \
+  "code == 200 and d['data']['peseesRefusees'] == ['$M2'] and d['data']['statut'] == 'TERMINEE' and len(d['data']['pesees']) == 3 and d['data']['version'] == 7"
+post_sync "$(payload "$WS" "$PROJET" TERMINEE "" "$W1|3|6.3|$TM|false;$M1|3|6.5|$TM|false")"
+check "téléphone envoie TERMINEE sur une session déjà TERMINEE : 200, inchangée, peseesRefusees vide" \
+  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['peseesRefusees'] == [] and d['data']['version'] == 7"
+
+echo "== 21. Journal et détail"
+get "/pesees/sessions/$WS"
+check "détail : 6 événements dans l'ordre CREATION, AJOUT, AJOUT, MODIFICATION, ANNULATION, TERMINAISON, dates croissantes, version 7" \
+  "code == 200 and [e['type'] for e in d['data']['evenements']] == ['CREATION_WEB', 'AJOUT_WEB', 'AJOUT_WEB', 'MODIFICATION_WEB', 'ANNULATION_WEB', 'TERMINAISON_WEB'] and (lambda ds: ds == sorted(ds))([e['date'] for e in d['data']['evenements']]) and d['data']['version'] == 7 and all(e['uniqueId'] and e['parNom'] and e['description'] for e in d['data']['evenements'])"
+get "/pesees/sessions/list?projetUniqueId=$PROJET&statut=TERMINEE&page=0&size=100"
+check "liste : version et origine présentes" \
+  "code == 200 and any(s['uniqueId'] == '$WS' and s['origine'] == 'WEB' and s['version'] == 7 for s in d['data']['data']) and any(s['uniqueId'] == '$S1' and s['origine'] == 'MOBILE' for s in d['data']['data'])"
+
+echo "== 22. Web : refus"
+web PUT "/pesees/sessions/$WS/pesees/$W1" '{"nombreSujets": 3, "poidsKg": 6.0}'
+check "modifier sur session TERMINEE : 400 « terminée »" "code == 400 and 'terminée' in ' '.join(d.get('errors') or [])"
+web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 3, "poidsKg": 6.0}'
+check "ajouter sur session TERMINEE : 400" "code == 400 and 'terminée' in ' '.join(d.get('errors') or [])"
+web POST "/pesees/sessions/$WS/terminer" ""
+check "terminer deux fois : 400" "code == 400"
+web POST /pesees/sessions "{\"projetUniqueId\": \"$PROJET\", \"nombreParDefaut\": 2}"
+WV="$(jval "d['data']['uniqueId']")"
+web POST "/pesees/sessions/$WV/terminer" ""
+check "terminer une session web sans pesée : 400" "code == 400 and 'sans aucune pesée' in ' '.join(d.get('errors') or [])"
+web POST /pesees/sessions "{\"projetUniqueId\": \"$AUTRE_PROJET\", \"nombreParDefaut\": 2}"
+check "ouvrir sur le projet d'une autre ferme : 400" "code == 400"
+web POST /pesees/sessions "{\"projetUniqueId\": \"$PROJET_SUPPRIME\", \"nombreParDefaut\": 2}"
+check "ouvrir sur un projet supprimé : 400" "code == 400 and 'supprimé' in ' '.join(d.get('errors') or [])"
+web POST "/pesees/sessions/inexistante/pesees" '{"nombreSujets": 3, "poidsKg": 6.0}'
+check "session inconnue : 400" "code == 400 and 'introuvable' in ' '.join(d.get('errors') or [])"
+if [ -n "${TOKEN_COMPTA:-}" ]; then
+  web POST /pesees/sessions "{\"projetUniqueId\": \"$PROJET\", \"nombreParDefaut\": 3}" "$TOKEN_COMPTA"
+  check "COMPTABLE : ouvrir 400 « pas autorisé »" "code == 400 and 'autorisé' in ' '.join(d.get('errors') or [])"
+  web POST "/pesees/sessions/$WV/pesees" '{"nombreSujets": 3, "poidsKg": 6.0}' "$TOKEN_COMPTA"
+  check "COMPTABLE : ajouter 400 « pas autorisé »" "code == 400 and 'autorisé' in ' '.join(d.get('errors') or [])"
+  web POST "/pesees/sessions/$WV/terminer" "" "$TOKEN_COMPTA"
+  check "COMPTABLE : terminer 400 « pas autorisé »" "code == 400 and 'autorisé' in ' '.join(d.get('errors') or [])"
+else
+  echo "ECHEC  jeton COMPTABLE absent"; FAIL=$((FAIL+1))
+fi
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

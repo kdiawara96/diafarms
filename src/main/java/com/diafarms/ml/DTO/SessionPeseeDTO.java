@@ -31,6 +31,15 @@ public class SessionPeseeDTO {
     private Double poidsMoyenKg;
     private Integer nombrePesees;      // pesées non annulées
     private String creeParNom;
+    private Long version;              // incrémentée à chaque changement côté serveur
+    private String origine;            // MOBILE | WEB
     @Builder.Default
     private List<PeseeDTO> pesees = new ArrayList<>();
+    // Journal des actions web, chronologique (vide dans la liste).
+    @Builder.Default
+    private List<SessionPeseeEvenementDTO> evenements = new ArrayList<>();
+    // Synchro seulement : nouvelles pesées du téléphone NON enregistrées parce que la
+    // session est déjà terminée sur le serveur.
+    @Builder.Default
+    private List<String> peseesRefusees = new ArrayList<>();
 }

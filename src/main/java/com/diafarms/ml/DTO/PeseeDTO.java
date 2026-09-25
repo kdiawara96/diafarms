@@ -20,4 +20,6 @@ public class PeseeDTO {
     private LocalDateTime dateHeure;
     private Boolean annulee;
     private String creeParNom;
+    private String origine;   // MOBILE | WEB
+    private Boolean modifiee; // corrigée depuis le web
 }

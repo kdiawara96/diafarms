@@ -2,6 +2,8 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -11,9 +13,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,26 +27,37 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.EvolutionPoidsDTO;
 import com.diafarms.ml.DTO.PeseeDTO;
 import com.diafarms.ml.DTO.SessionPeseeDTO;
+import com.diafarms.ml.DTO.SessionPeseeEvenementDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.OriginePesee;
 import com.diafarms.ml.enums.StatutSessionPesee;
+import com.diafarms.ml.enums.TypeEvenementPesee;
 import com.diafarms.ml.models.Pesee;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.SessionPesee;
+import com.diafarms.ml.models.SessionPeseeEvenement;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.PeseeRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
+import com.diafarms.ml.repository.SessionPeseeEvenementRepo;
 import com.diafarms.ml.repository.SessionPeseeRepo;
 import com.diafarms.ml.request.others.SessionPeseeSyncRequest;
+import com.diafarms.ml.request.others.SessionPeseeWebRequest;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.SessionPeseeService;
 
 import lombok.RequiredArgsConstructor;
 
-// Sessions de pesée saisies hors ligne sur le téléphone puis synchronisées.
-// Principe : le téléphone renvoie toujours la session ENTIÈRE (identifiants UUID
+// Sessions de pesée saisies hors ligne sur le téléphone puis synchronisées, ou
+// menées directement depuis le web.
+// Synchro : le téléphone renvoie toujours la session ENTIÈRE (identifiants UUID
 // générés par lui) ; le serveur n'ajoute que les pesées nouvelles, n'accepte que
-// l'annulation (définitive) des pesées existantes et recalcule seul les totaux.
+// l'annulation (définitive) des pesées existantes et recalcule seul les totaux. Les
+// valeurs du serveur priment : une pesée corrigée ou ajoutée sur le web n'est jamais
+// écrasée ni supprimée par une synchro.
+// Web : création, ajout, correction, annulation, terminaison ; chaque action écrit un
+// événement (sessions_pesee_evenements) et incrémente la version de la session.
 @Service
 @RequiredArgsConstructor
 public class SessionPeseeImpl implements SessionPeseeService {
@@ -53,6 +68,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
     private final SessionPeseeRepo sessionRepo;
     private final PeseeRepo peseeRepo;
     private final ProjetsRepo projetsRepo;
+    private final SessionPeseeEvenementRepo evenementRepo;
     private final LogsServices logs;
     private final OtherService otherService;
 
@@ -123,6 +139,47 @@ public class SessionPeseeImpl implements SessionPeseeService {
         }
     }
 
+    static final int MAX_SUJETS_PAR_PESEE = 10_000;
+    static final double MAX_POIDS_PAR_PESEE_KG = 100_000.0;
+
+    // Contrôles communs à la synchro et au web ; renvoie le poids arrondi à 3 décimales.
+    private static double validerPesee(Integer nombreSujets, Double poidsKg) {
+        if (nombreSujets == null || nombreSujets < 1) {
+            throw new IllegalArgumentException("Le nombre de sujets d'une pesée doit être au moins 1.");
+        }
+        if (nombreSujets > MAX_SUJETS_PAR_PESEE) {
+            throw new IllegalArgumentException("Le nombre de sujets d'une pesée ne peut pas dépasser " + MAX_SUJETS_PAR_PESEE + ".");
+        }
+        if (poidsKg == null || poidsKg.isNaN() || poidsKg.isInfinite() || arrondi3(poidsKg) <= 0) {
+            throw new IllegalArgumentException("Le poids d'une pesée doit être supérieur à 0.");
+        }
+        double poids = arrondi3(poidsKg);
+        if (poids > MAX_POIDS_PAR_PESEE_KG) {
+            throw new IllegalArgumentException("Le poids d'une pesée ne peut pas dépasser 100 000 kg.");
+        }
+        return poids;
+    }
+
+    private static long version(SessionPesee s) {
+        return s.getVersion() != null ? s.getVersion() : 0L;
+    }
+
+    private static void incrementerVersion(SessionPesee s) {
+        s.setVersion(version(s) + 1);
+    }
+
+    private static final DecimalFormatSymbols FR = DecimalFormatSymbols.getInstance(Locale.FRANCE);
+
+    // 6.3 → "6,3" ; 2.1375 → "2,138".
+    private static String kg(Double v) {
+        return new DecimalFormat("0.###", FR).format(v != null ? v : 0.0);
+    }
+
+    private static String sujets(Integer n) {
+        int x = n != null ? n : 0;
+        return x + (x > 1 ? " sujets" : " sujet");
+    }
+
     private static boolean vrai(Boolean b) {
         return Boolean.TRUE.equals(b);
     }
@@ -190,17 +247,15 @@ public class SessionPeseeImpl implements SessionPeseeService {
         }
 
         if (!nouvelle && session.getStatut() == StatutSessionPesee.TERMINEE) {
-            // Renvoi identique (réponse perdue) : même ensemble de pesées, aucune nouvelle
-            // annulation, statut TERMINEE → on renvoie la session telle quelle.
-            boolean aucuneAnnulationNouvelle = recues.entrySet().stream()
-                    .noneMatch(e -> vrai(e.getValue().getAnnulee())
-                            && (parUid.get(e.getKey()) == null || !vrai(parUid.get(e.getKey()).getAnnulee())));
-            boolean identique = statutDemande == StatutSessionPesee.TERMINEE
-                    && inconnues.isEmpty()
-                    && recues.keySet().equals(parUid.keySet())
-                    && aucuneAnnulationNouvelle;
-            if (!identique) throw new IllegalArgumentException(MSG_TERMINEE);
-            return toDto(session, existantes);
+            // Session déjà terminée sur le serveur (par le téléphone lui-même ou depuis le
+            // web) : RIEN n'est écrit, la réponse (200) donne l'état du serveur. Les
+            // nouvelles pesées du téléphone sont listées dans peseesRefusees ; le statut
+            // demandé (EN_COURS ou TERMINEE), nombreParDefaut et les annulations de
+            // pesées existantes sont ignorés — le serveur prime.
+            List<String> refusees = recues.keySet().stream().filter(inconnues::contains).toList();
+            SessionPeseeDTO dto = toDto(session, existantes);
+            dto.setPeseesRefusees(new ArrayList<>(refusees));
+            return dto;
         }
 
         if (nouvelle) {
@@ -221,10 +276,12 @@ public class SessionPeseeImpl implements SessionPeseeService {
             session.setDateDebut(debut != null ? debut : LocalDateTime.now());
             session.setInitialisation(Initialisation.init());
         }
+        boolean defautChange = false;
         if (req.getNombreParDefaut() != null) {
             if (req.getNombreParDefaut() < 1) {
                 throw new IllegalArgumentException("Le nombre de sujets par défaut doit être au moins 1.");
             }
+            defautChange = !nouvelle && !Objects.equals(session.getNombreParDefaut(), req.getNombreParDefaut());
             session.setNombreParDefaut(req.getNombreParDefaut());
         } else if (session.getNombreParDefaut() == null) {
             session.setNombreParDefaut(1);
@@ -233,6 +290,8 @@ public class SessionPeseeImpl implements SessionPeseeService {
             session.setNombreTotalSujets(0);
             session.setPoidsTotalKg(0.0);
             session.setPoidsMoyenKg(0.0);
+            session.setOrigine(OriginePesee.MOBILE);
+            session.setVersion(0L);
             session = sessionRepo.save(session);
         }
 
@@ -252,12 +311,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
                 }
                 continue;
             }
-            if (item.getNombreSujets() == null || item.getNombreSujets() < 1) {
-                throw new IllegalArgumentException("Le nombre de sujets d'une pesée doit être au moins 1.");
-            }
-            if (item.getPoidsKg() == null || item.getPoidsKg().isNaN() || item.getPoidsKg() <= 0) {
-                throw new IllegalArgumentException("Le poids d'une pesée doit être supérieur à 0.");
-            }
+            double poids = validerPesee(item.getNombreSujets(), item.getPoidsKg());
             LocalDateTime dateHeure = parseDateHeure(item.getDateHeure(), "dateHeure");
             if (dateHeure == null) {
                 throw new IllegalArgumentException("La date et l'heure de la pesée sont obligatoires.");
@@ -266,9 +320,10 @@ public class SessionPeseeImpl implements SessionPeseeService {
             p.setUniqueId(e.getKey());
             p.setSession(session);
             p.setNombreSujets(item.getNombreSujets());
-            p.setPoidsKg(arrondi3(item.getPoidsKg()));
+            p.setPoidsKg(poids);
             p.setDateHeure(dateHeure);
             p.setAnnulee(vrai(item.getAnnulee()));
+            p.setOrigine(OriginePesee.MOBILE);
             p.setCreePar(user);
             p.setInitialisation(Initialisation.init());
             existantes.add(peseeRepo.save(p));
@@ -294,6 +349,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
             terminee = true;
         }
         if (!nouvelle) Initialisation.updateDate(session.getInitialisation());
+        if (nouvelle || ajoutees > 0 || annulees > 0 || terminee || defautChange) incrementerVersion(session);
         session = sessionRepo.save(session);
 
         if (nouvelle || ajoutees > 0 || annulees > 0 || terminee) {
@@ -306,11 +362,219 @@ public class SessionPeseeImpl implements SessionPeseeService {
             logs.addLogs(user.getId(), session.getId(), "SessionPesee", action.toString());
         }
 
-        existantes.sort((a, b) -> {
+        trier(existantes);
+        return toDto(session, existantes);
+    }
+
+    // Ordre d'affichage (et de numérotation « Pesée n°… ») : dateHeure puis id.
+    private static void trier(List<Pesee> pesees) {
+        pesees.sort((a, b) -> {
             int c = a.getDateHeure().compareTo(b.getDateHeure());
             return c != 0 ? c : Long.compare(a.getId(), b.getId());
         });
-        return toDto(session, existantes);
+    }
+
+    // ------------------------------------------------------------------ web
+
+    // Contexte d'une action web sur une session existante, obtenu SOUS le verrou du
+    // projet (même verrou que la synchro : une action web et une synchro du téléphone
+    // sur le même projet passent l'une après l'autre).
+    private record Ctx(Utilisateurs user, SessionPesee session, List<Pesee> pesees) {}
+
+    private Utilisateurs utilisateurSaisie() {
+        Utilisateurs user = getCurrentUserSafe();
+        farmIdOuErreur(user);
+        if (!peutSaisir(user)) {
+            throw new IllegalArgumentException("Vous n'êtes pas autorisé à saisir des pesées.");
+        }
+        return user;
+    }
+
+    private Ctx ouvrirPourEcriture(String sessionUid) {
+        Utilisateurs user = utilisateurSaisie();
+        Long farmId = user.getFarm().getId();
+        String uid = sessionUid != null ? sessionUid.trim() : "";
+        Long projetId = sessionRepo.findProjetIdByUniqueIdAndFarm(uid, farmId)
+                .orElseThrow(() -> new IllegalArgumentException("Session de pesée introuvable : " + sessionUid));
+        sessionRepo.lockProjet(projetId);
+        // Relue APRÈS le verrou : on voit ce qu'une synchro concurrente vient d'écrire.
+        SessionPesee session = sessionRepo.findByUniqueId(uid)
+                .filter(x -> !vrai(x.getInitialisation() != null ? x.getInitialisation().getRemoved() : null))
+                .orElseThrow(() -> new IllegalArgumentException("Session de pesée introuvable : " + sessionUid));
+        Projets projet = session.getProjet();
+        if (projet.getInitialisation() != null && vrai(projet.getInitialisation().getRemoved())) {
+            throw new IllegalArgumentException("Ce projet a été supprimé.");
+        }
+        List<Pesee> pesees = new ArrayList<>(peseeRepo.findBySessionIdOrdered(session.getId()));
+        return new Ctx(user, session, pesees);
+    }
+
+    private static void exigerEnCours(SessionPesee s) {
+        if (s.getStatut() == StatutSessionPesee.TERMINEE) throw new IllegalArgumentException(MSG_TERMINEE);
+    }
+
+    private static Pesee peseeDe(Ctx ctx, String peseeUid) {
+        String pid = peseeUid != null ? peseeUid.trim() : "";
+        return ctx.pesees().stream().filter(p -> p.getUniqueId().equals(pid)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Pesée introuvable dans cette session : " + peseeUid));
+    }
+
+    private static int numero(List<Pesee> pesees, Pesee p) {
+        return pesees.indexOf(p) + 1;
+    }
+
+    private void evenement(SessionPesee s, TypeEvenementPesee type, Pesee p, Integer ancienNombre, Double ancienPoids,
+                           Integer nouveauNombre, Double nouveauPoids, Utilisateurs par, String description) {
+        SessionPeseeEvenement e = new SessionPeseeEvenement();
+        e.setUniqueId(UUID.randomUUID().toString());
+        e.setSession(s);
+        e.setType(type);
+        e.setPeseeUniqueId(p != null ? p.getUniqueId() : null);
+        e.setAncienNombre(ancienNombre);
+        e.setAncienPoids(ancienPoids);
+        e.setNouveauNombre(nouveauNombre);
+        e.setNouveauPoids(nouveauPoids);
+        e.setPar(par);
+        e.setDate(LocalDateTime.now());
+        e.setDescription(description);
+        evenementRepo.save(e);
+        logs.addLogs(par.getId(), s.getId(), "SessionPesee", description);
+    }
+
+    // Recalcule les totaux, incrémente la version, enregistre et renvoie le DTO complet.
+    private SessionPeseeDTO enregistrer(Ctx ctx) {
+        SessionPesee s = ctx.session();
+        recalculer(s, ctx.pesees());
+        incrementerVersion(s);
+        Initialisation.updateDate(s.getInitialisation());
+        sessionRepo.save(s);
+        return toDto(s, ctx.pesees());
+    }
+
+    @Override
+    @Transactional
+    public SessionPeseeDTO creerWeb(SessionPeseeWebRequest req) {
+        if (req == null) throw new IllegalArgumentException("Requête vide.");
+        Utilisateurs user = utilisateurSaisie();
+        Projets projet = projetDeLaFerme(req.getProjetUniqueId(), user.getFarm().getId());
+        int parDefaut = req.getNombreParDefaut() != null ? req.getNombreParDefaut() : 1;
+        if (parDefaut < 1) throw new IllegalArgumentException("Le nombre de sujets par défaut doit être au moins 1.");
+        sessionRepo.lockProjet(projet.getId());
+
+        SessionPesee s = new SessionPesee();
+        s.setUniqueId(UUID.randomUUID().toString());
+        s.setProjet(projet);
+        s.setFarm(projet.getFarm());
+        s.setCreePar(user);
+        s.setStatut(StatutSessionPesee.EN_COURS);
+        s.setDateDebut(LocalDateTime.now());
+        s.setNombreParDefaut(parDefaut);
+        s.setNombreTotalSujets(0);
+        s.setPoidsTotalKg(0.0);
+        s.setPoidsMoyenKg(0.0);
+        s.setOrigine(OriginePesee.WEB);
+        s.setVersion(1L);
+        s.setInitialisation(Initialisation.init());
+        s = sessionRepo.save(s);
+        evenement(s, TypeEvenementPesee.CREATION_WEB, null, null, null, null, null, user,
+                "Session ouverte depuis le web (" + sujets(parDefaut) + " par défaut) pour le projet "
+                        + projet.getCode() + " par " + nom(user));
+        return toDto(s, new ArrayList<>());
+    }
+
+    @Override
+    @Transactional
+    public SessionPeseeDTO ajouterWeb(String sessionUid, SessionPeseeWebRequest req) {
+        if (req == null) throw new IllegalArgumentException("Requête vide.");
+        Ctx ctx = ouvrirPourEcriture(sessionUid);
+        exigerEnCours(ctx.session());
+        double poids = validerPesee(req.getNombreSujets(), req.getPoidsKg());
+        Pesee p = new Pesee();
+        p.setUniqueId(UUID.randomUUID().toString());
+        p.setSession(ctx.session());
+        p.setNombreSujets(req.getNombreSujets());
+        p.setPoidsKg(poids);
+        p.setDateHeure(LocalDateTime.now());
+        p.setAnnulee(false);
+        p.setOrigine(OriginePesee.WEB);
+        p.setModifiee(false);
+        p.setCreePar(ctx.user());
+        p.setInitialisation(Initialisation.init());
+        p = peseeRepo.save(p);
+        ctx.pesees().add(p);
+        trier(ctx.pesees());
+        evenement(ctx.session(), TypeEvenementPesee.AJOUT_WEB, p, null, null, p.getNombreSujets(), poids, ctx.user(),
+                "Pesée n°" + numero(ctx.pesees(), p) + " ajoutée : " + sujets(p.getNombreSujets()) + " " + kg(poids)
+                        + " kg par " + nom(ctx.user()));
+        return enregistrer(ctx);
+    }
+
+    @Override
+    @Transactional
+    public SessionPeseeDTO modifierWeb(String sessionUid, String peseeUid, SessionPeseeWebRequest req) {
+        if (req == null) throw new IllegalArgumentException("Requête vide.");
+        Ctx ctx = ouvrirPourEcriture(sessionUid);
+        exigerEnCours(ctx.session());
+        Pesee p = peseeDe(ctx, peseeUid);
+        if (vrai(p.getAnnulee())) throw new IllegalArgumentException("Cette pesée est annulée : elle ne peut plus être modifiée.");
+        double poids = validerPesee(req.getNombreSujets(), req.getPoidsKg());
+        Integer ancienNombre = p.getNombreSujets();
+        Double ancienPoids = p.getPoidsKg();
+        if (Objects.equals(ancienNombre, req.getNombreSujets()) && Objects.equals(ancienPoids, poids)) {
+            // Aucun changement : pas d'événement, pas de nouvelle version.
+            return toDto(ctx.session(), ctx.pesees());
+        }
+        p.setNombreSujets(req.getNombreSujets());
+        p.setPoidsKg(poids);
+        p.setModifiee(true);
+        Initialisation.updateDate(p.getInitialisation());
+        peseeRepo.save(p);
+        evenement(ctx.session(), TypeEvenementPesee.MODIFICATION_WEB, p, ancienNombre, ancienPoids, p.getNombreSujets(), poids,
+                ctx.user(), "Pesée n°" + numero(ctx.pesees(), p) + " modifiée : " + sujets(ancienNombre) + " " + kg(ancienPoids)
+                        + " kg → " + sujets(p.getNombreSujets()) + " " + kg(poids) + " kg par " + nom(ctx.user()));
+        return enregistrer(ctx);
+    }
+
+    @Override
+    @Transactional
+    public SessionPeseeDTO annulerWeb(String sessionUid, String peseeUid) {
+        Ctx ctx = ouvrirPourEcriture(sessionUid);
+        exigerEnCours(ctx.session());
+        Pesee p = peseeDe(ctx, peseeUid);
+        if (vrai(p.getAnnulee())) {
+            // Déjà annulée (double clic, renvoi) : réponse inchangée.
+            return toDto(ctx.session(), ctx.pesees());
+        }
+        p.setAnnulee(true);
+        Initialisation.updateDate(p.getInitialisation());
+        peseeRepo.save(p);
+        evenement(ctx.session(), TypeEvenementPesee.ANNULATION_WEB, p, p.getNombreSujets(), p.getPoidsKg(), null, null,
+                ctx.user(), "Pesée n°" + numero(ctx.pesees(), p) + " annulée (" + sujets(p.getNombreSujets()) + " "
+                        + kg(p.getPoidsKg()) + " kg) par " + nom(ctx.user()));
+        return enregistrer(ctx);
+    }
+
+    @Override
+    @Transactional
+    public SessionPeseeDTO terminerWeb(String sessionUid, SessionPeseeWebRequest req) {
+        Ctx ctx = ouvrirPourEcriture(sessionUid);
+        SessionPesee s = ctx.session();
+        exigerEnCours(s);
+        if (ctx.pesees().stream().allMatch(p -> vrai(p.getAnnulee()))) {
+            throw new IllegalArgumentException("Impossible de terminer une session sans aucune pesée.");
+        }
+        LocalDateTime fin = parseDateHeure(req != null ? req.getDateFin() : null, "dateFin");
+        if (fin == null) fin = LocalDateTime.now();
+        if (fin.isBefore(s.getDateDebut())) {
+            throw new IllegalArgumentException("La date de fin ne peut pas précéder la date de début de la session.");
+        }
+        recalculer(s, ctx.pesees());
+        s.setStatut(StatutSessionPesee.TERMINEE);
+        s.setDateFin(fin);
+        evenement(s, TypeEvenementPesee.TERMINAISON_WEB, null, null, null, null, null, ctx.user(),
+                "Session terminée : " + sujets(s.getNombreTotalSujets()) + ", " + kg(s.getPoidsTotalKg())
+                        + " kg, poids moyen " + kg(s.getPoidsMoyenKg()) + " kg par " + nom(ctx.user()));
+        return enregistrer(ctx);
     }
 
     // Totaux toujours recalculés depuis les pesées non annulées.
@@ -397,6 +661,8 @@ public class SessionPeseeImpl implements SessionPeseeService {
                 .poidsTotalKg(s.getPoidsTotalKg())
                 .poidsMoyenKg(s.getPoidsMoyenKg())
                 .creeParNom(nom(s.getCreePar()))
+                .version(version(s))
+                .origine(s.getOrigine() != null ? s.getOrigine().name() : OriginePesee.MOBILE.name())
                 .pesees(new ArrayList<>())
                 .build();
     }
@@ -411,6 +677,20 @@ public class SessionPeseeImpl implements SessionPeseeService {
                 .dateHeure(p.getDateHeure())
                 .annulee(vrai(p.getAnnulee()))
                 .creeParNom(nom(p.getCreePar()))
+                .origine(p.getOrigine() != null ? p.getOrigine().name() : OriginePesee.MOBILE.name())
+                .modifiee(vrai(p.getModifiee()))
+                .build()).toList());
+        dto.setEvenements(evenementRepo.findBySessionIdOrdered(s.getId()).stream().map(e -> SessionPeseeEvenementDTO.builder()
+                .uniqueId(e.getUniqueId())
+                .type(e.getType().name())
+                .peseeUniqueId(e.getPeseeUniqueId())
+                .ancienNombre(e.getAncienNombre())
+                .ancienPoids(e.getAncienPoids())
+                .nouveauNombre(e.getNouveauNombre())
+                .nouveauPoids(e.getNouveauPoids())
+                .description(e.getDescription())
+                .parNom(nom(e.getPar()))
+                .date(e.getDate())
                 .build()).toList());
         return dto;
     }

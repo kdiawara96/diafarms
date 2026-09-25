@@ -3,10 +3,13 @@ package com.diafarms.ml.models;
 import java.time.LocalDateTime;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.OriginePesee;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,8 +22,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Une pesée d'une session : nombreSujets pesés ensemble pour poidsKg. Jamais modifiée
-// une fois enregistrée ; seule l'annulation (false → true, définitive) est possible.
+// Une pesée d'une session : nombreSujets pesés ensemble pour poidsKg. La synchro mobile
+// ne la modifie jamais une fois enregistrée (seule l'annulation false → true, définitive,
+// est acceptée) ; le web peut corriger nombre/poids tant que la session est EN_COURS
+// (modifiee = true, trace dans sessions_pesee_evenements).
 @Entity
 @Table(name = "pesees")
 @Getter
@@ -56,6 +61,15 @@ public class Pesee {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
+
+    // null (pesées antérieures) = MOBILE.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private OriginePesee origine;
+
+    // Corrigée depuis le web (null = non).
+    @Column(name = "modifiee")
+    private Boolean modifiee;
 
     @Embedded
     private Initialisation initialisation;

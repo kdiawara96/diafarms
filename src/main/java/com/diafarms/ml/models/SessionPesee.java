@@ -3,6 +3,7 @@ package com.diafarms.ml.models;
 import java.time.LocalDateTime;
 
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.OriginePesee;
 import com.diafarms.ml.enums.StatutSessionPesee;
 
 import jakarta.persistence.Column;
@@ -81,6 +82,17 @@ public class SessionPesee {
 
     @Column(name = "poids_moyen_kg")
     private Double poidsMoyenKg;
+
+    // Incrémentée à chaque changement (action web ou synchro qui a modifié quelque
+    // chose) : le téléphone la compare pour savoir si la session a bougé côté serveur.
+    // Compteur simple, PAS un @Version JPA (pas de verrou optimiste).
+    @Column(name = "version", columnDefinition = "bigint default 0")
+    private Long version = 0L;
+
+    // null (sessions antérieures) = MOBILE.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private OriginePesee origine;
 
     @Embedded
     private Initialisation initialisation;
