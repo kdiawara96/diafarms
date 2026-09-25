@@ -222,7 +222,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteDiverse",
                     (removed ? "Suppression" : "Restauration") + " d'une vente diverse"
-                            + (removed ? " — motif : " + v.getMotifSuppression() : ""));
+                            + (removed ? ", motif : " + v.getMotifSuppression() : ""));
         }
         return removed ? "Vente supprimée." : "Vente récupérée.";
     }
@@ -245,7 +245,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteDiverse",
-                    "Demande de suppression d'une vente diverse — motif : " + motifValide);
+                    "Demande de suppression d'une vente diverse, motif : " + motifValide);
         }
         return VenteDiverseDTO.fromEntity(saved);
     }
@@ -266,7 +266,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteDiverse",
-                    "Suppression confirmée pour une vente diverse — motif : " + v.getMotifSuppression());
+                    "Suppression confirmée pour une vente diverse, motif : " + v.getMotifSuppression());
         }
         return VenteDiverseDTO.fromEntity(v);
     }

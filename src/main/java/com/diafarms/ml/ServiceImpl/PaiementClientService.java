@@ -191,7 +191,7 @@ public class PaiementClientService {
         paiementRepo.save(p);
         transactionService.setRemovedBySource(p.getUniqueId(), true);
         compteClientService.imputer(p.getClient()); // les autres paiements recouvrent si possible
-        if (u != null) logs.addLogs(u.getId(), p.getId(), "PaiementClient", "Paiement annulé — motif : " + motif);
+        if (u != null) logs.addLogs(u.getId(), p.getId(), "PaiementClient", "Paiement annulé, motif : " + motif);
         return PaiementClientDTO.fromEntity(p, 0);
     }
 
@@ -229,10 +229,10 @@ public class PaiementClientService {
         RemboursementClient saved = remboursementRepo.save(r);
         prises.forEach(a -> compteClientService.enregistrer(c, a));
         transactionService.createMouvementClient(TypeTransaction.SORTIE, c.getFarm(), c, saved.getMontant(),
-                "Remboursement au client", saved.getDate(), "Remboursement à " + c.getNom() + " — " + motif,
+                "Remboursement au client", saved.getDate(), "Remboursement à " + c.getNom() + " : " + motif,
                 SourceTransaction.REMBOURSEMENT_CLI, saved.getUniqueId(), u);
         if (u != null) logs.addLogs(u.getId(), saved.getId(), "RemboursementClient",
-                "Remboursement de " + saved.getMontant() + " FCFA à " + c.getNom() + " — motif : " + motif);
+                "Remboursement de " + saved.getMontant() + " FCFA à " + c.getNom() + ", motif : " + motif);
         return saved;
     }
 
@@ -254,7 +254,7 @@ public class PaiementClientService {
         remboursementRepo.save(r);
         transactionService.setRemovedBySource(r.getUniqueId(), true);
         compteClientService.imputer(r.getClient());
-        if (u != null) logs.addLogs(u.getId(), r.getId(), "RemboursementClient", "Remboursement annulé — motif : " + motif);
+        if (u != null) logs.addLogs(u.getId(), r.getId(), "RemboursementClient", "Remboursement annulé, motif : " + motif);
         return RemboursementClientDTO.fromEntity(r);
     }
 

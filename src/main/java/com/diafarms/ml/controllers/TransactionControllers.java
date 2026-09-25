@@ -159,7 +159,7 @@ public class TransactionControllers {
     public ResponseEntity<ApiResponse<TransactionDTO>> demanderSuppression(@PathVariable String uniqueId,
                                                                            @RequestBody(required = false) MotifSuppressionRequest request) {
         try {
-            return ApiResponse.createResponse("Demande de suppression envoyée — en attente de validation", HttpStatus.OK,
+            return ApiResponse.createResponse("Demande de suppression envoyée, en attente de validation", HttpStatus.OK,
                     service.demanderSuppression(uniqueId, request != null ? request.getMotif() : null), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));

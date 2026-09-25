@@ -79,8 +79,8 @@ public class SoinsImpl implements SoinsService {
         if (currentUser == null || currentUser.getFarm() == null) return;
         boolean vaccination = s.getType() == TypeSoin.VACCINATION;
         String description = vaccination
-                ? "Vaccin " + s.getProduit() + " (" + s.getQuantite() + " doses) — projet " + (s.getProjet() != null ? s.getProjet().getTitre() : "?")
-                : "Soins (" + s.getType() + " — " + s.getProduit() + ") — projet " + (s.getProjet() != null ? s.getProjet().getTitre() : "?");
+                ? "Vaccin " + s.getProduit() + " (" + s.getQuantite() + " doses), projet " + (s.getProjet() != null ? s.getProjet().getTitre() : "?")
+                : "Soins (" + s.getType() + " : " + s.getProduit() + "), projet " + (s.getProjet() != null ? s.getProjet().getTitre() : "?");
         transactionService.syncSortie(s.getProjet(), currentUser.getFarm(), s.getCoutTotal(),
                 vaccination ? "Vaccination" : "Soins", s.getDate(), description,
                 vaccination ? SourceTransaction.VACCINATION : SourceTransaction.SOINS,
@@ -119,7 +119,7 @@ public class SoinsImpl implements SoinsService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Soins",
-                    "Saisie de soins (" + saved.getType() + " — " + saved.getProduit() + ") pour le projet '" + projet.getTitre() + "'");
+                    "Saisie de soins (" + saved.getType() + " : " + saved.getProduit() + ") pour le projet '" + projet.getTitre() + "'");
         }
 
         return SoinsDTO.fromEntity(saved);

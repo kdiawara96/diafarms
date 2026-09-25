@@ -240,9 +240,9 @@ public class NotificationServiceImpl implements NotificationService {
         if (type == TypeStockMagasin.OEUFS) {
             long alveoles = disponible / OEUFS_PAR_ALVEOLE;
             int reste = disponible % OEUFS_PAR_ALVEOLE;
-            message = "Stock bas — " + m.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))";
+            message = "Stock bas : " + m.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))";
         } else {
-            message = "Stock bas — " + m.getNom() + " (" + disponible + " sujet(s) réformé(s) restant(s))";
+            message = "Stock bas : " + m.getNom() + " (" + disponible + " sujet(s) réformé(s) restant(s))";
         }
 
         result.add(NotificationDTO.builder()
@@ -279,7 +279,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .key("stock-magasin-stockage-" + m.getUniqueId())
                 .type("STOCK_MAGASIN_STOCKAGE")
                 .level(disponible <= 0 ? "CRITIQUE" : "WARNING")
-                .message("Stock bas — " + m.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))")
+                .message("Stock bas : " + m.getNom() + " (" + alveoles + " alvéole(s) + " + reste + " restant(s))")
                 .actionPath("/magasins")
                 .build());
         }
@@ -295,10 +295,10 @@ public class NotificationServiceImpl implements NotificationService {
         double dailyAvg = recent / RECENT_CONSO_WINDOW_DAYS;
 
         if (restant <= 0) {
-            result.add(stockNotif(p, "CRITIQUE", "Stock d'aliment épuisé — " + p.getCode()));
+            result.add(stockNotif(p, "CRITIQUE", "Stock d'aliment épuisé : " + p.getCode()));
         } else if (dailyAvg > 0 && restant / dailyAvg < STOCK_WARNING_DAYS_THRESHOLD) {
             long jours = Math.round(restant / dailyAvg);
-            result.add(stockNotif(p, "WARNING", "Stock d'aliment faible — " + p.getCode() + " (~" + jours + " j restants)"));
+            result.add(stockNotif(p, "WARNING", "Stock d'aliment faible : " + p.getCode() + " (~" + jours + " j restants)"));
         }
     }
 
@@ -308,9 +308,9 @@ public class NotificationServiceImpl implements NotificationService {
         double taux = (morts * 100.0) / p.getNbSujets();
 
         if (taux >= MORTALITE_CRITIQUE_PCT) {
-            result.add(mortaliteNotif(p, "CRITIQUE", "Mortalité cumulée élevée — " + p.getCode() + " (" + round1(taux) + "%)"));
+            result.add(mortaliteNotif(p, "CRITIQUE", "Mortalité cumulée élevée : " + p.getCode() + " (" + round1(taux) + "%)"));
         } else if (taux >= MORTALITE_WARNING_PCT) {
-            result.add(mortaliteNotif(p, "WARNING", "Mortalité cumulée à surveiller — " + p.getCode() + " (" + round1(taux) + "%)"));
+            result.add(mortaliteNotif(p, "WARNING", "Mortalité cumulée à surveiller : " + p.getCode() + " (" + round1(taux) + "%)"));
         }
     }
 
@@ -337,21 +337,21 @@ public class NotificationServiceImpl implements NotificationService {
                 case DAILY_WARNING, DAILY_CRITICAL -> {
                     if (weather.temperatureC() >= seuil) {
                         result.add(meteoNotif(p, "temp-" + cfg.getThresholdKey(), level,
-                                "Température élevée (" + round1(weather.temperatureC()) + "°C) — " + p.getCode()
+                                "Température élevée (" + round1(weather.temperatureC()) + "°C), " + p.getCode()
                                         + " (seuil " + round1(seuil) + "°C)"));
                     }
                 }
                 case CUMULATIVE_CRITICAL -> {
                     if (weather.humidityPct() >= seuil) {
                         result.add(meteoNotif(p, "humidite-max", level,
-                                "Humidité élevée (" + round1(weather.humidityPct()) + "%) — " + p.getCode()
+                                "Humidité élevée (" + round1(weather.humidityPct()) + "%), " + p.getCode()
                                         + " (seuil " + round1(seuil) + "%)"));
                     }
                 }
                 case WEEKLY_CRITICAL -> {
                     if (weather.humidityPct() <= seuil) {
                         result.add(meteoNotif(p, "humidite-min", level,
-                                "Humidité faible (" + round1(weather.humidityPct()) + "%) — " + p.getCode()
+                                "Humidité faible (" + round1(weather.humidityPct()) + "%), " + p.getCode()
                                         + " (seuil " + round1(seuil) + "%)"));
                     }
                 }
@@ -377,14 +377,14 @@ public class NotificationServiceImpl implements NotificationService {
 
         if (joursRestants < 0) {
             result.add(echeanceNotif(p, "CRITIQUE",
-                "Date de fin dépassée de " + Math.abs(joursRestants) + " jour(s) — " + p.getCode()));
+                "Date de fin dépassée de " + Math.abs(joursRestants) + " jour(s), " + p.getCode()));
             return;
         }
 
         long seuilJours = Math.max(1, Math.round(dureeTotale * ECHEANCE_WARNING_MIN_PCT));
         if (joursRestants <= seuilJours) {
             result.add(echeanceNotif(p, "WARNING",
-                "Fin de projet proche (" + joursRestants + " jour(s) restant(s)) — " + p.getCode()));
+                "Fin de projet proche (" + joursRestants + " jour(s) restant(s)), " + p.getCode()));
         }
     }
 

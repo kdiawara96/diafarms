@@ -118,7 +118,7 @@ public class EntretienImpl implements EntretienService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Entretien",
-                    "Saisie d'entretien (" + saved.getType() + " — " + saved.getDescription() + ")");
+                    "Saisie d'entretien (" + saved.getType() + " : " + saved.getDescription() + ")");
         }
 
         return EntretienDTO.fromEntity(saved);

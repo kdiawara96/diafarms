@@ -370,7 +370,7 @@ public class CommandeServiceImpl implements CommandeService {
         c.setMotifFin(motif);
         Commande saved = commandeRepo.save(c);
         // Un éventuel trop-perçu reste en avance du client (visible sur sa fiche).
-        if (u != null) logs.addLogs(u.getId(), saved.getId(), "Commande", "Commande clôturée — motif : " + motif);
+        if (u != null) logs.addLogs(u.getId(), saved.getId(), "Commande", "Commande clôturée, motif : " + motif);
         return enrichir(saved);
     }
 
@@ -396,10 +396,10 @@ public class CommandeServiceImpl implements CommandeService {
                     .mapToDouble(CalculImputation.Source::reste).sum();
             if (disponible > 0) {
                 paiementClientService.rembourserInterne(c.getClient(), disponible, mode(modeBrut),
-                        "Annulation de la commande — " + motif, c);
+                        "Annulation de la commande : " + motif, c);
             }
         }
-        if (u != null) logs.addLogs(u.getId(), c.getId(), "Commande", "Commande annulée — motif : " + motif);
+        if (u != null) logs.addLogs(u.getId(), c.getId(), "Commande", "Commande annulée, motif : " + motif);
         return enrichir(c);
     }
 
@@ -513,7 +513,7 @@ public class CommandeServiceImpl implements CommandeService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
                     "Livraison de " + quantite + " (" + c.getType() + ") pour " + c.getClient().getNom()
-                            + (complete ? " — commande entièrement livrée" : " — reste " + (c.getQuantite() - quantiteLivreeApres)));
+                            + (complete ? ", commande entièrement livrée" : ", reste " + (c.getQuantite() - quantiteLivreeApres)));
         }
         return enrichir(saved);
     }
@@ -546,7 +546,7 @@ public class CommandeServiceImpl implements CommandeService {
         ensureCanDelete(currentUser);
         Commande c = commandeFarmScoped(uniqueId, currentUser);
         if (!c.getInitialisation().getRemoved() && c.getStatut() != StatutCommande.EN_ATTENTE) {
-            throw new IllegalArgumentException("Seule une commande en attente peut être supprimée — annulez-la plutôt.");
+            throw new IllegalArgumentException("Seule une commande en attente peut être supprimée : annulez-la plutôt.");
         }
         c.getInitialisation().setRemoved(!c.getInitialisation().getRemoved());
         commandeRepo.save(c);

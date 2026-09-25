@@ -91,7 +91,7 @@ public class EmailServiceImpl implements EmailService {
             helper.setFrom(fromAddress, "DiaFarms");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
-            helper.setSubject("Abonnement à valider — " + farmNom);
+            helper.setSubject("Abonnement à valider : " + farmNom);
             helper.setText(
                     buildAbonnementAValiderPlainTextBody(farmNom, montant, periodicite, moyenPaiement, reference),
                     buildAbonnementAValiderHtmlBody(farmNom, montant, periodicite, moyenPaiement, reference));
@@ -237,7 +237,7 @@ public class EmailServiceImpl implements EmailService {
 
             L'équipe DiaFarms
             """.formatted(farmNom, montant, periodicite, moyenPaiement,
-                    (reference == null || reference.isBlank()) ? "—" : reference);
+                    (reference == null || reference.isBlank()) ? "-" : reference);
     }
 
     private String buildAbonnementAValiderHtmlBody(String farmNom, Double montant,
@@ -256,7 +256,7 @@ public class EmailServiceImpl implements EmailService {
               <p>L'équipe DiaFarms</p>
             </div>
             """.formatted(farmNom, montant, periodicite, moyenPaiement,
-                    (reference == null || reference.isBlank()) ? "—" : reference);
+                    (reference == null || reference.isBlank()) ? "-" : reference);
     }
 
     private String buildAbonnementValidePlainTextBody(String fullName, String farmNom, LocalDate dateFin) {

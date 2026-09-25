@@ -200,7 +200,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         return lignes;
     }
 
-    /** " — Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
+    /** " · Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
      * encore de montant rapporté saisi ou si égal au théorique (rien à signaler). Même
      * convention de signe que SoldeVendeurServiceImpl.ajusterSolde : écart = théorique -
      * rapporté, positif = le vendeur doit de l'argent à la ferme. */
@@ -209,7 +209,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
             return "";
         }
         double ecart = montantTheorique - montantRapporte;
-        return String.format(Locale.FRANCE, " — Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
+        return String.format(Locale.FRANCE, " · Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
                 montantRapporte, montantTheorique, ecart > 0 ? "manque" : "surplus", Math.abs(ecart));
     }
 
@@ -542,7 +542,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs",
                     (removed ? "Suppression" : "Restauration") + " d'une vente d'œufs"
-                            + (removed ? " — motif : " + v.getMotifSuppression() : ""));
+                            + (removed ? ", motif : " + v.getMotifSuppression() : ""));
         }
 
         return removed ? "Vente supprimée." : "Vente récupérée.";
@@ -567,7 +567,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs",
-                    "Demande de suppression d'une vente d'œufs — motif : " + motifValide);
+                    "Demande de suppression d'une vente d'œufs, motif : " + motifValide);
         }
         return VenteOeufsDTO.fromEntity(saved);
     }
@@ -605,7 +605,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getQuantiteOeufs());
 
         if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs", "Suppression confirmée pour une vente d'œufs — motif : " + v.getMotifSuppression());
+            logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs", "Suppression confirmée pour une vente d'œufs, motif : " + v.getMotifSuppression());
         }
         return VenteOeufsDTO.fromEntity(v);
     }

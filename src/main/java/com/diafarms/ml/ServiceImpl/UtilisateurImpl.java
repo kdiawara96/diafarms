@@ -597,7 +597,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             u.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
         utilisateursRepo.save(u);
-        return "Compte archivé (il a déjà des données liées) — récupérable depuis la corbeille.";
+        return "Compte archivé (il a déjà des données liées), récupérable depuis la corbeille.";
     }
 
     @Override

@@ -177,14 +177,14 @@ public class VenteReformeImpl implements VenteReformeService {
 
             transactionService.createFromSource(
                     projet, farm, part.montant, "Vente réforme", saved.getDate(),
-                    "Vente réforme — " + part.quantite + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart,
+                    "Vente réforme : " + part.quantite + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart,
                     SourceTransaction.VENTE_REFORME, r.getUniqueId(), creePar
             );
         }
         return lignes;
     }
 
-    /** " — Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
+    /** " · Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
      * encore de montant rapporté saisi ou si égal au théorique — même helper que
      * VenteOeufsImpl (dupliqué, pas de base commune entre les deux services), même
      * convention de signe que SoldeVendeurServiceImpl.ajusterSolde. */
@@ -193,7 +193,7 @@ public class VenteReformeImpl implements VenteReformeService {
             return "";
         }
         double ecart = montantTheorique - montantRapporte;
-        return String.format(Locale.FRANCE, " — Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
+        return String.format(Locale.FRANCE, " · Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
                 montantRapporte, montantTheorique, ecart > 0 ? "manque" : "surplus", Math.abs(ecart));
     }
 
@@ -454,7 +454,7 @@ public class VenteReformeImpl implements VenteReformeService {
                 String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
                 for (VenteReformeRepartition ligne : lignesActuelles) {
                     transactionService.updateDescriptionBySource(ligne.getUniqueId(),
-                            "Vente réforme — " + ligne.getNombreSujetsAttribue() + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart);
+                            "Vente réforme : " + ligne.getNombreSujetsAttribue() + " sujet(s) (part de " + saved.getNombreSujets() + " vendus, magasin " + saved.getMagasin().getNom() + ")" + suffixeEcart);
                 }
             }
         }
@@ -520,7 +520,7 @@ public class VenteReformeImpl implements VenteReformeService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme",
                     (removed ? "Suppression" : "Restauration") + " d'une vente réforme"
-                            + (removed ? " — motif : " + v.getMotifSuppression() : ""));
+                            + (removed ? ", motif : " + v.getMotifSuppression() : ""));
         }
 
         return removed ? "Vente supprimée." : "Vente récupérée.";
@@ -545,7 +545,7 @@ public class VenteReformeImpl implements VenteReformeService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
-                    "Demande de suppression d'une vente réforme — motif : " + motifValide);
+                    "Demande de suppression d'une vente réforme, motif : " + motifValide);
         }
         return VenteReformeDTO.fromEntity(saved);
     }
@@ -583,7 +583,7 @@ public class VenteReformeImpl implements VenteReformeService {
         livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
 
         if (currentUser != null) {
-            logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme", "Suppression confirmée pour une vente réforme — motif : " + v.getMotifSuppression());
+            logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme", "Suppression confirmée pour une vente réforme, motif : " + v.getMotifSuppression());
         }
         return VenteReformeDTO.fromEntity(v);
     }

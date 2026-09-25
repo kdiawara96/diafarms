@@ -204,7 +204,7 @@ public class FactureServiceImpl implements FactureService {
 
     private Client verifierMemeClient(Client actuel, Client nouveau, String venteUid) {
         if (nouveau == null) {
-            throw new IllegalArgumentException("Cette vente n'a pas de client identifié — impossible de générer une facture.");
+            throw new IllegalArgumentException("Cette vente n'a pas de client identifié : impossible de générer une facture.");
         }
         if (actuel != null && !actuel.getId().equals(nouveau.getId())) {
             throw new IllegalArgumentException("Toutes les ventes doivent appartenir au même client (vente en cause : " + venteUid + ").");
@@ -274,7 +274,7 @@ public class FactureServiceImpl implements FactureService {
                 }
                 client = verifierMemeClient(client, ve.getClient(), v.getUniqueId());
                 lignesAGenerer.add(new LigneAGenerer(type, ve.getUniqueId(),
-                        "Vente d'œufs — " + ve.getQuantiteOeufs() + " unité(s)",
+                        "Vente d'œufs : " + ve.getQuantiteOeufs() + " unité(s)",
                         ve.getQuantiteOeufs(), ve.getPrixUnitaire(), nz(ve.getMontant())));
             } else {
                 VenteReforme ve = venteReformeRepo.findByUniqueId(v.getUniqueId())
@@ -284,7 +284,7 @@ public class FactureServiceImpl implements FactureService {
                 }
                 client = verifierMemeClient(client, ve.getClient(), v.getUniqueId());
                 lignesAGenerer.add(new LigneAGenerer(type, ve.getUniqueId(),
-                        "Vente de réforme — " + ve.getNombreSujets() + " sujet(s)",
+                        "Vente de réforme : " + ve.getNombreSujets() + " sujet(s)",
                         ve.getNombreSujets(), ve.getPrixUnitaire(), nz(ve.getMontant())));
             }
         }
@@ -456,7 +456,7 @@ public class FactureServiceImpl implements FactureService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Facture",
-                    "Facture " + saved.getNumeroFacture() + " annulée — motif : " + motif);
+                    "Facture " + saved.getNumeroFacture() + " annulée, motif : " + motif);
         }
         return toDto(saved);
     }
@@ -633,7 +633,7 @@ public class FactureServiceImpl implements FactureService {
                 document.add(new Paragraph(" "));
             }
 
-            Paragraph footer = new Paragraph("Cocorico — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            Paragraph footer = new Paragraph("Cocorico · document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
             document.add(footer);
 
             document.close();

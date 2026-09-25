@@ -51,7 +51,7 @@ public class AlimentationImpl implements AlimentationService {
     // en Comptabilité, la Transaction suit automatiquement coutTotal.
     private void syncTransaction(Alimentation a, Utilisateurs currentUser) {
         if (currentUser == null || currentUser.getFarm() == null) return;
-        String description = "Achat aliment : " + a.getNomAliment() + " (" + a.getQuantiteKg() + " kg) — projet "
+        String description = "Achat aliment : " + a.getNomAliment() + " (" + a.getQuantiteKg() + " kg), projet "
                 + (a.getProjet() != null ? a.getProjet().getTitre() : "?");
         // L'achat connaît son poulailler (facultatif) et son projet : la dépense les reprend
         // (poulailler de l'achat, site du projet) pour le suivi par poulailler / par site.

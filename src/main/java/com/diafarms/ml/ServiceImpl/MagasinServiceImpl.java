@@ -142,7 +142,7 @@ public class MagasinServiceImpl implements MagasinService {
                     throw new IllegalArgumentException(
                         "Ce magasin contient encore du stock non vendu (" +
                         stock.getOeufsDisponible() + " œuf(s), " + stock.getOeufsCassesDisponible() + " œuf(s) cassé(s), " +
-                        stock.getReformeDisponible() + " sujet(s) réformé(s)) — videz-le d'abord (vente ou transfert) avant de changer son type."
+                        stock.getReformeDisponible() + " sujet(s) réformé(s)) : videz-le d'abord (vente ou transfert) avant de changer son type."
                     );
                 }
             }

@@ -61,7 +61,7 @@ public class RaceImpl implements RaceServices {
         } else if (currentUser != null) {
             // Compte sans ferme (SUPER_ADMIN) : une race appartient forcément à une
             // ferme, impossible d'en créer une sans en avoir une.
-            throw new RuntimeException("Votre compte n'est rattaché à aucune ferme — impossible de créer une race.");
+            throw new RuntimeException("Votre compte n'est rattaché à aucune ferme : impossible de créer une race.");
         }
 
         Race savedRace = raceRepo.save(race);

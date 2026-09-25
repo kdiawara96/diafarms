@@ -121,7 +121,7 @@ public class ReformeImpl implements ReformeService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Reforme",
                     "Réforme de " + saved.getNombreSujets() + " sujet(s) pour le projet '" + projet.getTitre() + "'"
-                            + (saved.getCause() != null ? " — cause : " + saved.getCause() : ""));
+                            + (saved.getCause() != null ? ", cause : " + saved.getCause() : ""));
         }
 
         return ReformeDTO.fromEntity(saved);

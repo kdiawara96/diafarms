@@ -148,7 +148,7 @@ public class VenteListeImpl {
             d.setUnite(casse ? "œufs cassés" : "œufs");
             d.setPrixUnitaire(v.getPrixUnitaire());
             d.setDescription(v.getQuantiteOeufs() + " " + (casse ? "œufs cassés" : "œufs")
-                    + (v.getMagasin() != null ? " — magasin " + v.getMagasin().getNom() : ""));
+                    + (v.getMagasin() != null ? ", magasin " + v.getMagasin().getNom() : ""));
             d.setMagasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null);
             client(d, v.getClient());
             statutPaiement(d, v.getClient(), CibleImputation.VENTE_OEUFS, v.getUniqueId(), v.getMontant());
@@ -167,7 +167,7 @@ public class VenteListeImpl {
             d.setPrixUnitaire(v.getPrixUnitaire());
             d.setDescription(v.getNombreSujets() + " sujet(s) réformé(s)"
                     + (v.getPoidsTotalKg() != null ? ", " + v.getPoidsTotalKg() + " kg" : "")
-                    + (v.getMagasin() != null ? " — magasin " + v.getMagasin().getNom() : ""));
+                    + (v.getMagasin() != null ? ", magasin " + v.getMagasin().getNom() : ""));
             d.setMagasinNom(v.getMagasin() != null ? v.getMagasin().getNom() : null);
             client(d, v.getClient());
             statutPaiement(d, v.getClient(), CibleImputation.VENTE_REFORME, v.getUniqueId(), v.getMontant());

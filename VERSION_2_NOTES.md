@@ -804,3 +804,11 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   ramené à maintenant. Pesée nouvelle déjà annulée : aucune validation de valeurs.
 - **SQL** : `docs/sql/2026-09-25_pesees_web.sql` — rien à faire (table et colonnes nouvelles,
   nullables ou avec défaut). Tests : `scripts/scenarios-pesees.sh` (74 assertions).
+
+## Mise à jour 2026-09-25 (tirets retirés des textes visibles)
+
+- Plus aucun tiret cadratin ni demi-cadratin dans les chaînes du backend visibles par
+  l'utilisateur (messages d'erreur, logs « Logs système », descriptions de transactions,
+  notifications, lignes et pied de page des PDF, e-mails) : remplacés par « : », « , » ou « · » ;
+  le vide « — » de l'e-mail d'abonnement devient « - ». Les commentaires ne changent pas.
+  Les lignes DÉJÀ en base (transactions, logs, notifications) gardent l'ancien texte.

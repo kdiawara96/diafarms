@@ -213,7 +213,7 @@ public class SalaireServiceImpl implements SalaireService {
 
         Salaire s = salaireRepo.findByEmploye_UniqueIdAndFarm_Id(data.getEmployeUniqueId(), currentUser.getFarm().getId());
         if (s == null) {
-            throw new IllegalArgumentException("Aucun salaire de base défini pour cet employé — définissez-le d'abord.");
+            throw new IllegalArgumentException("Aucun salaire de base défini pour cet employé : définissez-le d'abord.");
         }
         if (paiementSalaireRepo.existsBySalaire_IdAndPeriode(s.getId(), data.getPeriode())) {
             throw new IllegalArgumentException("Le salaire de " + data.getPeriode() + " a déjà été payé pour " + s.getEmploye().getNom() + ".");
@@ -260,7 +260,7 @@ public class SalaireServiceImpl implements SalaireService {
 
         String description = (data.getDescription() != null && !data.getDescription().isBlank())
                 ? data.getDescription()
-                : "Salaire " + data.getPeriode() + " — " + s.getEmploye().getNom();
+                : "Salaire " + data.getPeriode() + ", " + s.getEmploye().getNom();
         transactionService.createSortieCommune(currentUser.getFarm(), montant, "Salaires", LocalDate.now(),
                 description, SourceTransaction.SALAIRE, saved.getUniqueId(), currentUser);
 
@@ -500,7 +500,7 @@ public class SalaireServiceImpl implements SalaireService {
                 document.add(new Paragraph(" "));
             }
 
-            Paragraph footer = new Paragraph("Cocorico — document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
+            Paragraph footer = new Paragraph("Cocorico · document généré le " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), PdfStyle.small());
             document.add(footer);
 
             document.close();

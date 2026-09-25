@@ -60,7 +60,7 @@ public class BatimentImpl implements BatimentServices {
         } else if (currentUser != null) {
             // Compte sans ferme (SUPER_ADMIN) : un bâtiment appartient forcément à
             // une ferme, impossible d'en créer un sans en avoir une.
-            throw new RuntimeException("Votre compte n'est rattaché à aucune ferme — impossible de créer un bâtiment.");
+            throw new RuntimeException("Votre compte n'est rattaché à aucune ferme : impossible de créer un bâtiment.");
         }
 
         Batiment savedBatiment = batimentRepo.save(batiment);

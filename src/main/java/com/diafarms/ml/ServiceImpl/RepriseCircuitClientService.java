@@ -100,7 +100,7 @@ public class RepriseCircuitClientService {
                 });
             } catch (RuntimeException e) {
                 rapport.getAvertissements().add("Ferme " + nomFerme
-                        + " : échec, rien n'a été appliqué pour cette ferme — " + e.getMessage());
+                        + " : échec, rien n'a été appliqué pour cette ferme (" + e.getMessage() + ")");
                 continue;
             }
             rapport.getLignes().addAll(partiel.getLignes());
@@ -642,7 +642,7 @@ public class RepriseCircuitClientService {
         p.setInitialisation(Initialisation.init());
         em.persist(p);
         transactionService.createMouvementClient(TypeTransaction.ENTREE, c.getFarm(), c, montant, "Paiement client", date,
-                "Paiement de " + c.getNom() + " (à la vente, " + ModePaiement.ESPECES + ") — reprise",
+                "Paiement de " + c.getNom() + " (à la vente, " + ModePaiement.ESPECES + "), reprise",
                 SourceTransaction.PAIEMENT_CLIENT, p.getUniqueId(), creePar);
     }
 

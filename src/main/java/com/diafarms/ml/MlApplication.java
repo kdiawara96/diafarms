@@ -107,7 +107,7 @@ public class MlApplication implements CommandLineRunner {
             SuperAdminSeed seed = loadSuperAdminSeed();
             if (seed == null) {
                 System.out.println("⚠ Aucun SUPER_ADMIN en base et " + SUPER_ADMIN_SEED_FILE
-                        + " introuvable/invalide — aucun compte créé, voir super-admin-seed.example.json.");
+                        + " introuvable/invalide : aucun compte créé, voir super-admin-seed.example.json.");
             } else {
                 Utilisateurs admin = new Utilisateurs();
                 admin.setUniqueId(UUID.randomUUID().toString());

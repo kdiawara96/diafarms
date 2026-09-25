@@ -98,7 +98,7 @@ public class MortaliteImpl implements MortaliteService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Mortalite",
                     "Saisie de mortalité (" + saved.getNombreMorts() + " sujets) pour le projet '" + projet.getTitre() + "'"
-                            + (saved.getCause() != null ? " — cause : " + saved.getCause() : ""));
+                            + (saved.getCause() != null ? ", cause : " + saved.getCause() : ""));
         }
 
         return MortaliteDTO.fromEntity(saved);

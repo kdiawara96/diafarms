@@ -159,14 +159,14 @@ public class ProjetImpl implements ProjetServices {
         Integer nbSujets = projet.getNbSujets();
         Double puSujet = projet.getPuSujet();
         Double montant = (nbSujets != null && puSujet != null) ? nbSujets * puSujet : null;
-        String description = "Achat sujets : " + (nbSujets != null ? nbSujets : 0) + " sujets — projet " + projet.getTitre();
+        String description = "Achat sujets : " + (nbSujets != null ? nbSujets : 0) + " sujets, projet " + projet.getTitre();
         transactionService.syncSortie(projet, currentUser.getFarm(), montant, "Achat sujets",
                 projet.getDebut(), description, SourceTransaction.PROJET_ACHAT_SUJETS, "SUJETS-" + projet.getUniqueId(), currentUser);
     }
 
     private void syncAutresCharges(Projets projet, Utilisateurs currentUser) {
         if (currentUser == null || currentUser.getFarm() == null) return;
-        String description = "Autres charges initiales — projet " + projet.getTitre();
+        String description = "Autres charges initiales, projet " + projet.getTitre();
         transactionService.syncSortie(projet, currentUser.getFarm(), projet.getAutresDepense(), "Autres charges",
                 projet.getDebut(), description, SourceTransaction.PROJET_CHARGES, "CHARGES-" + projet.getUniqueId(), currentUser);
     }
@@ -440,7 +440,7 @@ public class ProjetImpl implements ProjetServices {
 
             Alimentation savedAlimentation = alimentationRepo.save(alimentation);
             if (currentUser != null && currentUser.getFarm() != null) {
-                String descAliment = "Achat aliment : " + savedAlimentation.getNomAliment() + " (" + savedAlimentation.getQuantiteKg() + " kg) — projet " + savedProjet.getTitre();
+                String descAliment = "Achat aliment : " + savedAlimentation.getNomAliment() + " (" + savedAlimentation.getQuantiteKg() + " kg), projet " + savedProjet.getTitre();
                 transactionService.syncSortie(savedProjet, currentUser.getFarm(), savedAlimentation.getCoutTotal(), "Aliment",
                         savedAlimentation.getDateDistribution(), descAliment, SourceTransaction.ALIMENTATION, savedAlimentation.getUniqueId(), currentUser);
             }
@@ -474,7 +474,7 @@ public class ProjetImpl implements ProjetServices {
 
                 Soins savedVaccination = soinsRepo.save(vaccination);
                 if (currentUser != null && currentUser.getFarm() != null) {
-                    String descVaccin = "Vaccin " + savedVaccination.getProduit() + " (" + savedVaccination.getQuantite() + " doses) — projet " + savedProjet.getTitre();
+                    String descVaccin = "Vaccin " + savedVaccination.getProduit() + " (" + savedVaccination.getQuantite() + " doses), projet " + savedProjet.getTitre();
                     transactionService.syncSortie(savedProjet, currentUser.getFarm(), savedVaccination.getCoutTotal(), "Vaccination",
                             savedProjet.getDebut(), descVaccin, SourceTransaction.VACCINATION, savedVaccination.getUniqueId(), currentUser);
                 }

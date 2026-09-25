@@ -79,7 +79,7 @@ public class InvestissementServiceImpl implements InvestissementService {
     private void syncTransaction(Investissement inv, Projets projetDedie, Utilisateurs currentUser) {
         if (currentUser == null || currentUser.getFarm() == null) return;
         String description = "Achat investissement : " + inv.getNom() + " (" + inv.getCategorie() + ")"
-                + (inv.getFournisseur() != null && !inv.getFournisseur().isBlank() ? " — " + inv.getFournisseur() : "");
+                + (inv.getFournisseur() != null && !inv.getFournisseur().isBlank() ? ", fournisseur " + inv.getFournisseur() : "");
         transactionService.syncSortie(projetDedie, currentUser.getFarm(), inv.getMontant(), "Investissement",
                 inv.getDateAchat(), description, SourceTransaction.INVESTISSEMENT, inv.getUniqueId(), currentUser);
     }

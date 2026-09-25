@@ -614,7 +614,7 @@ public class TransactionServiceImpl implements TransactionService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), t.getId(), "Transaction",
                     (removed ? "Suppression" : "Restauration") + " de la transaction '" + t.getRef() + "'"
-                            + (removed ? " — motif : " + motifValide : ""));
+                            + (removed ? ", motif : " + motifValide : ""));
         }
 
         return removed ? "Transaction supprimée." : "Transaction récupérée.";
@@ -641,7 +641,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Transaction",
-                    "Demande de suppression de la transaction '" + saved.getRef() + "' — motif : " + motifValide);
+                    "Demande de suppression de la transaction '" + saved.getRef() + "', motif : " + motifValide);
         }
 
         return TransactionDTO.fromEntity(saved);
