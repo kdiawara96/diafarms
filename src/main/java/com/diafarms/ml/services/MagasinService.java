@@ -12,4 +12,7 @@ public interface MagasinService {
     String deleteOrRecover(String uniqueId);
     List<MagasinDTO> list(String type);
     StockMagasinDTO getStock(String uniqueId);
+    // Même calcul sans contrôle de ferme : réservé aux appelants internes qui ont
+    // déjà chargé le magasin dans la ferme de l'utilisateur (voir NotificationServiceImpl).
+    StockMagasinDTO stockDuMagasin(com.diafarms.ml.models.Magasin magasin);
 }

@@ -36,6 +36,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
     private final ConsommationAlimentRepo consommationRepo;
     private final AlimentationRepo alimentationRepo;
     private final ProjetsRepo projetsRepo;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
@@ -180,8 +181,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
     @Override
     @Transactional(readOnly = true)
     public StockAlimentDTO getStock(String projetUniqueId) {
-        Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+        Projets projet = projetsFerme.charger(projetUniqueId);
 
         Double acheteBrut = alimentationRepo.sumAcheteByProjetId(projet.getId());
         Double consommeBrut = consommationRepo.sumConsommeByProjetId(projet.getId());

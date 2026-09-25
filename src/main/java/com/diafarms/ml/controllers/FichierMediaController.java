@@ -71,6 +71,8 @@ public class FichierMediaController {
                     fichiers,
                     null
             );
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse(
                     "Erreur récupération fichiers",

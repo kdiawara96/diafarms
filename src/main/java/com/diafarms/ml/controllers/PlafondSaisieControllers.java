@@ -31,6 +31,7 @@ public class PlafondSaisieControllers {
 
     private final EffectifVivantHelper effectif;
     private final ProjetsRepo projetsRepo;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
     private final BatimentRepo batimentRepo;
 
     @GetMapping
@@ -39,10 +40,14 @@ public class PlafondSaisieControllers {
             @RequestParam(required = false) String batimentUniqueId,
             @RequestParam(required = false) String date) {
         try {
-            Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
-                    .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+            Projets projet = projetsFerme.charger(projetUniqueId);
             Batiment batiment = (batimentUniqueId != null && !batimentUniqueId.isBlank())
                     ? batimentRepo.findByUniqueId(batimentUniqueId) : null;
+            if (batiment != null) {
+                if (batiment.getFarm() == null || !batiment.getFarm().getId().equals(projet.getFarm().getId())) {
+                    throw new IllegalArgumentException("Bâtiment introuvable : " + batimentUniqueId);
+                }
+            }
             LocalDate jour = (date != null && !date.isBlank()) ? LocalDate.parse(date) : LocalDate.now();
 
             int plafond = effectif.plafond(projet, batiment);

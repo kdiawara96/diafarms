@@ -40,6 +40,7 @@ public class AlimentationImpl implements AlimentationService {
 
     private final AlimentationRepo alimentationRepo;
     private final ProjetsRepo projetsRepo;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
     private final BatimentRepo batimentRepo;
     private final ConsommationAlimentRepo consommationAlimentRepo;
     private final OtherService otherService;
@@ -101,8 +102,7 @@ public class AlimentationImpl implements AlimentationService {
     @Transactional
     public AlimentationDTO save(AlimentationCreate data, String uniqueIdProjet) {
         // 1. Vérifier le projet
-        Projets projet = projetsRepo.findByUniqueId(uniqueIdProjet)
-                .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'UID : " + uniqueIdProjet));
+        Projets projet = projetsFerme.charger(uniqueIdProjet);
 
         // 2. Récupérer l'utilisateur et sa ferme
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -272,6 +272,7 @@ public class AlimentationImpl implements AlimentationService {
     @Override
     @Transactional(readOnly = true)
     public List<AlimentationDTO> findByProjetUniqueId(String uniqueIdProjet) {
+        projetsFerme.charger(uniqueIdProjet);
         return alimentationRepo.findByProjetUniqueIdAndInitialisationRemovedFalse(uniqueIdProjet)
                 .stream()
                 .map(AlimentationDTO::fromEntityList)

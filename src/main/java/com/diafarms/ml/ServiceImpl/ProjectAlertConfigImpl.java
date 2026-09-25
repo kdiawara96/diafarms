@@ -34,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
 
     private final ProjetsRepo projetsRepository;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
     private final ProjectAlertConfigRepo alertConfigRepository;
     private final LogsServices logs;
     private final OtherService OtherService;
@@ -81,6 +82,7 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
     @Override 
     @Transactional(readOnly = true)
     public List<AlertCountDTO> getAlertStatsByProject(String uniqueId) {
+        projetsFerme.charger(uniqueId);
         // 1. Récupérer toutes les alertes actives du projet
         List<ProjectAlertConfig> activeAlerts = alertConfigRepository.findActiveAlertsByProjectUniqueId(uniqueId);
 
@@ -108,8 +110,7 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
     public List<ProjectAlertTableDTO> getAlertTableByProject(String uniqueId) {
 
         // Récupérer le projet
-        Projets projet = projetsRepository.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Projet introuvable avec l'uniqueId: " + uniqueId));
+        Projets projet = projetsFerme.charger(uniqueId);
 
         // Utilise ta requête existante avec JOIN FETCH
         List<ProjectAlertConfig> configs = alertConfigRepository.findByProjet(projet);
@@ -128,6 +129,7 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
         if (alertId != null) {
              ProjectAlertConfig alert = alertConfigRepository.findById(alertId)
                 .orElseThrow(() -> new RuntimeException("Alerte introuvable avec l'ID: " + alertId));
+             projetsFerme.verifier(alert.getProjet(), "Alerte introuvable avec l'ID: " + alertId);
 
         // Bascule le statut
         if (alert.getStatus() == AlertStatus.ACTIF) {
@@ -168,13 +170,17 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
     @Transactional
     public String updateAllAlertConfigs(List<UpdateAlertRequestDTO> requests, String uniqueId) {
         if (requests == null || requests.isEmpty() || uniqueId == null) return "Données invalides";
+        Projets projetCible = projetsFerme.charger(uniqueId);
       
         for (UpdateAlertRequestDTO req : requests) {
             
             Long id = req.getId();
             if (id != null) {
                 // 1. CAS GÉNÉRAL : L'alerte existe déjà (Mortalité, Météo, Alimentation ou Vaccin existant)
-                alertConfigRepository.findById(id).ifPresent(config -> {
+                alertConfigRepository.findById(id)
+                        // Seules les alertes de CE projet (donc de la ferme) sont modifiables.
+                        .filter(config -> config.getProjet() != null && config.getProjet().getId().equals(projetCible.getId()))
+                        .ifPresent(config -> {
                     // Mise à jour de l'état (Actif/Inactif)
                     config.setStatus(req.isEnabled() ? AlertStatus.ACTIF : AlertStatus.INACTIF);
                     
@@ -246,6 +252,9 @@ public class ProjectAlertConfigImpl implements ProjectAlertConfigService{
     public String remove(Long alertId) {
 
         if (alertId != null) {
+            ProjectAlertConfig aSupprimer = alertConfigRepository.findById(alertId)
+                    .orElseThrow(() -> new RuntimeException("Alerte introuvable avec l'ID: " + alertId));
+            projetsFerme.verifier(aSupprimer.getProjet(), "Alerte introuvable avec l'ID: " + alertId);
             Utilisateurs currentUser = null;
             try {
                 currentUser = OtherService.getCurrentUser();

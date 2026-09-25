@@ -95,7 +95,10 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
         TypeStockMagasin t = TypeStockMagasin.valueOf(type.toUpperCase());
         int total = stockTotalProjet(projet, t);
         int dejaTransfere = nz(magasinTransfertRepo.sumQuantiteByProjetIdAndType(projet.getId(), t));
-        return total - dejaTransfere;
+        // Jamais négatif : un transfert historique excédentaire (ex. œufs non
+        // utilisables transférés avant la règle commune) ne doit pas afficher un
+        // disponible négatif.
+        return Math.max(0, total - dejaTransfere);
     }
 
     /** Combien chaque projet a déposé dans CE magasin de stockage — pool "bon"
@@ -135,7 +138,13 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             throw new IllegalArgumentException("Magasin de stockage introuvable : " + magasinStockageUniqueId);
         }
         TypeStockMagasin t = (type == null || type.isBlank()) ? TypeStockMagasin.OEUFS : TypeStockMagasin.valueOf(type.toUpperCase());
-        return disponibleParProjetDansMagasinStockage(magasin, t).values().stream().mapToInt(Integer::intValue).sum();
+        return disponibleDansMagasinStockage(magasin, t);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int disponibleDansMagasinStockage(Magasin magasinStockage, TypeStockMagasin type) {
+        return disponibleParProjetDansMagasinStockage(magasinStockage, type).values().stream().mapToInt(Integer::intValue).sum();
     }
 
     @Override

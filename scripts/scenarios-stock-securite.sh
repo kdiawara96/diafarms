@@ -200,6 +200,49 @@ TITRE_PROPRE="$(psql_run "SELECT titre FROM projets WHERE unique_id = '$PROJET'"
 api PUT "/projets/update/$PROJET" "{\"titre\":\"$TITRE_PROPRE\"}"
 check "témoin : updateProjet sur son propre projet accepté" "code == 200"
 
+echo "== 7b. updateProjet avec le corps complet du formulaire web (EditProjectDialog)"
+# Mêmes champs que Diafarms_web/src/components/dialogs/EditProjectDialog.tsx :
+# race et les trois responsables toujours envoyés (ici : l'admin), siteUniqueId "" si aucun.
+ADMIN_ID="$(psql_run "SELECT id FROM utilisateurs WHERE email = '$ADMIN_EMAIL'")"
+CORPS_WEB="$(psql_run "SELECT json_build_object(
+  'titre', p.titre,
+  'responsableId', $ADMIN_ID, 'responsableProductionId', $ADMIN_ID, 'responsableFinanceId', $ADMIN_ID,
+  'dateDebut', p.date_debut, 'dateFinPrevue', p.date_fin_prevue,
+  'nbSujets', COALESCE(p.nb_sujets, 0), 'puSujet', COALESCE(p.pu_sujet, 0), 'objectif', p.objectif,
+  'raceId', p.race_id, 'fournisseursPoussins', p.fournisseurs_poussins,
+  'autresDepense', COALESCE(p.autres_depense, 0),
+  'siteUniqueId', COALESCE((SELECT s.unique_id FROM sites s WHERE s.id = p.site_id), ''))
+  FROM projets p WHERE p.unique_id = '$PROJET'")"
+RACE_AVANT="$(psql_run "SELECT race_id FROM projets WHERE unique_id = '$PROJET'")"
+api PUT "/projets/update/$PROJET" "$CORPS_WEB"
+check "corps web complet (race + 3 responsables de la ferme) accepté" "code == 200"
+check_sql "race inchangée et 3 responsables = admin" \
+  "SELECT race_id || '/' || responsable_user_id || '/' || production_user_id || '/' || finance_user_id FROM projets WHERE unique_id = '$PROJET'" \
+  "$RACE_AVANT/$ADMIN_ID/$ADMIN_ID/$ADMIN_ID"
+psql_run "INSERT INTO races (unique_id, nom, origine, type, farm_id)
+  SELECT 'stock-autre-race', 'Race autre ferme', 'Test', r.type, (SELECT id FROM farms WHERE unique_id = 'pesee-autre-ferme')
+  FROM races r WHERE r.id = $RACE_AVANT
+  AND NOT EXISTS (SELECT 1 FROM races WHERE unique_id = 'stock-autre-race')" >/dev/null
+AUTRE_RACE_ID="$(psql_run "SELECT id FROM races WHERE unique_id = 'stock-autre-race'")"
+CORPS_PIRATE="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); d["raceId"]=int(sys.argv[2]); print(json.dumps(d))' "$CORPS_WEB" "$AUTRE_RACE_ID")"
+api PUT "/projets/update/$PROJET" "$CORPS_PIRATE"
+check "race d'une autre ferme refusée (400)" "code == 400"
+check_sql "race du projet inchangée" "SELECT race_id FROM projets WHERE unique_id = '$PROJET'" "$RACE_AVANT"
+
+echo "== 7c. Lectures par projet d'une autre ferme"
+for chemin in "/consommations-aliment/stock/$AUTRE_PROJET" "/reformes/effectif/$AUTRE_PROJET" \
+    "/alimentations/list-by-projet/$AUTRE_PROJET" "/alertes/AlertCount/$AUTRE_PROJET" "/alertes/table/$AUTRE_PROJET" \
+    "/notifications/projet/$AUTRE_PROJET" "/files/projet/$AUTRE_PROJET" "/rapports/journalier/$AUTRE_PROJET" \
+    "/investissements/projets/$AUTRE_PROJET/cout-amortissement" "/magasin-transferts/disponible?projetUniqueId=$AUTRE_PROJET&type=OEUFS"; do
+  api GET "$chemin"
+  # 400 ou 404 selon l'endpoint : même réponse qu'un projet inexistant.
+  check "GET $chemin refusé comme introuvable" "code in (400, 404)"
+done
+api GET "/plafond-saisie?projetUniqueId=$AUTRE_PROJET"
+check "plafond de saisie sur le projet de l'autre ferme refusé (404 comme introuvable)" "code == 404"
+api GET "/consommations-aliment/stock/$PROJET"
+check "témoin : stock d'aliment de son propre projet accessible" "code == 200"
+
 echo "== 8. Autres ressources d'une autre ferme"
 api PUT "/magasins/update/$AUTRE_MAGASIN" '{"nom":"Piraté"}'
 check "modification d'un magasin de l'autre ferme refusée (400)" "code == 400"

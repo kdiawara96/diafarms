@@ -46,15 +46,23 @@ public class ProjetAlertController {
     // 1. Récupération pour le tableau
     @GetMapping("/table/{uniqueId}")
     public ResponseEntity<ApiResponse<List<ProjectAlertTableDTO>>> getAlertTable(@PathVariable String uniqueId) {
-        List<ProjectAlertTableDTO> result = services.getAlertTableByProject(uniqueId);
-        return ApiResponse.createResponse("Liste des alertes chargée", HttpStatus.OK, result, null);
+        try {
+            List<ProjectAlertTableDTO> result = services.getAlertTableByProject(uniqueId);
+            return ApiResponse.createResponse("Liste des alertes chargée", HttpStatus.OK, result, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(String.valueOf(e.getMessage())));
+        }
     }
 
     // 2. Toggle de l'état (Actif/Inactif)
     @PutMapping("/toggle/{alertId}")
     public ResponseEntity<ApiResponse<ProjectAlertTableDTO>> toggleAlert(@PathVariable Long alertId) {
-        ProjectAlertTableDTO updated = services.toggleAlertStatus(alertId);
-        return ApiResponse.createResponse("Statut de l'alerte mis à jour", HttpStatus.OK, updated, null);
+        try {
+            ProjectAlertTableDTO updated = services.toggleAlertStatus(alertId);
+            return ApiResponse.createResponse("Statut de l'alerte mis à jour", HttpStatus.OK, updated, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(String.valueOf(e.getMessage())));
+        }
     }
 
     @PutMapping("/bulk-update")
@@ -62,14 +70,22 @@ public class ProjetAlertController {
         @RequestBody List<UpdateAlertRequestDTO> requests, 
         @RequestParam String projetUniqueId) {
 
-         String  updated = services.updateAllAlertConfigs(requests, projetUniqueId);
-        return ApiResponse.createResponse("Configurations mises à jour avec succès", HttpStatus.OK, updated, null);
+        try {
+             String  updated = services.updateAllAlertConfigs(requests, projetUniqueId);
+            return ApiResponse.createResponse("Configurations mises à jour avec succès", HttpStatus.OK, updated, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(String.valueOf(e.getMessage())));
+        }
     }
 
     @DeleteMapping("/remove/{alertId}")
     public ResponseEntity<ApiResponse<String>> remove(@PathVariable Long alertId) {
-        String updated = services.remove(alertId);
-        return ApiResponse.createResponse("Suppression de l'alerte", HttpStatus.OK, updated, null);
+        try {
+            String updated = services.remove(alertId);
+            return ApiResponse.createResponse("Suppression de l'alerte", HttpStatus.OK, updated, null);
+        } catch (RuntimeException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(String.valueOf(e.getMessage())));
+        }
     }
 
 }

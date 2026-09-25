@@ -32,6 +32,8 @@ public class NotificationController {
     public ResponseEntity<ApiResponse<List<NotificationDTO>>> listForProjet(@PathVariable String projetUniqueId) {
         try {
             return ApiResponse.createResponse("Alertes du projet récupérées", HttpStatus.OK, service.getActiveNotificationsForProjet(projetUniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

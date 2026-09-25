@@ -93,8 +93,8 @@ public class MagasinServiceImpl implements MagasinService {
         m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
         m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
         m.setFarm(currentUser.getFarm());
-        m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
-        m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId()));
+        m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds(), currentUser));
+        m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId(), currentUser));
         m.setLatitude(data.getLatitude());
         m.setLongitude(data.getLongitude());
         m.setInitialisation(Initialisation.init());
@@ -109,11 +109,11 @@ public class MagasinServiceImpl implements MagasinService {
     // Pertinent seulement pour un magasin de STOCKAGE — pas de vérification stricte du
     // type ici, même convention que seuilAlerteAlveoles (jamais imposé en base, juste
     // sans effet si le magasin est de type VENTE, voir CollecteOeufsImpl).
-    private Magasin resolveMagasinVenteParDefaut(String uniqueId) {
+    private Magasin resolveMagasinVenteParDefaut(String uniqueId, Utilisateurs currentUser) {
         if (uniqueId == null || uniqueId.isBlank()) return null;
         Magasin cible = magasinRepo.findByUniqueId(uniqueId).orElse(null);
         if (cible == null || cible.getType() != TypeMagasin.VENTE
-                || !com.diafarms.ml.commons.FermeScope.memeFerme(cible.getFarm(), getCurrentUserSafe())) {
+                || !com.diafarms.ml.commons.FermeScope.memeFerme(cible.getFarm(), currentUser)) {
             throw new IllegalArgumentException("Le magasin de vente par défaut doit être un magasin de type VENTE existant.");
         }
         return cible;
@@ -139,7 +139,7 @@ public class MagasinServiceImpl implements MagasinService {
             // Voir aussi resolveMagasinVenteParDefaut ci-dessus (même famille de
             // contrainte : "type" a des conséquences concrètes, pas juste un label).
             if (m.getType() == TypeMagasin.VENTE && nouveauType != TypeMagasin.VENTE) {
-                StockMagasinDTO stock = getStock(uniqueId);
+                StockMagasinDTO stock = stockDuMagasin(m);
                 if (stock.getOeufsDisponible() > 0 || stock.getOeufsCassesDisponible() > 0 || stock.getReformeDisponible() > 0) {
                     throw new IllegalArgumentException(
                         "Ce magasin contient encore du stock non vendu (" +
@@ -156,8 +156,8 @@ public class MagasinServiceImpl implements MagasinService {
         m.setSeuilAlerteOeufs(data.getSeuilAlerteOeufs());
         m.setSeuilAlerteReforme(data.getSeuilAlerteReforme());
         m.setSeuilAlerteAlveoles(data.getSeuilAlerteAlveoles());
-        if (data.getVendeurUniqueIds() != null) m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds()));
-        m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId()));
+        if (data.getVendeurUniqueIds() != null) m.setVendeurs(resolveVendeurs(data.getVendeurUniqueIds(), currentUser));
+        m.setMagasinVenteParDefaut(resolveMagasinVenteParDefaut(data.getMagasinVenteParDefautUniqueId(), currentUser));
         m.setLatitude(data.getLatitude());
         m.setLongitude(data.getLongitude());
         if (m.getInitialisation() != null) m.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
@@ -169,13 +169,13 @@ public class MagasinServiceImpl implements MagasinService {
         return MagasinDTO.fromEntity(saved);
     }
 
-    private List<Utilisateurs> resolveVendeurs(List<String> uniqueIds) {
+    private List<Utilisateurs> resolveVendeurs(List<String> uniqueIds, Utilisateurs currentUser) {
         if (uniqueIds == null || uniqueIds.isEmpty()) return new java.util.ArrayList<>();
         return uniqueIds.stream()
                 .map(id -> utilisateursRepo.findByUniqueId(id).orElse(null))
                 .filter(java.util.Objects::nonNull)
                 // Jamais un vendeur d'une autre ferme (ignoré comme un uniqueId inconnu).
-                .filter(u -> com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), getCurrentUserSafe()))
+                .filter(u -> com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), currentUser))
                 .collect(java.util.stream.Collectors.toList());
     }
 
@@ -235,7 +235,12 @@ public class MagasinServiceImpl implements MagasinService {
         Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
         com.diafarms.ml.commons.FermeScope.verifier(m.getFarm(), getCurrentUserSafe(), "Magasin introuvable : " + uniqueId);
+        return stockDuMagasin(m);
+    }
 
+    @Override
+    @Transactional(readOnly = true)
+    public StockMagasinDTO stockDuMagasin(Magasin m) {
         int oeufsRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.OEUFS));
         int oeufsVendus = nz(venteOeufsRepartitionRepo.sumQuantiteByMagasinId(m.getId(), TypeVenteOeufs.BON));
         int reformeRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.REFORME));

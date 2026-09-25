@@ -66,10 +66,10 @@ public class ProjetImpl implements ProjetServices {
     private final SiteRepo siteRepo;
     private final UtilisateursRepo utilisateursRepo;
 
-    private Site resolveSite(String siteUniqueId) {
+    private Site resolveSite(String siteUniqueId, Utilisateurs u) {
         if (siteUniqueId == null || siteUniqueId.isBlank()) return null;
         return siteRepo.findByUniqueId(siteUniqueId)
-                .filter(s -> com.diafarms.ml.commons.FermeScope.memeFerme(s.getFarm(), getCurrentUserSafe()))
+                .filter(s -> com.diafarms.ml.commons.FermeScope.memeFerme(s.getFarm(), u))
                 .orElseThrow(() -> new IllegalArgumentException("Site introuvable : " + siteUniqueId));
     }
 
@@ -79,21 +79,25 @@ public class ProjetImpl implements ProjetServices {
     // n'importe quel utilisateur connecté pouvait modifier le projet d'une autre
     // ferme par son uniqueId.
     private Projets projetDeLaFerme(String uniqueId) {
+        return projetDeLaFerme(uniqueId, getCurrentUserSafe());
+    }
+
+    private Projets projetDeLaFerme(String uniqueId, Utilisateurs u) {
         return projetsRepo.findByUniqueId(uniqueId)
-                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
+                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), u))
                 .orElseThrow(() -> new IllegalArgumentException("Projet non trouvé avec l'uniqueId : " + uniqueId));
     }
 
     // Race / responsables rattachés à un projet : jamais ceux d'une autre ferme.
-    private Race raceDeLaFerme(Long raceId) {
+    private Race raceDeLaFerme(Long raceId, Utilisateurs u) {
         return raceRepo.findById(raceId)
-                .filter(r -> com.diafarms.ml.commons.FermeScope.memeFerme(r.getFarm(), getCurrentUserSafe()))
+                .filter(r -> com.diafarms.ml.commons.FermeScope.memeFerme(r.getFarm(), u))
                 .orElseThrow(() -> new IllegalArgumentException("Race non trouvée avec l'id : " + raceId));
     }
 
-    private Utilisateurs utilisateurDeLaFerme(Long id, String libelle) {
+    private Utilisateurs utilisateurDeLaFerme(Long id, String libelle, Utilisateurs courant) {
         return utilisateursRepo.findById(id)
-                .filter(u -> com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), getCurrentUserSafe()))
+                .filter(u -> com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), courant))
                 .orElseThrow(() -> new IllegalArgumentException(libelle + " non trouvé avec l'id : " + id));
     }
 
@@ -101,7 +105,7 @@ public class ProjetImpl implements ProjetServices {
     // createProjet. Ne vérifie PAS l'occupation active des bâtiments ici (fait plus
     // loin, au moment de la création réelle des occupations) : cette étape ne
     // contrôle que la cohérence des chiffres saisis, avant toute résolution d'entité.
-    private void validerOccupationsPourCreation(List<OccupationCreate> occupations, Integer nbSujetsTotal) {
+    private void validerOccupationsPourCreation(List<OccupationCreate> occupations, Integer nbSujetsTotal, Utilisateurs currentUser) {
         List<OccupationCreate> lignesRenseignees = occupations == null ? List.of()
                 : occupations.stream().filter(o -> o.getBatimentId() != null).toList();
 
@@ -114,7 +118,7 @@ public class ProjetImpl implements ProjetServices {
         for (OccupationCreate occ : lignesRenseignees) {
             int nbSujets = occ.getNbSujets() != null ? occ.getNbSujets() : 0;
             Batiment batiment = batimentRepo.findById(occ.getBatimentId())
-                    .filter(bt -> com.diafarms.ml.commons.FermeScope.memeFerme(bt.getFarm(), getCurrentUserSafe()))
+                    .filter(bt -> com.diafarms.ml.commons.FermeScope.memeFerme(bt.getFarm(), currentUser))
                     .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + occ.getBatimentId()));
             if (batiment.getCapacite() != null && nbSujets > batiment.getCapacite()) {
                 throw new RuntimeException(
@@ -378,32 +382,32 @@ public class ProjetImpl implements ProjetServices {
         // plusieurs poulaillers si un seul n'a pas la capacité (ex: 12 000 sujets à
         // répartir sur 3 poulaillers de 4 000 places). Validé AVANT toute écriture en
         // base pour échouer proprement sans laisser de projet à moitié créé.
-        validerOccupationsPourCreation(data.getOccupations(), data.getNbSujets());
+        validerOccupationsPourCreation(data.getOccupations(), data.getNbSujets(), currentUser);
 
         Long raceId = data.getRaceId();
         Race race = null;
         // 2. Vérifier et récupérer la race
         if (raceId != null) {
-             race = raceDeLaFerme(raceId);
+             race = raceDeLaFerme(raceId, currentUser);
         }
 
         // 3. Vérifier et récupérer les responsables
         Utilisateurs responsableProduction = null;
         Long responsableProductionId = data.getResponsableProductionId();
         if (responsableProductionId != null) {
-            responsableProduction = utilisateurDeLaFerme(responsableProductionId, "Responsable production");
+            responsableProduction = utilisateurDeLaFerme(responsableProductionId, "Responsable production", currentUser);
         }
 
         Utilisateurs responsableFinance = null;
         Long responsableFinanceId = data.getResponsableFinanceId();
         if (responsableFinanceId != null) {
-            responsableFinance = utilisateurDeLaFerme(responsableFinanceId, "Responsable finance");
+            responsableFinance = utilisateurDeLaFerme(responsableFinanceId, "Responsable finance", currentUser);
         }
 
         Utilisateurs responsable = null;
         Long responsableId = data.getResponsableId();
         if (responsableId != null) {
-            responsable = utilisateurDeLaFerme(responsableId, "Responsable");
+            responsable = utilisateurDeLaFerme(responsableId, "Responsable", currentUser);
         }
 
         // 4. Créer le projet
@@ -424,7 +428,7 @@ public class ProjetImpl implements ProjetServices {
         projet.setResponsableProduction(responsableProduction);
         projet.setResponsableFinance(responsableFinance);
         projet.setFarm(farm);
-        projet.setSite(resolveSite(data.getSiteUniqueId()));
+        projet.setSite(resolveSite(data.getSiteUniqueId(), currentUser));
 
         double caTotalSujets = (data.getNbSujets() != null ? data.getNbSujets() : 0) * (data.getPuSujet() != null ? data.getPuSujet() : 0) + (data.getAutresDepense() != null ? data.getAutresDepense() : 0);
         projet.setCaTotalSujets(caTotalSujets);
@@ -512,7 +516,7 @@ public class ProjetImpl implements ProjetServices {
                 if (batimentId != null) {
                     // Vérifier le bâtiment
                     batiment = batimentRepo.findById(batimentId)
-                            .filter(bt -> com.diafarms.ml.commons.FermeScope.memeFerme(bt.getFarm(), getCurrentUserSafe()))
+                            .filter(bt -> com.diafarms.ml.commons.FermeScope.memeFerme(bt.getFarm(), currentUser))
                             .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + batimentId));
                 }
 
@@ -758,15 +762,16 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional
     public ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data) {
+        Utilisateurs currentUser = getCurrentUserSafe();
         
         // 1. Rérupérer le projet existant
-        Projets projet = projetDeLaFerme(uniqueId);
+        Projets projet = projetDeLaFerme(uniqueId, currentUser);
 
         // 2. Vérifier et récupérer la race (si fournie)
         Long raceId = data.getRaceId();
 
         if (raceId != null) {
-            Race race = raceDeLaFerme(raceId);
+            Race race = raceDeLaFerme(raceId, currentUser);
             projet.setRace(race);
         }
 
@@ -775,15 +780,15 @@ public class ProjetImpl implements ProjetServices {
             projet.setTitre(data.getTitre());
         }
         if (data.getResponsableId() != null) {
-            Utilisateurs responsable = utilisateurDeLaFerme(data.getResponsableId(), "Responsable");
+            Utilisateurs responsable = utilisateurDeLaFerme(data.getResponsableId(), "Responsable", currentUser);
             projet.setResponsable(responsable);
         }
         if (data.getResponsableProductionId() != null) {
-            Utilisateurs responsableProduction = utilisateurDeLaFerme(data.getResponsableProductionId(), "Responsable production");
+            Utilisateurs responsableProduction = utilisateurDeLaFerme(data.getResponsableProductionId(), "Responsable production", currentUser);
             projet.setResponsableProduction(responsableProduction);
         }
         if (data.getResponsableFinanceId() != null) {
-            Utilisateurs responsableFinance = utilisateurDeLaFerme(data.getResponsableFinanceId(), "Responsable finance");
+            Utilisateurs responsableFinance = utilisateurDeLaFerme(data.getResponsableFinanceId(), "Responsable finance", currentUser);
             projet.setResponsableFinance(responsableFinance);
         }
         if (data.getDateDebut() != null) {
@@ -808,7 +813,7 @@ public class ProjetImpl implements ProjetServices {
             projet.setFournisseurs_poussins(data.getFournisseursPoussins());
         }
         if (data.getSiteUniqueId() != null) {
-            projet.setSite(resolveSite(data.getSiteUniqueId()));
+            projet.setSite(resolveSite(data.getSiteUniqueId(), currentUser));
         }
 
         // 4. Recalculer le CA total si nbSujets, puSujet ou autresDepense ont changé
@@ -825,7 +830,6 @@ public class ProjetImpl implements ProjetServices {
         Projets updatedProjet = projetsRepo.save(projet);
 
         // 6. Log
-        Utilisateurs currentUser = getCurrentUserSafe();
         syncAchatSujets(updatedProjet, currentUser);
         syncAutresCharges(updatedProjet, currentUser);
         if (currentUser != null) {

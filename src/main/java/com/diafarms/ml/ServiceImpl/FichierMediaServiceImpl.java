@@ -26,14 +26,14 @@ public class FichierMediaServiceImpl implements FichierMediaService{
         private final MinioServiceImpl minioService;
         private final FichierMediaRepository fichierMediaRepository;
         private final ProjetsRepo projetsRepository;
+        private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
         private final LogsServices logs;
         private final OtherService OtherService;
 
         @Transactional
         public FichierMediaDTO uploadFichierProjet(MultipartFile file, String projetUniqueId) throws Exception {
             // Récupérer le projet
-            Projets projet = projetsRepository.findByUniqueId(projetUniqueId)
-                    .orElseThrow(() -> new RuntimeException("Projet non trouvé : " + projetUniqueId));
+            Projets projet = projetsFerme.charger(projetUniqueId);
 
             // Upload vers MinIO
             String nomMinio = minioService.uploadFile(file, "projets/" + projetUniqueId);
@@ -71,6 +71,7 @@ public class FichierMediaServiceImpl implements FichierMediaService{
 
         @Transactional(readOnly = true)
         public List<FichierMediaDTO> getFichiersByProjet(String projetUniqueId) {
+            projetsFerme.charger(projetUniqueId);
             List<FichierMedia> fichiers = fichierMediaRepository.findByProjetUniqueId(projetUniqueId);
             
             return fichiers.stream().map(f -> {

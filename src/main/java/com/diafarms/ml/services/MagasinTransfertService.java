@@ -18,4 +18,7 @@ public interface MagasinTransfertService {
     // encore transféré vers aucun magasin de vente — plafond d'un nouveau transfert.
     // type null/vide = OEUFS (comportement historique, compat clients existants).
     int disponibleATransfererDepuisMagasinStockage(String magasinStockageUniqueId, String type);
+    // Même calcul sans contrôle de ferme (magasin déjà chargé dans la bonne ferme par
+    // l'appelant, voir NotificationServiceImpl).
+    int disponibleDansMagasinStockage(com.diafarms.ml.models.Magasin magasinStockage, com.diafarms.ml.enums.TypeStockMagasin type);
 }

@@ -54,6 +54,7 @@ public class NotificationServiceImpl implements NotificationService {
     private static final int OEUFS_PAR_ALVEOLE = 30;
 
     private final ProjetsRepo projetsRepo;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
     private final AlimentationRepo alimentationRepo;
     private final ConsommationAlimentRepo consommationAlimentRepo;
     private final MortaliteRepo mortaliteRepo;
@@ -193,6 +194,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional(readOnly = true)
     public List<NotificationDTO> getActiveNotificationsForProjet(String projetUniqueId) {
+        projetsFerme.charger(projetUniqueId);
         return projetsRepo.findByUniqueId(projetUniqueId)
             .map(p -> {
                 List<NotificationDTO> result = new ArrayList<>();
@@ -231,7 +233,7 @@ public class NotificationServiceImpl implements NotificationService {
         List<Long> contributeurs = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(m.getId(), type);
         if (contributeurs.stream().noneMatch(mesProjetIds::contains)) return;
 
-        StockMagasinDTO stock = magasinService.getStock(m.getUniqueId());
+        StockMagasinDTO stock = magasinService.stockDuMagasin(m);
         int disponible = type == TypeStockMagasin.OEUFS ? stock.getOeufsDisponible() : stock.getReformeDisponible();
         int seuilEnOeufs = type == TypeStockMagasin.OEUFS ? seuil * OEUFS_PAR_ALVEOLE : seuil;
         if (disponible >= seuilEnOeufs) return;
@@ -269,7 +271,7 @@ public class NotificationServiceImpl implements NotificationService {
             List<Long> contributeurs = collecteOeufsRepo.findDistinctProjetIdsByMagasinStockageId(m.getId());
             if (contributeurs.stream().noneMatch(mesProjetIds::contains)) continue;
 
-            int disponible = magasinTransfertService.disponibleATransfererDepuisMagasinStockage(m.getUniqueId(), "OEUFS");
+            int disponible = magasinTransfertService.disponibleDansMagasinStockage(m, TypeStockMagasin.OEUFS);
             int seuilEnOeufs = m.getSeuilAlerteAlveoles() * OEUFS_PAR_ALVEOLE;
             if (disponible >= seuilEnOeufs) continue;
 

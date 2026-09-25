@@ -42,6 +42,7 @@ public class ReformeImpl implements ReformeService {
     private final ReformeRepo reformeRepo;
     private final MortaliteRepo mortaliteRepo;
     private final ProjetsRepo projetsRepo;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
@@ -226,8 +227,7 @@ public class ReformeImpl implements ReformeService {
     @Override
     @Transactional(readOnly = true)
     public EffectifReformeDTO getEffectif(String projetUniqueId) {
-        Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+        Projets projet = projetsFerme.charger(projetUniqueId);
 
         int nbSujets = projet.getNbSujets() == null ? 0 : projet.getNbSujets();
         int morts = nz(mortaliteRepo.sumMortsByProjetId(projet.getId()));
