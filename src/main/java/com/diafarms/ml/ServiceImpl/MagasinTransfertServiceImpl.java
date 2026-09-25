@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.MagasinTransfertDTO;
 import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.commons.StockOeufsRegle;
 import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.models.MagasinTransfert;
 import com.diafarms.ml.models.Magasin;
@@ -74,9 +75,13 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
 
     private int stockTotalProjet(Projets projet, TypeStockMagasin type) {
         if (type == TypeStockMagasin.OEUFS) {
-            int collecte = nz(collecteOeufsRepo.sumOeufsCollectesByProjetId(projet.getId()));
-            int casse = nz(collecteOeufsRepo.sumOeufsCassesByProjetId(projet.getId()));
-            return collecte - casse;
+            return StockOeufsRegle.bonEtat(
+                    collecteOeufsRepo.sumOeufsCollectesByProjetId(projet.getId()),
+                    collecteOeufsRepo.sumOeufsCassesByProjetId(projet.getId()),
+                    collecteOeufsRepo.sumOeufsNonUtilisablesByProjetId(projet.getId()));
+        }
+        if (type == TypeStockMagasin.OEUFS_CASSES) {
+            return nz(collecteOeufsRepo.sumOeufsCassesByProjetId(projet.getId()));
         }
         return nz(reformeRepo.sumSujetsByProjetId(projet.getId()));
     }
@@ -85,6 +90,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
     @Transactional(readOnly = true)
     public int disponibleATransfererDepuisProjet(String projetUniqueId, String type) {
         Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
+                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
         TypeStockMagasin t = TypeStockMagasin.valueOf(type.toUpperCase());
         int total = stockTotalProjet(projet, t);
@@ -93,7 +99,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
     }
 
     /** Combien chaque projet a déposé dans CE magasin de stockage — pool "bon"
-     * (collectés - cassés) OU pool "cassé" selon type, totalement séparés — moins ce
+     * (collectés - cassés - non utilisables, voir StockOeufsRegle) OU pool "cassé" selon type, totalement séparés — moins ce
      * qui en a déjà été transféré DEPUIS ce même magasin POUR CE TYPE — sert de base à
      * la répartition automatique d'un transfert entre projets contributeurs (voir
      * create() ci-dessous), même rôle que VenteOeufsImpl.disponibleParProjetDansMagasin
@@ -105,9 +111,12 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             if (type == TypeStockMagasin.OEUFS_CASSES) {
                 totalPool = nz(collecteOeufsRepo.sumOeufsCassesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
             } else {
-                int collecte = nz(collecteOeufsRepo.sumOeufsCollectesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
-                int casse = nz(collecteOeufsRepo.sumOeufsCassesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
-                totalPool = collecte - casse;
+                // Même règle que le transfert automatique à la collecte : les non
+                // utilisables ne sont jamais vendables (voir StockOeufsRegle).
+                totalPool = StockOeufsRegle.bonEtat(
+                        collecteOeufsRepo.sumOeufsCollectesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()),
+                        collecteOeufsRepo.sumOeufsCassesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()),
+                        collecteOeufsRepo.sumOeufsNonUtilisablesByProjetIdAndMagasinStockageId(projetId, magasinStockage.getId()));
             }
             int dejaTransfere = nz(magasinTransfertRepo.sumQuantiteByProjetIdAndMagasinStockageIdAndType(
                     projetId, magasinStockage.getId(), type));
@@ -121,7 +130,8 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
     @Transactional(readOnly = true)
     public int disponibleATransfererDepuisMagasinStockage(String magasinStockageUniqueId, String type) {
         Magasin magasin = magasinRepo.findByUniqueId(magasinStockageUniqueId).orElse(null);
-        if (magasin == null || magasin.getType() != Magasin.TypeMagasin.STOCKAGE) {
+        if (magasin == null || magasin.getType() != Magasin.TypeMagasin.STOCKAGE
+                || !com.diafarms.ml.commons.FermeScope.memeFerme(magasin.getFarm(), getCurrentUserSafe())) {
             throw new IllegalArgumentException("Magasin de stockage introuvable : " + magasinStockageUniqueId);
         }
         TypeStockMagasin t = (type == null || type.isBlank()) ? TypeStockMagasin.OEUFS : TypeStockMagasin.valueOf(type.toUpperCase());
@@ -145,6 +155,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
         }
 
         Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
+                .filter(m -> com.diafarms.ml.commons.FermeScope.memeFerme(m.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + data.getMagasinUniqueId()));
         if (magasin.getType() != Magasin.TypeMagasin.VENTE) {
             throw new IllegalArgumentException("On ne peut transférer que vers un magasin de type VENTE.");
@@ -165,6 +176,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
                 throw new IllegalArgumentException("Projet source requis pour un transfert réforme.");
             }
             Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                    .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), currentUser))
                     .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
             int disponible = disponibleATransfererDepuisProjet(data.getProjetUniqueId(), type.name());
@@ -204,7 +216,8 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             throw new IllegalArgumentException("Magasin de stockage source requis pour un transfert d'œufs.");
         }
         Magasin magasinStockage = magasinRepo.findByUniqueId(data.getMagasinStockageUniqueId()).orElse(null);
-        if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE) {
+        if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE
+                || !com.diafarms.ml.commons.FermeScope.memeFerme(magasinStockage.getFarm(), currentUser)) {
             throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
         }
 
@@ -256,6 +269,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
     @Transactional(readOnly = true)
     public PaginatedResponse<MagasinTransfertDTO> list(String magasinUniqueId, int page, int size) {
         Magasin magasin = magasinRepo.findByUniqueId(magasinUniqueId)
+                .filter(m -> com.diafarms.ml.commons.FermeScope.memeFerme(m.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + magasinUniqueId));
 
         Pageable pageable = PageRequest.of(page, size);

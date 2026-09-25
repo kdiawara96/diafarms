@@ -112,7 +112,8 @@ public class MagasinServiceImpl implements MagasinService {
     private Magasin resolveMagasinVenteParDefaut(String uniqueId) {
         if (uniqueId == null || uniqueId.isBlank()) return null;
         Magasin cible = magasinRepo.findByUniqueId(uniqueId).orElse(null);
-        if (cible == null || cible.getType() != TypeMagasin.VENTE) {
+        if (cible == null || cible.getType() != TypeMagasin.VENTE
+                || !com.diafarms.ml.commons.FermeScope.memeFerme(cible.getFarm(), getCurrentUserSafe())) {
             throw new IllegalArgumentException("Le magasin de vente par défaut doit être un magasin de type VENTE existant.");
         }
         return cible;
@@ -126,6 +127,7 @@ public class MagasinServiceImpl implements MagasinService {
 
         Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(m.getFarm(), currentUser, "Magasin introuvable : " + uniqueId);
 
         if (data.getNom() != null && !data.getNom().isBlank()) m.setNom(data.getNom());
         if (data.getType() != null && !data.getType().isBlank()) {
@@ -172,6 +174,8 @@ public class MagasinServiceImpl implements MagasinService {
         return uniqueIds.stream()
                 .map(id -> utilisateursRepo.findByUniqueId(id).orElse(null))
                 .filter(java.util.Objects::nonNull)
+                // Jamais un vendeur d'une autre ferme (ignoré comme un uniqueId inconnu).
+                .filter(u -> com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), getCurrentUserSafe()))
                 .collect(java.util.stream.Collectors.toList());
     }
 
@@ -183,6 +187,7 @@ public class MagasinServiceImpl implements MagasinService {
 
         Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(m.getFarm(), currentUser, "Magasin introuvable : " + uniqueId);
 
         m.getInitialisation().setRemoved(!m.getInitialisation().getRemoved());
         magasinRepo.save(m);
@@ -229,6 +234,7 @@ public class MagasinServiceImpl implements MagasinService {
     public StockMagasinDTO getStock(String uniqueId) {
         Magasin m = magasinRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(m.getFarm(), getCurrentUserSafe(), "Magasin introuvable : " + uniqueId);
 
         int oeufsRecus = nz(magasinTransfertRepo.sumQuantiteByMagasinIdAndType(m.getId(), TypeStockMagasin.OEUFS));
         int oeufsVendus = nz(venteOeufsRepartitionRepo.sumQuantiteByMagasinId(m.getId(), TypeVenteOeufs.BON));

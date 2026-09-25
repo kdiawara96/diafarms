@@ -114,7 +114,7 @@ public class SalaireServiceImpl implements SalaireService {
             throw new IllegalArgumentException("Mode de paiement invalide (attendu MENSUEL, JOURNALIER ou HORAIRE) : " + data.getModePaiement());
         }
         Personnel employe = personnelRepo.findByUniqueId(data.getEmployeUniqueId());
-        if (employe == null) {
+        if (employe == null || !com.diafarms.ml.commons.FermeScope.memeFerme(employe.getFarm(), currentUser)) {
             throw new IllegalArgumentException("Employé introuvable : " + data.getEmployeUniqueId());
         }
 
@@ -308,7 +308,7 @@ public class SalaireServiceImpl implements SalaireService {
         ensureCanManage(currentUser);
 
         PaiementSalaire p = paiementSalaireRepo.findByUniqueId(paiementUniqueId);
-        if (p == null) {
+        if (p == null || p.getSalaire() == null || !com.diafarms.ml.commons.FermeScope.memeFerme(p.getSalaire().getFarm(), currentUser)) {
             throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
         }
         if (data.getMontant() == null || data.getMontant() <= 0) {
@@ -339,7 +339,7 @@ public class SalaireServiceImpl implements SalaireService {
         ensureCanManage(currentUser);
 
         PaiementSalaire p = paiementSalaireRepo.findByUniqueId(paiementUniqueId);
-        if (p == null) {
+        if (p == null || p.getSalaire() == null || !com.diafarms.ml.commons.FermeScope.memeFerme(p.getSalaire().getFarm(), currentUser)) {
             throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
         }
 
@@ -398,7 +398,9 @@ public class SalaireServiceImpl implements SalaireService {
     @Transactional(readOnly = true)
     public byte[] genererBulletinPdf(String paiementUniqueId) {
         PaiementSalaire p = paiementSalaireRepo.findByUniqueId(paiementUniqueId);
-        if (p == null) throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
+        if (p == null || p.getSalaire() == null || !com.diafarms.ml.commons.FermeScope.memeFerme(p.getSalaire().getFarm(), getCurrentUserSafe())) {
+            throw new IllegalArgumentException("Paiement introuvable : " + paiementUniqueId);
+        }
         Salaire s = p.getSalaire();
         Personnel employe = s.getEmploye();
         Farm farm = s.getFarm();

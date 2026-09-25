@@ -32,6 +32,14 @@ public class BatimentImpl implements BatimentServices {
     private final LogsServices logs;
     private final OtherService OtherService;
 
+    private Utilisateurs currentUserOuNull() {
+        try {
+            return OtherService.getCurrentUser();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Override
     public BatimentsDTO create(Batiment batiment) {
 
@@ -86,6 +94,7 @@ public class BatimentImpl implements BatimentServices {
         if (existingBatiment == null) {
             throw new RuntimeException("Bâtiment non trouvé !");
         }
+        com.diafarms.ml.commons.FermeScope.verifier(existingBatiment.getFarm(), currentUserOuNull(), "Bâtiment non trouvé !");
 
         // 2. Vérification du nom (uniquement si le nom a changé)
         String nouveauNom = batiment.getNom();
@@ -143,6 +152,7 @@ public class BatimentImpl implements BatimentServices {
         if (batiment == null) {
             throw new RuntimeException("Bâtiment non trouvé !");
         }
+        com.diafarms.ml.commons.FermeScope.verifier(batiment.getFarm(), currentUserOuNull(), "Bâtiment non trouvé !");
 
         Utilisateurs currentUser = null;
         try {

@@ -159,6 +159,7 @@ public class ClientServiceImpl implements ClientService {
         if (c == null) {
             throw new IllegalArgumentException("Client introuvable : " + uniqueId);
         }
+        com.diafarms.ml.commons.FermeScope.verifier(c.getFarm(), currentUser, "Client introuvable : " + uniqueId);
 
         if (data.getNom() != null && !data.getNom().isBlank()) c.setNom(data.getNom().trim());
         if (data.getTelephone() != null && !data.getTelephone().isBlank()) {
@@ -190,6 +191,7 @@ public class ClientServiceImpl implements ClientService {
         if (c == null) {
             throw new IllegalArgumentException("Client introuvable : " + uniqueId);
         }
+        com.diafarms.ml.commons.FermeScope.verifier(c.getFarm(), currentUser, "Client introuvable : " + uniqueId);
 
         c.getInitialisation().setRemoved(!c.getInitialisation().getRemoved());
         clientRepo.save(c);

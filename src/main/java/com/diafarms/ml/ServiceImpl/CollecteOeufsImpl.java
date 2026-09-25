@@ -122,6 +122,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     @Transactional
     public CollecteOeufsDTO create(CollecteOeufsCreate data) {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
         Batiment batiment = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
@@ -139,7 +140,8 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
             throw new IllegalArgumentException("Le magasin de stockage est obligatoire.");
         }
         Magasin magasinStockage = magasinRepo.findByUniqueId(data.getMagasinStockageUniqueId()).orElse(null);
-        if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE) {
+        if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE
+                || !com.diafarms.ml.commons.FermeScope.memeFerme(magasinStockage.getFarm(), getCurrentUserSafe())) {
             throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
         }
 
@@ -174,7 +176,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         // vendable et inversement). Les non utilisables ne sont JAMAIS transférés nulle
         // part (perte pure, voir CollecteOeufs.oeufsNonUtilisables).
         if (magasinStockage.getMagasinVenteParDefaut() != null) {
-            int quantiteVendable = saved.getOeufsCollectes() - saved.getOeufsCasses() - saved.getOeufsNonUtilisables();
+            int quantiteVendable = com.diafarms.ml.commons.StockOeufsRegle.bonEtat(saved);
             if (quantiteVendable > 0) {
                 magasinTransfertRepo.save(nouveauTransfert(magasinStockage, projet, saved, currentUser,
                         com.diafarms.ml.enums.TypeStockMagasin.OEUFS, quantiteVendable));
@@ -198,6 +200,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     @Transactional
     public CollecteOeufsDTO update(String uniqueId, CollecteOeufsUpdate data) {
         CollecteOeufs c = collecteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Collecte introuvable : " + uniqueId));
 
         if (data.getDate() != null) c.setDate(LocalDate.parse(data.getDate()));
@@ -219,7 +222,8 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
                 throw new IllegalArgumentException("Le magasin de stockage est obligatoire.");
             }
             Magasin magasinStockage = magasinRepo.findByUniqueId(data.getMagasinStockageUniqueId()).orElse(null);
-            if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE) {
+            if (magasinStockage == null || magasinStockage.getType() != Magasin.TypeMagasin.STOCKAGE
+                    || !com.diafarms.ml.commons.FermeScope.memeFerme(magasinStockage.getFarm(), getCurrentUserSafe())) {
                 throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
             }
             c.setMagasinStockage(magasinStockage);
@@ -242,6 +246,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
     @Transactional
     public String deleteOrRecover(String uniqueId) {
         CollecteOeufs c = collecteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Collecte introuvable : " + uniqueId));
 
         c.getInitialisation().setRemoved(!c.getInitialisation().getRemoved());

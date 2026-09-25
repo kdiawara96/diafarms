@@ -69,7 +69,32 @@ public class ProjetImpl implements ProjetServices {
     private Site resolveSite(String siteUniqueId) {
         if (siteUniqueId == null || siteUniqueId.isBlank()) return null;
         return siteRepo.findByUniqueId(siteUniqueId)
-                .orElseThrow(() -> new RuntimeException("Site introuvable : " + siteUniqueId));
+                .filter(s -> com.diafarms.ml.commons.FermeScope.memeFerme(s.getFarm(), getCurrentUserSafe()))
+                .orElseThrow(() -> new IllegalArgumentException("Site introuvable : " + siteUniqueId));
+    }
+
+    // Projet de la ferme de l'utilisateur courant, sinon "non trouvé" (400) : un
+    // projet d'une autre ferme est traité comme inexistant (détail, modification,
+    // suppression, clôture, réouverture, transfert de stock). Avant ce contrôle,
+    // n'importe quel utilisateur connecté pouvait modifier le projet d'une autre
+    // ferme par son uniqueId.
+    private Projets projetDeLaFerme(String uniqueId) {
+        return projetsRepo.findByUniqueId(uniqueId)
+                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
+                .orElseThrow(() -> new IllegalArgumentException("Projet non trouvé avec l'uniqueId : " + uniqueId));
+    }
+
+    // Race / responsables rattachés à un projet : jamais ceux d'une autre ferme.
+    private Race raceDeLaFerme(Long raceId) {
+        return raceRepo.findById(raceId)
+                .filter(r -> com.diafarms.ml.commons.FermeScope.memeFerme(r.getFarm(), getCurrentUserSafe()))
+                .orElseThrow(() -> new IllegalArgumentException("Race non trouvée avec l'id : " + raceId));
+    }
+
+    private Utilisateurs utilisateurDeLaFerme(Long id, String libelle) {
+        return utilisateursRepo.findById(id)
+                .filter(u -> com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), getCurrentUserSafe()))
+                .orElseThrow(() -> new IllegalArgumentException(libelle + " non trouvé avec l'id : " + id));
     }
 
     // Poulailler obligatoire à la création + couverture de capacité — voir
@@ -89,6 +114,7 @@ public class ProjetImpl implements ProjetServices {
         for (OccupationCreate occ : lignesRenseignees) {
             int nbSujets = occ.getNbSujets() != null ? occ.getNbSujets() : 0;
             Batiment batiment = batimentRepo.findById(occ.getBatimentId())
+                    .filter(bt -> com.diafarms.ml.commons.FermeScope.memeFerme(bt.getFarm(), getCurrentUserSafe()))
                     .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + occ.getBatimentId()));
             if (batiment.getCapacite() != null && nbSujets > batiment.getCapacite()) {
                 throw new RuntimeException(
@@ -330,8 +356,7 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional(readOnly = true)
     public ProjetsDTO getProjetByUniqueId(String uniqueId) {
-        Projets projet = projetsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
+        Projets projet = projetDeLaFerme(uniqueId);
 
         return ProjetsDTO.fromEntity(projet, computeTauxPonte(projet), computeMortaliteCumulee(projet), computeChiffreAffairesReel(projet),
                 computeSujetsReformesCumulee(projet), computeEffectifVivant(projet));
@@ -359,30 +384,26 @@ public class ProjetImpl implements ProjetServices {
         Race race = null;
         // 2. Vérifier et récupérer la race
         if (raceId != null) {
-             race = raceRepo.findById(raceId)
-            .orElseThrow(() -> new RuntimeException("Race non trouvée avec l'id : " + data.getRaceId()));
+             race = raceDeLaFerme(raceId);
         }
 
         // 3. Vérifier et récupérer les responsables
         Utilisateurs responsableProduction = null;
         Long responsableProductionId = data.getResponsableProductionId();
         if (responsableProductionId != null) {
-            responsableProduction = utilisateursRepo.findById(responsableProductionId)
-                    .orElseThrow(() -> new RuntimeException("Responsable production non trouvé avec l'id : " + data.getResponsableProductionId()));
+            responsableProduction = utilisateurDeLaFerme(responsableProductionId, "Responsable production");
         }
 
         Utilisateurs responsableFinance = null;
         Long responsableFinanceId = data.getResponsableFinanceId();
         if (responsableFinanceId != null) {
-            responsableFinance = utilisateursRepo.findById(responsableFinanceId)
-                    .orElseThrow(() -> new RuntimeException("Responsable finance non trouvé avec l'id : " + data.getResponsableFinanceId()));
+            responsableFinance = utilisateurDeLaFerme(responsableFinanceId, "Responsable finance");
         }
 
         Utilisateurs responsable = null;
         Long responsableId = data.getResponsableId();
         if (responsableId != null) {
-            responsable = utilisateursRepo.findById(responsableId)
-                    .orElseThrow(() -> new RuntimeException("Responsable non trouvé avec l'id : " + data.getResponsableId()));
+            responsable = utilisateurDeLaFerme(responsableId, "Responsable");
         }
 
         // 4. Créer le projet
@@ -491,6 +512,7 @@ public class ProjetImpl implements ProjetServices {
                 if (batimentId != null) {
                     // Vérifier le bâtiment
                     batiment = batimentRepo.findById(batimentId)
+                            .filter(bt -> com.diafarms.ml.commons.FermeScope.memeFerme(bt.getFarm(), getCurrentUserSafe()))
                             .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + batimentId));
                 }
 
@@ -535,9 +557,7 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional
     public String deleteOrRecoverProjet(String uniqueId) {
-        Projets projet = projetsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Projet non trouvé avec l'uniqueId : " + uniqueId));
+        Projets projet = projetDeLaFerme(uniqueId);
 
         projet.getInitialisation()
                 .setRemoved(!projet.getInitialisation().getRemoved());
@@ -599,9 +619,7 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional
     public String cloturerProjet(String uniqueId) {
-        Projets projet = projetsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Projet non trouvé avec l'uniqueId : " + uniqueId));
+        Projets projet = projetDeLaFerme(uniqueId);
 
         if (Boolean.TRUE.equals(projet.getInitialisation().getArchive())) {
             throw new RuntimeException("Ce projet est déjà clôturé.");
@@ -637,9 +655,7 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional
     public String rouvrirProjet(String uniqueId) {
-        Projets projet = projetsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Projet non trouvé avec l'uniqueId : " + uniqueId));
+        Projets projet = projetDeLaFerme(uniqueId);
 
         if (!Boolean.TRUE.equals(projet.getInitialisation().getArchive())) {
             throw new RuntimeException("Ce projet n'est pas clôturé.");
@@ -683,10 +699,8 @@ public class ProjetImpl implements ProjetServices {
         if (projetSourceUniqueId.equals(projetCibleUniqueId)) {
             throw new IllegalArgumentException("Le projet cible doit être différent du projet à clôturer.");
         }
-        Projets source = projetsRepo.findByUniqueId(projetSourceUniqueId)
-                .orElseThrow(() -> new RuntimeException("Projet source introuvable : " + projetSourceUniqueId));
-        Projets cible = projetsRepo.findByUniqueId(projetCibleUniqueId)
-                .orElseThrow(() -> new RuntimeException("Projet cible introuvable : " + projetCibleUniqueId));
+        Projets source = projetDeLaFerme(projetSourceUniqueId);
+        Projets cible = projetDeLaFerme(projetCibleUniqueId);
 
         double achete = nz(alimentationRepo.sumAcheteByProjetId(source.getId()));
         double consomme = nz(consommationAlimentRepo.sumConsommeByProjetId(source.getId()));
@@ -746,15 +760,13 @@ public class ProjetImpl implements ProjetServices {
     public ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data) {
         
         // 1. Rérupérer le projet existant
-        Projets projet = projetsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'uniqueId : " + uniqueId));
+        Projets projet = projetDeLaFerme(uniqueId);
 
         // 2. Vérifier et récupérer la race (si fournie)
         Long raceId = data.getRaceId();
 
         if (raceId != null) {
-            Race race = raceRepo.findById(raceId)
-                    .orElseThrow(() -> new RuntimeException("Race non trouvée avec l'id : " + data.getRaceId()));
+            Race race = raceDeLaFerme(raceId);
             projet.setRace(race);
         }
 
@@ -763,18 +775,15 @@ public class ProjetImpl implements ProjetServices {
             projet.setTitre(data.getTitre());
         }
         if (data.getResponsableId() != null) {
-            Utilisateurs responsable = utilisateursRepo.findById(data.getResponsableId())
-                    .orElseThrow(() -> new RuntimeException("Responsable non trouvé avec l'id : " + data.getResponsableId()));
+            Utilisateurs responsable = utilisateurDeLaFerme(data.getResponsableId(), "Responsable");
             projet.setResponsable(responsable);
         }
         if (data.getResponsableProductionId() != null) {
-            Utilisateurs responsableProduction = utilisateursRepo.findById(data.getResponsableProductionId())
-                    .orElseThrow(() -> new RuntimeException("Responsable production non trouvé avec l'id : " + data.getResponsableProductionId()));
+            Utilisateurs responsableProduction = utilisateurDeLaFerme(data.getResponsableProductionId(), "Responsable production");
             projet.setResponsableProduction(responsableProduction);
         }
         if (data.getResponsableFinanceId() != null) {
-            Utilisateurs responsableFinance = utilisateursRepo.findById(data.getResponsableFinanceId())
-                    .orElseThrow(() -> new RuntimeException("Responsable finance non trouvé avec l'id : " + data.getResponsableFinanceId()));
+            Utilisateurs responsableFinance = utilisateurDeLaFerme(data.getResponsableFinanceId(), "Responsable finance");
             projet.setResponsableFinance(responsableFinance);
         }
         if (data.getDateDebut() != null) {

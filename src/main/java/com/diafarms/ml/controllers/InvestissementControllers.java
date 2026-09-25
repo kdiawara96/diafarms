@@ -110,8 +110,12 @@ public class InvestissementControllers {
     // 📊 Liste des ventilations pour un actif
     @GetMapping("/repartitions/{uniqueId}")
     public ResponseEntity<ApiResponse<List<InvestissementRepartitionDTO>>> getRepartitions(@PathVariable String uniqueId) {
-        List<InvestissementRepartitionDTO> list = investissementService.getRepartitionsParInvestissement(uniqueId);
-        return ApiResponse.createResponse("Historique de répartition récupéré", HttpStatus.OK, list, null);
+        try {
+            List<InvestissementRepartitionDTO> list = investissementService.getRepartitionsParInvestissement(uniqueId);
+            return ApiResponse.createResponse("Historique de répartition récupéré", HttpStatus.OK, list, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        }
     }
 
     // 🔗 Assigner une part d'amortissement à un projet spécifique
@@ -133,8 +137,12 @@ public class InvestissementControllers {
     // 📉 Connaître le coût d'amortissement total cumulé absorbé par un projet (ex: pour déduire de la marge nette)
     @GetMapping("/projets/{projetUniqueId}/cout-amortissement")
     public ResponseEntity<ApiResponse<Double>> getCoutAmortissementProjet(@PathVariable String projetUniqueId) {
-        Double total = investissementService.getCoutAmortissementProjet(projetUniqueId);
-        return ApiResponse.createResponse("Charge d'amortissement totale calculée pour le projet", HttpStatus.OK, total, null);
+        try {
+            Double total = investissementService.getCoutAmortissementProjet(projetUniqueId);
+            return ApiResponse.createResponse("Charge d'amortissement totale calculée pour le projet", HttpStatus.OK, total, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        }
     }
 
     @GetMapping("/stats")

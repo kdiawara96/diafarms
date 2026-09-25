@@ -77,6 +77,10 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
     Integer sumOeufsCassesByProjetId(@Param("projetId") Long projetId);
 
+    @Query("SELECT COALESCE(SUM(c.oeufsNonUtilisables), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
+    Integer sumOeufsNonUtilisablesByProjetId(@Param("projetId") Long projetId);
+
     // Totaux PAR PROJET *dans un bâtiment de stockage précis* : servent à répartir
     // proportionnellement un transfert vers un magasin entre les projets contributeurs
     // DE CE BÂTIMENT (voir MagasinTransfertServiceImpl.disponibleParProjetDansBatimentStockage)
@@ -89,6 +93,10 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     @Query("SELECT COALESCE(SUM(c.oeufsCasses), 0) FROM CollecteOeufs c " +
         "WHERE c.projet.id = :projetId AND c.magasinStockage.id = :magasinStockageId AND c.initialisation.removed = false")
     Integer sumOeufsCassesByProjetIdAndMagasinStockageId(@Param("projetId") Long projetId, @Param("magasinStockageId") Long magasinStockageId);
+
+    @Query("SELECT COALESCE(SUM(c.oeufsNonUtilisables), 0) FROM CollecteOeufs c " +
+        "WHERE c.projet.id = :projetId AND c.magasinStockage.id = :magasinStockageId AND c.initialisation.removed = false")
+    Integer sumOeufsNonUtilisablesByProjetIdAndMagasinStockageId(@Param("projetId") Long projetId, @Param("magasinStockageId") Long magasinStockageId);
 
     // Quels projets ont déjà déposé des œufs dans ce bâtiment de stockage — sert à
     // construire la carte "disponible par projet" sans avoir à connaître les projets

@@ -29,6 +29,14 @@ public class RaceImpl implements RaceServices {
     private final RaceRepo raceRepo;
     private final LogsServices logs;
     private final OtherService OtherService;
+    private Utilisateurs currentUserOuNull() {
+        try {
+            return OtherService.getCurrentUser();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
 
    @Override
     public RaceDTO create(Race race) {
@@ -96,6 +104,7 @@ public class RaceImpl implements RaceServices {
         if (existingRace == null) {
             throw new RuntimeException("Race non trouvée !");
         }
+        com.diafarms.ml.commons.FermeScope.verifier(existingRace.getFarm(), currentUserOuNull(), "Race non trouvée !");
         String nouveauNom = race.getNom();
         if (nouveauNom != null && !nouveauNom.trim().isEmpty()) {
             if (!existingRace.getNom().equalsIgnoreCase(nouveauNom)) {
@@ -145,6 +154,7 @@ public class RaceImpl implements RaceServices {
         if (race == null) {
             throw new RuntimeException("Race non trouvée !");
         }
+        com.diafarms.ml.commons.FermeScope.verifier(race.getFarm(), currentUserOuNull(), "Race non trouvée !");
         Utilisateurs currentUser = null;
         try {
             currentUser = OtherService.getCurrentUser();

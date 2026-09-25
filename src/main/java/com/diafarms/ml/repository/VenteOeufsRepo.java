@@ -25,9 +25,12 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
     @Query("SELECT v FROM VenteOeufs v WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
     Page<VenteOeufs> search(@Param("farmId") Long farmId, Pageable pageable);
 
+    // Ventes du pool "bon état" uniquement : les ventes d'œufs cassés puisent dans un
+    // pool séparé et ne doivent pas diminuer le stock bon état (voir VenteOeufsImpl.getStock).
     @Query("SELECT COALESCE(SUM(v.quantiteOeufs), 0) FROM VenteOeufs v " +
-        "WHERE v.farm.id = :farmId AND v.initialisation.removed = false")
-    Integer sumQuantiteByFarmId(@Param("farmId") Long farmId);
+        "WHERE v.farm.id = :farmId AND v.typeOeuf = com.diafarms.ml.enums.TypeVenteOeufs.BON " +
+        "AND v.initialisation.removed = false")
+    Integer sumQuantiteBonByFarmId(@Param("farmId") Long farmId);
 
     // Montant réellement rapporté par les vendeurs — voir TransactionServiceImpl.
     // getStats, sert à corriger "Total entrées" qui surestimait le cash réellement en

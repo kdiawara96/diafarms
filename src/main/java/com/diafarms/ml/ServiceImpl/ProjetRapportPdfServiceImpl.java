@@ -163,7 +163,7 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
             nonUtilisables += nz(c.getOeufsNonUtilisables());
             joursCollecte.add(c.getDate());
         }
-        int bonEtat = Math.max(0, oeufs - casses - nonUtilisables);
+        int bonEtat = Math.max(0, com.diafarms.ml.commons.StockOeufsRegle.bonEtat(oeufs, casses, nonUtilisables));
         int morts = 0;
         for (Mortalite m : mortaliteRepo.findAllByProjetId(projetId)) {
             if (dans(m.getDate(), debut, fin)) morts += nz(m.getNombreMorts());

@@ -270,6 +270,15 @@ public class TransactionServiceImpl implements TransactionService {
         return batiment;
     }
 
+    // Projets concernés d'une transaction commune : ceux d'une autre ferme sont
+    // ignorés (comme un uniqueId inconnu), jamais rattachés.
+    private List<Projets> projetsDeLaFerme(List<String> uniqueIds) {
+        Utilisateurs u = getCurrentUserSafe();
+        return new java.util.ArrayList<>(projetsRepo.findByUniqueIdIn(uniqueIds).stream()
+                .filter(p -> memeFerme(p.getFarm(), u))
+                .toList());
+    }
+
     private boolean memeFerme(Farm farm, Utilisateurs currentUser) {
         return farm != null && currentUser != null && currentUser.getFarm() != null
                 && farm.getId().equals(currentUser.getFarm().getId());
@@ -316,10 +325,11 @@ public class TransactionServiceImpl implements TransactionService {
 
         if (!commun) {
             Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                    .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                     .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
             t.setProjet(projet);
         } else if (data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()) {
-            t.setProjetsConcernes(projetsRepo.findByUniqueIdIn(data.getProjetsConcernesUniqueIds()));
+            t.setProjetsConcernes(projetsDeLaFerme(data.getProjetsConcernesUniqueIds()));
         }
 
         t.setSite(resoudreSite(data.getSiteUniqueId(), currentUser));
@@ -541,6 +551,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional
     public TransactionDTO update(String uniqueId, TransactionUpdate data) {
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
         ensurePasLieeAUneVente(t);
 
@@ -552,13 +563,14 @@ public class TransactionServiceImpl implements TransactionService {
         if (Boolean.TRUE.equals(data.getCommun())) {
             t.setProjet(null);
             t.setProjetsConcernes(data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()
-                    ? projetsRepo.findByUniqueIdIn(data.getProjetsConcernesUniqueIds())
+                    ? projetsDeLaFerme(data.getProjetsConcernesUniqueIds())
                     : new java.util.ArrayList<>());
         } else if (Boolean.FALSE.equals(data.getCommun())) {
             if (data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank()) {
                 throw new IllegalArgumentException("Un projet doit être sélectionné si la transaction n'est pas commune.");
             }
             Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                    .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                     .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
             t.setProjet(projet);
             t.setProjetsConcernes(new java.util.ArrayList<>());
@@ -592,6 +604,7 @@ public class TransactionServiceImpl implements TransactionService {
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
         ensurePasLieeAUneVente(t);
         // Motif exigé pour supprimer, pas pour restaurer.
@@ -628,6 +641,7 @@ public class TransactionServiceImpl implements TransactionService {
         String motifValide = MotifSuppressionRequest.exiger(motif);
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
         ensurePasLieeAUneVente(t);
         if (t.getDemandeSuppressionPar() != null) {
@@ -653,6 +667,7 @@ public class TransactionServiceImpl implements TransactionService {
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
         ensureCanConfirmerSuppression(currentUser, t.getProjet());
         // Une demande faite avant ce verrou sur une transaction de vente ne peut plus
@@ -681,6 +696,7 @@ public class TransactionServiceImpl implements TransactionService {
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
         ensureCanConfirmerSuppression(currentUser, t.getProjet());
         if (t.getDemandeSuppressionPar() == null) {
@@ -706,6 +722,7 @@ public class TransactionServiceImpl implements TransactionService {
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
 
         // Un RESPONSABLE peut valider une transaction rattachée à SON projet (voir
@@ -739,6 +756,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
 
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
 
         if (!isAdmin(currentUser) && !isResponsableDuProjet(currentUser, t.getProjet())) {

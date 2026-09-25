@@ -29,6 +29,14 @@ public class OccupationBatimentServiceImpl implements OccupationService {
     private final LogsServices logs;
     private final OtherService OtherService;
 
+    private Utilisateurs utilisateurCourant() {
+        try {
+            return OtherService.getCurrentUser();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Override
     @Transactional
     public OccupationBatimentDTO assignerBatimentAProjet(Long projetId, Long batimentId, Integer nbSujets, String dateEntree) {
@@ -50,9 +58,11 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         // 1. Récupération des entités
         Projets projet = projetsRepository.findById(projetId)
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé avec l'id : " + projetId));
+        com.diafarms.ml.commons.FermeScope.verifier(projet.getFarm(), utilisateurCourant(), "Projet non trouvé avec l'id : " + projetId);
         
         Batiment batiment = batimentRepository.findById(batimentId)
                 .orElseThrow(() -> new RuntimeException("Bâtiment non trouvé avec l'id : " + batimentId));
+        com.diafarms.ml.commons.FermeScope.verifier(batiment.getFarm(), utilisateurCourant(), "Bâtiment non trouvé avec l'id : " + batimentId);
 
         // 2. Vérification de la disponibilité du bâtiment : calculée en direct à
         // partir des occupations actives, pas via Batiment.statut (jamais remis à
@@ -114,6 +124,7 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         if (nouveauBatimentId != null) {
             Batiment nouveauBatiment = batimentRepository.findById(nouveauBatimentId)
                     .orElseThrow(() -> new RuntimeException("Nouveau bâtiment non trouvé avec l'id : " + nouveauBatimentId));
+            com.diafarms.ml.commons.FermeScope.verifier(nouveauBatiment.getFarm(), utilisateurCourant(), "Nouveau bâtiment non trouvé avec l'id : " + nouveauBatimentId);
 
             if (occupationRepository.existsOccupationActive(nouveauBatiment.getId())) {
                 throw new RuntimeException("Le nouveau bâtiment est déjà occupé.");
@@ -122,6 +133,8 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         // 1. Trouver l'occupation existante
         OccupationBatiment occupation = occupationRepository.findById(occupationId)
                 .orElseThrow(() -> new RuntimeException("Occupation non trouvée"));
+        com.diafarms.ml.commons.FermeScope.verifier(occupation.getProjet() != null ? occupation.getProjet().getFarm() : null,
+                utilisateurCourant(), "Occupation non trouvée");
 
         // 2. Si le bâtiment change, il faut libérer l'ancien et occuper le nouveau
         if (!occupation.getBatiment().getId().equals(nouveauBatimentId)) {
@@ -207,6 +220,8 @@ public class OccupationBatimentServiceImpl implements OccupationService {
         // 1. Trouver la liaison
         OccupationBatiment occupation = occupationRepository.findById(occupationId)
                 .orElseThrow(() -> new RuntimeException("Occupation non trouvée"));
+        com.diafarms.ml.commons.FermeScope.verifier(occupation.getProjet() != null ? occupation.getProjet().getFarm() : null,
+                utilisateurCourant(), "Occupation non trouvée");
 
         Batiment batiment = occupation.getBatiment();
         Projets projet = occupation.getProjet();

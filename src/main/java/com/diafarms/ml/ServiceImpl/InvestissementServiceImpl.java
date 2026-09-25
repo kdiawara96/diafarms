@@ -155,6 +155,7 @@ public class InvestissementServiceImpl implements InvestissementService {
     public InvestissementDTO getInvestissementParUniqueId(String uniqueId) {
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(inv.getFarm(), getCurrentUserSafe(), "Investissement introuvable avec l'ID: " + uniqueId);
         return toDTO(inv);
     }
     
@@ -207,6 +208,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 // Récupération du projet ciblé par son uniqueId
                 Projets projet = projetsRepo.findByUniqueId(dto.getProjetId())
                         .orElseThrow(() -> new IllegalArgumentException("Projet introuvable avec l'ID unique: " + dto.getProjetId()));
+                com.diafarms.ml.commons.FermeScope.verifier(projet.getFarm(), u, "Projet introuvable avec l'ID unique: " + dto.getProjetId());
                 projetDedie = projet;
 
                 // Construction de la ligne pivot d'affectation initiale
@@ -239,6 +241,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 1. Récupération de l'investissement existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(inv.getFarm(), currentUser, "Investissement introuvable avec l'ID: " + uniqueId);
 
         // 2. Mise à jour des champs basiques
         inv.setNom(dto.getNom());
@@ -266,6 +269,7 @@ public class InvestissementServiceImpl implements InvestissementService {
 
         Projets projet = projetsRepo.findByUniqueId(dto.getProjetId())
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable avec l'ID: " + dto.getProjetId()));
+        com.diafarms.ml.commons.FermeScope.verifier(projet.getFarm(), currentUser, "Projet introuvable avec l'ID: " + dto.getProjetId());
         projetDedie = projet;
 
         // S'il y a déjà des répartitions, on vérifie si le projet a changé
@@ -325,6 +329,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 1. Récupérer l'investissement réel existant
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(inv.getFarm(), currentUser, "Investissement introuvable avec l'ID: " + uniqueId);
 
         // 2. Retire la sortie comptable liée (removed=true, conserve la trace d'audit)
         transactionService.setRemovedBySource(inv.getUniqueId(), true);
@@ -346,6 +351,9 @@ public class InvestissementServiceImpl implements InvestissementService {
     @Override
     @Transactional(readOnly = true)
     public List<InvestissementRepartitionDTO> getRepartitionsParInvestissement(String uniqueId) {
+        Investissement inv = investissementRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(inv.getFarm(), getCurrentUserSafe(), "Investissement introuvable avec l'ID: " + uniqueId);
         return repartitionRepo.findByInvestissementUniqueId(uniqueId)
                 .stream()
                 .map(r -> InvestissementRepartitionDTO.builder()
@@ -370,9 +378,11 @@ public class InvestissementServiceImpl implements InvestissementService {
         // 1. Récupération des entités fortes
         Investissement inv = investissementRepo.findByUniqueId(invUniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + invUniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(inv.getFarm(), currentUser, "Investissement introuvable avec l'ID: " + invUniqueId);
 
         Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(projet.getFarm(), currentUser, "Projet introuvable : " + projetUniqueId);
 
         // 2. REGLE METIER : La date de début d'usage ne doit pas être antérieure à la date d'achat de l'actif
         if (repartition.getDateDebut() != null && inv.getDateAchat() != null) {
@@ -456,6 +466,9 @@ public class InvestissementServiceImpl implements InvestissementService {
 
     @Override
     public Double getCoutAmortissementProjet(String projetUniqueId) {
+        Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(projet.getFarm(), getCurrentUserSafe(), "Projet introuvable : " + projetUniqueId);
         return repartitionRepo.getSommeAmortissementParProjet(projetUniqueId);
     }
 
@@ -516,7 +529,9 @@ public class InvestissementServiceImpl implements InvestissementService {
         ensureCanManage(currentUser);
 
         // 1. On vérifie si l'affectation existe bien
-        if (!repartitionRepo.existsById(id)) {
+        InvestissementRepartition aSupprimer = repartitionRepo.findById(id).orElse(null);
+        if (aSupprimer == null || aSupprimer.getInvestissement() == null
+                || !com.diafarms.ml.commons.FermeScope.memeFerme(aSupprimer.getInvestissement().getFarm(), currentUser)) {
             throw new IllegalArgumentException("L'affectation avec l'ID " + id + " n'existe pas.");
         }
 

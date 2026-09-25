@@ -243,6 +243,7 @@ public class CommandeServiceImpl implements CommandeService {
             throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
         }
         Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
+                .filter(m -> m.getFarm() != null && m.getFarm().getId().equals(currentUser.getFarm().getId()))
                 .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + data.getMagasinUniqueId()));
         if (magasin.getType() != Magasin.TypeMagasin.VENTE) {
             throw new IllegalArgumentException("Une commande ne peut viser qu'un magasin de type VENTE.");
@@ -327,6 +328,7 @@ public class CommandeServiceImpl implements CommandeService {
         }
         if (data.getMagasinUniqueId() != null && !data.getMagasinUniqueId().isBlank()) {
             Magasin magasin = magasinRepo.findByUniqueId(data.getMagasinUniqueId())
+                    .filter(m -> m.getFarm() != null && m.getFarm().getId().equals(currentUser.getFarm().getId()))
                     .orElseThrow(() -> new IllegalArgumentException("Magasin introuvable : " + data.getMagasinUniqueId()));
             if (magasin.getType() != Magasin.TypeMagasin.VENTE) {
                 throw new IllegalArgumentException("Une commande ne peut viser qu'un magasin de type VENTE.");

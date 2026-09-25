@@ -86,6 +86,7 @@ public class SiteServiceImpl implements SiteService {
 
         Site s = siteRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Site introuvable : " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(s.getFarm(), currentUser, "Site introuvable : " + uniqueId);
 
         if (data.getNom() != null && !data.getNom().isBlank()) s.setNom(data.getNom().trim());
         s.setLocalisation(data.getLocalisation());
@@ -108,6 +109,7 @@ public class SiteServiceImpl implements SiteService {
 
         Site s = siteRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Site introuvable : " + uniqueId));
+        com.diafarms.ml.commons.FermeScope.verifier(s.getFarm(), currentUser, "Site introuvable : " + uniqueId);
 
         s.getInitialisation().setRemoved(!s.getInitialisation().getRemoved());
         boolean removed = s.getInitialisation().getRemoved();

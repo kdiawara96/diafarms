@@ -159,7 +159,7 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
             double tp = npr > 0 ? (double) nto / npr : 0.0;
 
             npmCumule += npm;
-            int oeufsBonsDuJour = Math.max(0, nto - nec - nonUtil);
+            int oeufsBonsDuJour = Math.max(0, com.diafarms.ml.commons.StockOeufsRegle.bonEtat(nto, nec, nonUtil));
             oeufsBonsCumule += oeufsBonsDuJour;
             oeufsCassesCumule += nec;
 

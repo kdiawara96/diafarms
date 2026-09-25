@@ -664,14 +664,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
         Long farmId = currentUser.getFarm().getId();
 
-        // Reste un indicateur farm-wide global (utile en reporting admin) : collecté -
-        // cassé - vendu, tous magasins confondus — distinct du stock par magasin
+        // Reste un indicateur farm-wide global (utile en reporting admin) : bon état
+        // (StockOeufsRegle) - ventes d'œufs bons, tous magasins confondus — distinct du stock par magasin
         // (voir MagasinService.getStock), qui seul plafonne une vente précise.
         int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
         int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));
         int totalNonUtilisable = nz(collecteOeufsRepo.sumOeufsNonUtilisablesByFarmId(farmId));
-        int totalVendu = nz(venteOeufsRepo.sumQuantiteByFarmId(farmId));
-        int restant = (totalCollecte - totalCasse - totalNonUtilisable) - totalVendu;
+        int totalVendu = nz(venteOeufsRepo.sumQuantiteBonByFarmId(farmId));
+        int restant = com.diafarms.ml.commons.StockOeufsRegle.bonEtat(totalCollecte, totalCasse, totalNonUtilisable) - totalVendu;
 
         return StockOeufsDTO.builder()
                 .totalCollecte(totalCollecte)
