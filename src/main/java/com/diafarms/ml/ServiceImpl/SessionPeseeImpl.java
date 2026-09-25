@@ -7,6 +7,7 @@ import java.text.DecimalFormatSymbols;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -160,6 +161,48 @@ public class SessionPeseeImpl implements SessionPeseeService {
         return poids;
     }
 
+    // Date d'une pesée reçue ; pour une pesée déjà annulée, une date illisible ne bloque pas.
+    private static LocalDateTime dateHeureRecue(SessionPeseeSyncRequest.PeseeItem item) {
+        if (vrai(item.getAnnulee())) {
+            try {
+                return parseDateHeure(item.getDateHeure(), "dateHeure");
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+        return parseDateHeure(item.getDateHeure(), "dateHeure");
+    }
+
+    static final long TOLERANCE_FUTUR_JOURS = 1;
+
+    // Contrôles de la date de fin (web et téléphone) : pas avant le début ni avant la
+    // dernière pesée non annulée ; dans le futur, tolérance d'1 jour (horloges de
+    // téléphone décalées), au-delà ramenée à maintenant (ou à la dernière pesée si elle
+    // est plus tardive) plutôt que refusée, pour ne jamais bloquer un téléphone.
+    private static LocalDateTime dateFinValidee(SessionPesee s, LocalDateTime fin) {
+        LocalDateTime maintenant = LocalDateTime.now();
+        LocalDateTime derniere = s.getDerniereDatePesee();
+        if (fin.isAfter(maintenant.plusDays(TOLERANCE_FUTUR_JOURS))) {
+            fin = maintenant;
+            if (derniere != null && fin.isBefore(derniere)) fin = derniere;
+        }
+        if (fin.isBefore(s.getDateDebut())) {
+            throw new IllegalArgumentException("La date de fin ne peut pas précéder la date de début de la session.");
+        }
+        if (derniere != null && fin.isBefore(derniere)) {
+            throw new IllegalArgumentException("La date de fin ne peut pas précéder la dernière pesée de la session ("
+                    + derniere.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ").");
+        }
+        return fin;
+    }
+
+    private static final DateTimeFormatter HEURE = DateTimeFormatter.ofPattern("HH:mm");
+
+    // « Pesée de 08:10 » : les clients rapprochent événement et pesée par peseeUniqueId.
+    private static String libellePesee(Pesee p) {
+        return "Pesée de " + (p.getDateHeure() != null ? p.getDateHeure().format(HEURE) : "?");
+    }
+
     private static long version(SessionPesee s) {
         return s.getVersion() != null ? s.getVersion() : 0L;
     }
@@ -193,7 +236,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
 
     @Override
     @Transactional
-    public SessionPeseeDTO sync(SessionPeseeSyncRequest req) {
+    public SessionPeseeDTO sync(SessionPeseeSyncRequest req, boolean contratV2) {
         if (req == null) throw new IllegalArgumentException("Requête vide.");
         Utilisateurs user = getCurrentUserSafe();
         Long farmId = farmIdOuErreur(user);
@@ -251,8 +294,12 @@ public class SessionPeseeImpl implements SessionPeseeService {
             // web) : RIEN n'est écrit, la réponse (200) donne l'état du serveur. Les
             // nouvelles pesées du téléphone sont listées dans peseesRefusees ; le statut
             // demandé (EN_COURS ou TERMINEE), nombreParDefaut et les annulations de
-            // pesées existantes sont ignorés — le serveur prime.
+            // pesées existantes sont ignorés : le serveur prime.
+            // Compatibilité : un téléphone qui n'envoie pas l'en-tête X-Pesee-Contrat: 2
+            // (APK ≤ 1.27) ne connaît pas peseesRefusees ; pour lui, des pesées refusées
+            // donnent l'ancienne 400 « session terminée ».
             List<String> refusees = recues.keySet().stream().filter(inconnues::contains).toList();
+            if (!contratV2 && !refusees.isEmpty()) throw new IllegalArgumentException(MSG_TERMINEE);
             SessionPeseeDTO dto = toDto(session, existantes);
             dto.setPeseesRefusees(new ArrayList<>(refusees));
             return dto;
@@ -269,7 +316,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
             // À défaut : la première pesée reçue, sinon maintenant.
             if (debut == null) {
                 for (SessionPeseeSyncRequest.PeseeItem item : recues.values()) {
-                    LocalDateTime dh = parseDateHeure(item.getDateHeure(), "dateHeure");
+                    LocalDateTime dh = dateHeureRecue(item);
                     if (dh != null && (debut == null || dh.isBefore(debut))) debut = dh;
                 }
             }
@@ -311,15 +358,29 @@ public class SessionPeseeImpl implements SessionPeseeService {
                 }
                 continue;
             }
-            double poids = validerPesee(item.getNombreSujets(), item.getPoidsKg());
-            LocalDateTime dateHeure = parseDateHeure(item.getDateHeure(), "dateHeure");
-            if (dateHeure == null) {
-                throw new IllegalArgumentException("La date et l'heure de la pesée sont obligatoires.");
+            boolean dejaAnnulee = vrai(item.getAnnulee());
+            int nombre;
+            double poids;
+            LocalDateTime dateHeure = dateHeureRecue(item);
+            if (dejaAnnulee) {
+                // Pesée arrivée déjà annulée : elle ne compte pas dans les totaux, ses
+                // valeurs ne sont pas contrôlées (elle ne doit jamais bloquer une synchro).
+                Integer n = item.getNombreSujets();
+                Double kg = item.getPoidsKg();
+                nombre = n != null && n >= 0 ? n : 0;
+                poids = kg != null && !kg.isNaN() && !kg.isInfinite() ? arrondi3(kg) : 0.0;
+                if (dateHeure == null) dateHeure = session.getDateDebut();
+            } else {
+                poids = validerPesee(item.getNombreSujets(), item.getPoidsKg());
+                nombre = item.getNombreSujets();
+                if (dateHeure == null) {
+                    throw new IllegalArgumentException("La date et l'heure de la pesée sont obligatoires.");
+                }
             }
             Pesee p = new Pesee();
             p.setUniqueId(e.getKey());
             p.setSession(session);
-            p.setNombreSujets(item.getNombreSujets());
+            p.setNombreSujets(nombre);
             p.setPoidsKg(poids);
             p.setDateHeure(dateHeure);
             p.setAnnulee(vrai(item.getAnnulee()));
@@ -342,10 +403,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
             // À défaut : la dernière pesée non annulée (pas l'heure de réception, qui
             // peut être bien plus tardive pour une saisie hors ligne).
             if (fin == null) fin = session.getDerniereDatePesee();
-            if (fin.isBefore(session.getDateDebut())) {
-                throw new IllegalArgumentException("La date de fin ne peut pas précéder la date de début de la session.");
-            }
-            session.setDateFin(fin);
+            session.setDateFin(dateFinValidee(session, fin));
             terminee = true;
         }
         if (!nouvelle) Initialisation.updateDate(session.getInitialisation());
@@ -355,9 +413,9 @@ public class SessionPeseeImpl implements SessionPeseeService {
         if (nouvelle || ajoutees > 0 || annulees > 0 || terminee) {
             StringBuilder action = new StringBuilder(nouvelle ? "Ouverture" : "Synchronisation")
                     .append(" d'une session de pesée pour le projet '").append(projet.getTitre()).append("'");
-            if (ajoutees > 0) action.append(" — ").append(ajoutees).append(" pesée(s) ajoutée(s)");
-            if (annulees > 0) action.append(" — ").append(annulees).append(" pesée(s) annulée(s)");
-            if (terminee) action.append(" — session terminée (").append(session.getNombreTotalSujets())
+            if (ajoutees > 0) action.append(", ").append(ajoutees).append(" pesée(s) ajoutée(s)");
+            if (annulees > 0) action.append(", ").append(annulees).append(" pesée(s) annulée(s)");
+            if (terminee) action.append(", session terminée (").append(session.getNombreTotalSujets())
                     .append(" sujets, poids moyen ").append(session.getPoidsMoyenKg()).append(" kg)");
             logs.addLogs(user.getId(), session.getId(), "SessionPesee", action.toString());
         }
@@ -366,7 +424,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
         return toDto(session, existantes);
     }
 
-    // Ordre d'affichage (et de numérotation « Pesée n°… ») : dateHeure puis id.
+    // Ordre d'affichage : dateHeure puis id.
     private static void trier(List<Pesee> pesees) {
         pesees.sort((a, b) -> {
             int c = a.getDateHeure().compareTo(b.getDateHeure());
@@ -417,10 +475,6 @@ public class SessionPeseeImpl implements SessionPeseeService {
         String pid = peseeUid != null ? peseeUid.trim() : "";
         return ctx.pesees().stream().filter(p -> p.getUniqueId().equals(pid)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Pesée introuvable dans cette session : " + peseeUid));
-    }
-
-    private static int numero(List<Pesee> pesees, Pesee p) {
-        return pesees.indexOf(p) + 1;
     }
 
     private void evenement(SessionPesee s, TypeEvenementPesee type, Pesee p, Integer ancienNombre, Double ancienPoids,
@@ -504,7 +558,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
         ctx.pesees().add(p);
         trier(ctx.pesees());
         evenement(ctx.session(), TypeEvenementPesee.AJOUT_WEB, p, null, null, p.getNombreSujets(), poids, ctx.user(),
-                "Pesée n°" + numero(ctx.pesees(), p) + " ajoutée : " + sujets(p.getNombreSujets()) + " " + kg(poids)
+                libellePesee(p) + " ajoutée : " + sujets(p.getNombreSujets()) + " " + kg(poids)
                         + " kg par " + nom(ctx.user()));
         return enregistrer(ctx);
     }
@@ -530,7 +584,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
         Initialisation.updateDate(p.getInitialisation());
         peseeRepo.save(p);
         evenement(ctx.session(), TypeEvenementPesee.MODIFICATION_WEB, p, ancienNombre, ancienPoids, p.getNombreSujets(), poids,
-                ctx.user(), "Pesée n°" + numero(ctx.pesees(), p) + " modifiée : " + sujets(ancienNombre) + " " + kg(ancienPoids)
+                ctx.user(), libellePesee(p) + " modifiée : " + sujets(ancienNombre) + " " + kg(ancienPoids)
                         + " kg → " + sujets(p.getNombreSujets()) + " " + kg(poids) + " kg par " + nom(ctx.user()));
         return enregistrer(ctx);
     }
@@ -549,7 +603,7 @@ public class SessionPeseeImpl implements SessionPeseeService {
         Initialisation.updateDate(p.getInitialisation());
         peseeRepo.save(p);
         evenement(ctx.session(), TypeEvenementPesee.ANNULATION_WEB, p, p.getNombreSujets(), p.getPoidsKg(), null, null,
-                ctx.user(), "Pesée n°" + numero(ctx.pesees(), p) + " annulée (" + sujets(p.getNombreSujets()) + " "
+                ctx.user(), libellePesee(p) + " annulée (" + sujets(p.getNombreSujets()) + " "
                         + kg(p.getPoidsKg()) + " kg) par " + nom(ctx.user()));
         return enregistrer(ctx);
     }
@@ -563,14 +617,16 @@ public class SessionPeseeImpl implements SessionPeseeService {
         if (ctx.pesees().stream().allMatch(p -> vrai(p.getAnnulee()))) {
             throw new IllegalArgumentException("Impossible de terminer une session sans aucune pesée.");
         }
-        LocalDateTime fin = parseDateHeure(req != null ? req.getDateFin() : null, "dateFin");
-        if (fin == null) fin = LocalDateTime.now();
-        if (fin.isBefore(s.getDateDebut())) {
-            throw new IllegalArgumentException("La date de fin ne peut pas précéder la date de début de la session.");
-        }
         recalculer(s, ctx.pesees());
+        LocalDateTime fin = parseDateHeure(req != null ? req.getDateFin() : null, "dateFin");
+        if (fin == null) {
+            // Maintenant, ou la dernière pesée si une horloge de téléphone en avance l'a
+            // placée plus tard.
+            fin = LocalDateTime.now();
+            if (s.getDerniereDatePesee() != null && fin.isBefore(s.getDerniereDatePesee())) fin = s.getDerniereDatePesee();
+        }
         s.setStatut(StatutSessionPesee.TERMINEE);
-        s.setDateFin(fin);
+        s.setDateFin(dateFinValidee(s, fin));
         evenement(s, TypeEvenementPesee.TERMINAISON_WEB, null, null, null, null, null, ctx.user(),
                 "Session terminée : " + sujets(s.getNombreTotalSujets()) + ", " + kg(s.getPoidsTotalKg())
                         + " kg, poids moyen " + kg(s.getPoidsMoyenKg()) + " kg par " + nom(ctx.user()));

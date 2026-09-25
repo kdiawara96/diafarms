@@ -13,7 +13,7 @@ import com.diafarms.ml.models.Pesee;
 @Repository
 public interface PeseeRepo extends JpaRepository<Pesee, Long> {
 
-    @Query("SELECT p FROM Pesee p WHERE p.session.id = :sessionId ORDER BY p.dateHeure ASC, p.id ASC")
+    @Query("SELECT p FROM Pesee p LEFT JOIN FETCH p.creePar WHERE p.session.id = :sessionId ORDER BY p.dateHeure ASC, p.id ASC")
     List<Pesee> findBySessionIdOrdered(@Param("sessionId") Long sessionId);
 
     // Pour détecter un uniqueId de pesée déjà utilisé dans une AUTRE session.

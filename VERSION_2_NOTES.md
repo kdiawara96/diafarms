@@ -797,5 +797,10 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   les nouvelles pesées du téléphone listées dans `peseesRefusees` (plus de 400 « terminée » en
   synchro) ; statut EN_COURS/TERMINEE demandé ignoré. Bornes ajoutées (synchro et web) : 1–10 000
   sujets, poids > 0 après arrondi à 3 déc., ≤ 100 000 kg.
+- **Compatibilité** : le 200 + `peseesRefusees` n'est renvoyé qu'aux téléphones qui envoient
+  l'en-tête `X-Pesee-Contrat: 2` (APK ≥ 1.28) ; sans lui, une pesée refusée → ancienne 400
+  « session terminée ». Journal : « Pesée de HH:mm … » (rapprochement par peseeUniqueId).
+  dateFin : pas avant dateDebut ni avant la dernière pesée (400) ; futur toléré 1 jour, au-delà
+  ramené à maintenant. Pesée nouvelle déjà annulée : aucune validation de valeurs.
 - **SQL** : `docs/sql/2026-09-25_pesees_web.sql` — rien à faire (table et colonnes nouvelles,
-  nullables ou avec défaut). Tests : `scripts/scenarios-pesees.sh` (59 assertions).
+  nullables ou avec défaut). Tests : `scripts/scenarios-pesees.sh` (74 assertions).

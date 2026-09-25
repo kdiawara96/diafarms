@@ -29,9 +29,11 @@ public class PeseeControllers {
     private final SessionPeseeService service;
 
     @PostMapping("/sessions/sync")
-    public ResponseEntity<ApiResponse<SessionPeseeDTO>> sync(@RequestBody SessionPeseeSyncRequest request) {
+    public ResponseEntity<ApiResponse<SessionPeseeDTO>> sync(@RequestBody SessionPeseeSyncRequest request,
+            @RequestHeader(value = "X-Pesee-Contrat", required = false) String contrat) {
         try {
-            return ApiResponse.createResponse("Session de pesée synchronisée", HttpStatus.OK, service.sync(request), null);
+            boolean contratV2 = contrat != null && contrat.trim().equals("2");
+            return ApiResponse.createResponse("Session de pesée synchronisée", HttpStatus.OK, service.sync(request, contratV2), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (DataIntegrityViolationException e) {

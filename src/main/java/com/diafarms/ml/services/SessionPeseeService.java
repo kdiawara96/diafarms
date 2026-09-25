@@ -10,7 +10,8 @@ import com.diafarms.ml.request.others.SessionPeseeWebRequest;
 
 public interface SessionPeseeService {
 
-    SessionPeseeDTO sync(SessionPeseeSyncRequest request);
+    // contratV2 : en-tête X-Pesee-Contrat: 2 (APK ≥ 1.28), active peseesRefusees.
+    SessionPeseeDTO sync(SessionPeseeSyncRequest request, boolean contratV2);
 
     PaginatedResponse<SessionPeseeDTO> list(String projetUniqueId, String statut, int page, int size);
 

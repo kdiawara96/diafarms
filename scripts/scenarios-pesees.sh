@@ -66,9 +66,15 @@ PY
   fi
 }
 
-post_sync() { # $1 = corps JSON, $2 = jeton facultatif (défaut : admin)
+post_sync() { # $1 = corps JSON, $2 = jeton facultatif (défaut : admin) ; contrat 2 (APK ≥ 1.28)
   curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/pesees/sessions/sync" \
     -H "Authorization: Bearer ${2:-$TOKEN}" -H 'Content-Type: application/json' \
+    -H 'X-Client-Type: mobile' -H 'X-Pesee-Contrat: 2' -d "$1" > "$TMP/code"
+}
+
+post_sync_ancien() { # $1 = corps JSON ; SANS l'en-tête X-Pesee-Contrat (APK ≤ 1.27)
+  curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/pesees/sessions/sync" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
     -H 'X-Client-Type: mobile' -d "$1" > "$TMP/code"
 }
 
@@ -188,9 +194,14 @@ check "200, inchangée, peseesRefusees vide" \
   "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'].startswith('$FIN') and len(d['data']['pesees']) == 3 and d['data']['nombreTotalSujets'] == 5 and d['data']['peseesRefusees'] == []"
 V_S1="$(jval "d['data']['version']")"
 
-echo "== 8. Nouvelle pesée après la fin (depuis le 2026-09-25 web : 200 + peseesRefusees)"
+echo "== 8. Nouvelle pesée après la fin"
+post_sync_ancien "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A;$P4|2|4.0|$T4|false")"
+check "SANS en-tête X-Pesee-Contrat (APK ≤ 1.27) : ancienne 400 « session terminée »" \
+  "code == 400 and 'terminée' in ' '.join(d.get('errors') or [])"
+post_sync_ancien "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A")"
+check "SANS en-tête, renvoi identique : 200" "code == 200 and d['data']['statut'] == 'TERMINEE'"
 post_sync "$(payload "$S1" "$PROJET" TERMINEE "$FIN" "$PES3A;$P4|2|4.0|$T4|false")"
-check "200, peseesRefusees = [P4], rien d'écrit (3 pesées, 5 sujets, version inchangée)" \
+check "AVEC X-Pesee-Contrat: 2 : 200, peseesRefusees = [P4], rien d'écrit (3 pesées, 5 sujets, version inchangée)" \
   "code == 200 and d['data']['peseesRefusees'] == ['$P4'] and len(d['data']['pesees']) == 3 and d['data']['nombreTotalSujets'] == 5 and d['data']['version'] == $V_S1"
 post_sync "$(payload "$S1" "$PROJET" EN_COURS "" "$PES3A")"
 check "réouverture demandée (statut EN_COURS) : 200, reste TERMINEE" \
@@ -296,8 +307,8 @@ check "200, 1 pesée origine WEB non modifiée, version 2" \
   "code == 200 and len(d['data']['pesees']) == 1 and d['data']['pesees'][0]['origine'] == 'WEB' and d['data']['pesees'][0]['modifiee'] is False and d['data']['version'] == 2"
 W1="$(jval "d['data']['pesees'][0]['uniqueId']")"
 web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 3, "poidsKg": 6.7}'
-check "6 sujets, 13.0 kg, 2.167, version 3, événement « Pesée n°2 ajoutée : 3 sujets 6,7 kg par … »" \
-  "code == 200 and d['data']['nombreTotalSujets'] == 6 and d['data']['poidsTotalKg'] == 13.0 and d['data']['poidsMoyenKg'] == 2.167 and d['data']['version'] == 3 and d['data']['evenements'][-1]['type'] == 'AJOUT_WEB' and d['data']['evenements'][-1]['description'].startswith('Pesée n°2 ajoutée : 3 sujets 6,7 kg par ')"
+check "6 sujets, 13.0 kg, 2.167, version 3, événement « Pesée de HH:MM ajoutée : 3 sujets 6,7 kg par … »" \
+  "code == 200 and d['data']['nombreTotalSujets'] == 6 and d['data']['poidsTotalKg'] == 13.0 and d['data']['poidsMoyenKg'] == 2.167 and d['data']['version'] == 3 and d['data']['evenements'][-1]['type'] == 'AJOUT_WEB' and __import__('re').match(r'Pesée de \\d\\d:\\d\\d ajoutée : 3 sujets 6,7 kg par ', d['data']['evenements'][-1]['description'])"
 W2="$(jval "[p for p in d['data']['pesees'] if p['uniqueId'] != '$W1'][0]['uniqueId']")"
 web POST "/pesees/sessions/$WS/pesees" '{"nombreSujets": 3, "poidsKg": 0.0004}'
 check "poids nul après arrondi à 3 déc. : 400" "code == 400 and 'supérieur à 0' in ' '.join(d.get('errors') or [])"
@@ -307,7 +318,7 @@ check "nombreSujets 0 : 400" "code == 400"
 echo "== 16. Web : correction de la pesée 1 (6.3 → 6.1)"
 web PUT "/pesees/sessions/$WS/pesees/$W1" '{"nombreSujets": 3, "poidsKg": 6.1}'
 check "pesée 1 = 6.1, modifiee, 12.8 kg, version 4, événement MODIFICATION_WEB ancien/nouveau + phrase" \
-  "code == 200 and (lambda p: p['poidsKg'] == 6.1 and p['modifiee'] is True)([p for p in d['data']['pesees'] if p['uniqueId'] == '$W1'][0]) and d['data']['poidsTotalKg'] == 12.8 and d['data']['version'] == 4 and (lambda e: e['type'] == 'MODIFICATION_WEB' and e['peseeUniqueId'] == '$W1' and e['ancienNombre'] == 3 and e['ancienPoids'] == 6.3 and e['nouveauNombre'] == 3 and e['nouveauPoids'] == 6.1 and e['description'].startswith('Pesée n°1 modifiée : 3 sujets 6,3 kg → 3 sujets 6,1 kg par ') and e['parNom'])(d['data']['evenements'][-1])"
+  "code == 200 and (lambda p: p['poidsKg'] == 6.1 and p['modifiee'] is True)([p for p in d['data']['pesees'] if p['uniqueId'] == '$W1'][0]) and d['data']['poidsTotalKg'] == 12.8 and d['data']['version'] == 4 and (lambda e: e['type'] == 'MODIFICATION_WEB' and e['peseeUniqueId'] == '$W1' and e['ancienNombre'] == 3 and e['ancienPoids'] == 6.3 and e['nouveauNombre'] == 3 and e['nouveauPoids'] == 6.1 and __import__('re').match(r'Pesée de \\d\\d:\\d\\d modifiée : 3 sujets 6,3 kg → 3 sujets 6,1 kg par ', e['description']) and e['parNom'])(d['data']['evenements'][-1])"
 web PUT "/pesees/sessions/$WS/pesees/$W1" '{"nombreSujets": 3, "poidsKg": 6.1}'
 check "même valeur renvoyée : 200 sans nouvel événement ni nouvelle version" \
   "code == 200 and d['data']['version'] == 4 and len(d['data']['evenements']) == 4"
@@ -376,6 +387,56 @@ if [ -n "${TOKEN_COMPTA:-}" ]; then
 else
   echo "ECHEC  jeton COMPTABLE absent"; FAIL=$((FAIL+1))
 fi
+
+echo "== 23. Web sur une session du téléphone, annulations croisées, dates de fin"
+SM="$(uuid)"; M3="$(uuid)"; M4="$(uuid)"
+DJ="2026-09-24T08:00:00"; TM3="2026-09-24T08:05:00"; TM4="2026-09-24T08:10:00"
+PESM="$M3|3|6.0|$TM3|false;$M4|3|6.0|$TM4|false"
+post_sync "$(payload "$SM" "$PROJET" EN_COURS "" "$PESM" "$DJ")"
+check "session du téléphone : 2 pesées MOBILE, origine MOBILE, version 1" \
+  "code == 200 and d['data']['origine'] == 'MOBILE' and d['data']['version'] == 1 and all(p['origine'] == 'MOBILE' for p in d['data']['pesees'])"
+web PUT "/pesees/sessions/$SM/pesees/$M3" '{"nombreSujets": 3, "poidsKg": 5.5}'
+check "web corrige une pesée MOBILE : modifiee, origine reste MOBILE, 11.5 kg, version 2, « Pesée de 08:05 modifiée : 3 sujets 6 kg → 3 sujets 5,5 kg par … »" \
+  "code == 200 and (lambda p: p['modifiee'] is True and p['origine'] == 'MOBILE' and p['poidsKg'] == 5.5)([p for p in d['data']['pesees'] if p['uniqueId'] == '$M3'][0]) and d['data']['poidsTotalKg'] == 11.5 and d['data']['version'] == 2 and d['data']['evenements'][-1]['description'].startswith('Pesée de 08:05 modifiée : 3 sujets 6 kg → 3 sujets 5,5 kg par ') and d['data']['evenements'][-1]['peseeUniqueId'] == '$M3'"
+web POST "/pesees/sessions/$SM/pesees" '{"nombreSujets": 2, "poidsKg": 4.0}'
+W3="$(jval "[p for p in d['data']['pesees'] if p['origine'] == 'WEB'][0]['uniqueId']")"
+check "web ajoute une pesée (W3), version 3" "code == 200 and d['data']['version'] == 3 and len(d['data']['pesees']) == 3"
+post_sync "$(payload "$SM" "$PROJET" EN_COURS "" "$PESM;$W3|2|4.0|$TM4|true" "$DJ")"
+check "le téléphone annule la pesée web W3 : acceptée, version 4, aucun événement ajouté (2), M3 garde 5.5" \
+  "code == 200 and [p for p in d['data']['pesees'] if p['uniqueId'] == '$W3'][0]['annulee'] is True and d['data']['version'] == 4 and len(d['data']['evenements']) == 2 and [p for p in d['data']['pesees'] if p['uniqueId'] == '$M3'][0]['poidsKg'] == 5.5 and d['data']['nombreTotalSujets'] == 6"
+web POST "/pesees/sessions/$SM/pesees/$M4/annuler" ""
+check "web annule M4 : version 5, événement ANNULATION_WEB « Pesée de 08:10 annulée »" \
+  "code == 200 and d['data']['version'] == 5 and d['data']['evenements'][-1]['type'] == 'ANNULATION_WEB' and d['data']['evenements'][-1]['description'].startswith('Pesée de 08:10 annulée (3 sujets 6 kg) par ')"
+web POST "/pesees/sessions/$SM/pesees/$M4/annuler" ""
+check "2e annulation web de M4 : 200, même version 5, pas de nouvel événement" \
+  "code == 200 and d['data']['version'] == 5 and len(d['data']['evenements']) == 3"
+post_sync "$(payload "$SM" "$PROJET" EN_COURS "" "$PESM;$(uuid)|0|0|pas-une-date|true" "$DJ")"
+check "nouvelle pesée arrivée déjà annulée avec valeurs invalides : 200, enregistrée annulée, totaux inchangés" \
+  "code == 200 and len(d['data']['pesees']) == 4 and d['data']['nombreTotalSujets'] == 3 and d['data']['poidsTotalKg'] == 5.5"
+web POST "/pesees/sessions/$SM/terminer" '{"dateFin": "2026-09-24T07:00:00"}'
+check "terminer (web) avec dateFin < dateDebut : 400" "code == 400 and 'date de début' in ' '.join(d.get('errors') or [])"
+web POST "/pesees/sessions/$SM/terminer" '{"dateFin": "2026-09-24T08:02:00"}'
+check "terminer (web) avec dateFin < derniereDatePesee (08:05) : 400" "code == 400 and 'dernière pesée' in ' '.join(d.get('errors') or [])"
+post_sync "$(payload "$SM" "$PROJET" TERMINEE "2026-09-24T08:02:00" "$PESM" "$DJ")"
+check "terminer (téléphone) avec dateFin < derniereDatePesee : 400" "code == 400 and 'dernière pesée' in ' '.join(d.get('errors') or [])"
+LOIN="$(date -d '+3 days' +%Y-%m-%dT%H:%M:%S)"; DEMAIN_MOINS="$(date -d '+1 day' +%Y-%m-%d)"
+web POST "/pesees/sessions/$SM/terminer" "{\"dateFin\": \"$LOIN\"}"
+check "dateFin à +3 jours : 200, ramenée à maintenant (≤ +1 jour), version 7" \
+  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'][:10] <= '$DEMAIN_MOINS' and d['data']['dateFin'][:10] < '${LOIN:0:10}' and d['data']['version'] == 7"
+SF="$(uuid)"; TOL="$(date -d '+12 hours' +%Y-%m-%dT%H:%M:%S)"
+post_sync "$(payload "$SF" "$PROJET" TERMINEE "$TOL" "$(uuid)|3|6.0|$T1|false")"
+check "téléphone : dateFin à +12 h (tolérance 1 jour) acceptée telle quelle" \
+  "code == 200 and d['data']['dateFin'].startswith('$TOL')"
+
+# Nettoyage : sessions laissées vides par ce passage (WV ouverte sur le web sans pesée,
+# S5/S6 du test de tri).
+for sid in "$WV" "$S5" "$S6"; do
+  psql_run "DELETE FROM sessions_pesee_evenements WHERE session_id IN (SELECT id FROM sessions_pesee WHERE unique_id = '$sid');
+            DELETE FROM sessions_pesee WHERE unique_id = '$sid' AND NOT EXISTS (SELECT 1 FROM pesees p WHERE p.session_id = sessions_pesee.id)" >/dev/null
+done
+[ "$(psql_run "SELECT COUNT(*) FROM sessions_pesee WHERE unique_id IN ('$WV', '$S5', '$S6')")" = "0" ] \
+  && echo "OK     nettoyage des sessions vides" && PASS=$((PASS+1)) \
+  || { echo "ECHEC  nettoyage des sessions vides"; FAIL=$((FAIL+1)); }
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
