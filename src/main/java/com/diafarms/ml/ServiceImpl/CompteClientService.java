@@ -116,10 +116,48 @@ public class CompteClientService {
         double paye = nz(paiementRepo.sumActifsByClientId(id));
         double imputeVentes = nz(imputationRepo.sumActivesSurVentesByClientId(id));
         double imputeTout = nz(imputationRepo.sumActivesByClientId(id));
+        return assembler(client, vendu, paye, imputeVentes, imputeTout, avancesReservees(client));
+    }
+
+    /** Comptes de plusieurs clients en quelques requêtes groupées (GET /clients/comptes),
+     * mêmes chiffres que compte(client) client par client. Ordre de la liste conservé. */
+    @Transactional(readOnly = true)
+    public List<CompteClientDTO> comptes(List<Client> clients) {
+        if (clients.isEmpty()) return List.of();
+        List<Long> ids = clients.stream().map(Client::getId).toList();
+        java.util.Map<Long, Double> vendu = new java.util.HashMap<>();
+        for (Object[] r : venteOeufsRepo.sumMontantActifsParClient(ids)) vendu.merge((Long) r[0], ((Number) r[1]).doubleValue(), Double::sum);
+        for (Object[] r : venteReformeRepo.sumMontantActifsParClient(ids)) vendu.merge((Long) r[0], ((Number) r[1]).doubleValue(), Double::sum);
+        java.util.Map<Long, Double> paye = new java.util.HashMap<>();
+        for (Object[] r : paiementRepo.sumActifsParClient(ids)) paye.put((Long) r[0], ((Number) r[1]).doubleValue());
+        java.util.Map<Long, double[]> impute = new java.util.HashMap<>(); // [tout, ventes]
+        for (Object[] r : imputationRepo.sumActivesParClient(ids)) {
+            impute.put((Long) r[0], new double[] { ((Number) r[1]).doubleValue(), ((Number) r[2]).doubleValue() });
+        }
+        java.util.Map<String, Double> imputeParCommande = new java.util.HashMap<>();
+        for (Object[] r : imputationRepo.sumImputeParCommandeOuverteParClients(ids)) {
+            imputeParCommande.put((String) r[0], ((Number) r[1]).doubleValue());
+        }
+        java.util.Map<Long, List<CompteClientDTO.AvanceReserveeDTO>> reservees = new java.util.HashMap<>();
+        for (Object[] r : paiementRepo.sumParCommandeOuverteParClient(ids)) {
+            double reste = CalculImputation.arrondi(((Number) r[3]).doubleValue() - imputeParCommande.getOrDefault((String) r[1], 0.0));
+            if (reste > 0) reservees.computeIfAbsent((Long) r[0], k -> new ArrayList<>()).add(CompteClientDTO.AvanceReserveeDTO.builder()
+                    .commandeUniqueId((String) r[1]).dateCommande((java.time.LocalDate) r[2]).montant(reste).build());
+        }
+        List<CompteClientDTO> out = new ArrayList<>();
+        for (Client c : clients) {
+            double[] imp = impute.getOrDefault(c.getId(), new double[] { 0, 0 });
+            out.add(assembler(c, vendu.getOrDefault(c.getId(), 0.0), paye.getOrDefault(c.getId(), 0.0), imp[1], imp[0],
+                    reservees.getOrDefault(c.getId(), List.of())));
+        }
+        return out;
+    }
+
+    private static CompteClientDTO assembler(Client client, double vendu, double paye, double imputeVentes, double imputeTout,
+                                             List<CompteClientDTO.AvanceReserveeDTO> reservees) {
         double rembourse = CalculImputation.arrondi(imputeTout - imputeVentes);
         double reste = CalculImputation.arrondi(vendu - imputeVentes);
         double avance = CalculImputation.arrondi(paye - imputeTout);
-        List<CompteClientDTO.AvanceReserveeDTO> reservees = avancesReservees(client);
         double reservee = CalculImputation.arrondi(reservees.stream().mapToDouble(CompteClientDTO.AvanceReserveeDTO::getMontant).sum());
         return CompteClientDTO.builder()
                 .clientUniqueId(client.getUniqueId()).clientNom(client.getNom())

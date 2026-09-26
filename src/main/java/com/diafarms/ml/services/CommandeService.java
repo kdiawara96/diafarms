@@ -34,8 +34,16 @@ public interface CommandeService {
      * cet argent nouveau, ESPECES par défaut. */
     // poidsTotalKg / prixKg : commande de réforme au KILO seulement (poids pesé des sujets
     // livrés, obligatoire ; prix/kg optionnel, défaut = prixKgEstime de la commande).
+    // date / heure : date réelle de la livraison (AAAA-MM-JJ, HH:mm), pour une livraison
+    // saisie hors ligne et envoyée plus tard ; absentes = aujourd'hui, sans heure. Jamais
+    // dans le futur. La vente créée, sa transaction et l'argent reçu portent cette date.
     CommandeDTO livrer(String uniqueId, Integer quantite, Double montantRecu, String mode,
-                       Double poidsTotalKg, Double prixKg);
+                       Double poidsTotalKg, Double prixKg, String date, String heure);
+
+    default CommandeDTO livrer(String uniqueId, Integer quantite, Double montantRecu, String mode,
+                               Double poidsTotalKg, Double prixKg) {
+        return livrer(uniqueId, quantite, montantRecu, mode, poidsTotalKg, prixKg, null, null);
+    }
 
     default CommandeDTO livrer(String uniqueId, Integer quantite, Double montantRecu, String mode) {
         return livrer(uniqueId, quantite, montantRecu, mode, null, null);

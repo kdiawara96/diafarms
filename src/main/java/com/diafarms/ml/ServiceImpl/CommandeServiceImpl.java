@@ -583,13 +583,25 @@ public class CommandeServiceImpl implements CommandeService {
         // Livre tout ce qu'il reste, en un coup, sans nouvel argent compté à cet
         // instant — l'ancien comportement à un seul coup, gardé pour compatibilité
         // (bouton "Convertir en vente" historique).
-        return livrer(uniqueId, null, 0.0, null, null, null);
+        return livrer(uniqueId, null, 0.0, null, null, null, null, null);
     }
 
     @Override
     @Transactional
     public CommandeDTO livrer(String uniqueId, Integer quantiteDemandee, Double montantRecu, String modeBrut,
-                              Double poidsTotalKg, Double prixKg) {
+                              Double poidsTotalKg, Double prixKg, String dateBrute, String heureBrute) {
+        LocalDate dateLivraison = DateSaisie.parse(dateBrute, LocalDate.now());
+        if (dateLivraison.isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException("La date de livraison ne peut pas être dans le futur.");
+        }
+        String heureLivraison = null;
+        if (heureBrute != null && !heureBrute.isBlank()) {
+            try {
+                heureLivraison = java.time.LocalTime.parse(heureBrute.trim()).toString();
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new IllegalArgumentException("Heure invalide : " + heureBrute + " (format attendu HH:mm).");
+            }
+        }
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
         Commande c = commandeFarmScoped(uniqueId, currentUser, false, true);
@@ -663,7 +675,8 @@ public class CommandeServiceImpl implements CommandeService {
             data.setMontant(montantLivraison);
             data.setMontantRapporte(null);
             data.setModePaiement(null);
-            data.setDate(LocalDate.now().toString());
+            data.setDate(dateLivraison.toString());
+            data.setHeure(heureLivraison);
             VenteOeufsDTO vente = venteOeufsService.create(data);
             venteUniqueId = vente.getUniqueId();
             typeCible = CibleImputation.VENTE_OEUFS;
@@ -682,7 +695,8 @@ public class CommandeServiceImpl implements CommandeService {
             data.setPoidsTotalKg(auKilo ? poidsTotalKg : null);
             data.setMontantRapporte(null);
             data.setModePaiement(null);
-            data.setDate(LocalDate.now().toString());
+            data.setDate(dateLivraison.toString());
+            data.setHeure(heureLivraison);
             VenteReformeDTO vente = venteReformeService.create(data);
             venteUniqueId = vente.getUniqueId();
             typeCible = CibleImputation.VENTE_REFORME;
@@ -703,7 +717,7 @@ public class CommandeServiceImpl implements CommandeService {
         compteClientService.retirerImputationsProvisoires(typeCible, venteUniqueId);
         if (nz(montantRecu) > 0) {
             paiementClientService.enregistrerInterne(c.getClient(), montantRecu, mode(modeBrut), OriginePaiement.LIVRAISON,
-                    c, typeCible, venteUniqueId, null, null, LocalDate.now());
+                    c, typeCible, venteUniqueId, null, null, dateLivraison);
         } else {
             compteClientService.imputer(c.getClient());
         }

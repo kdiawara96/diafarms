@@ -74,4 +74,9 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
         "AND v.date >= :dateDebut AND v.date <= :dateFin")
     Double sumRapporteSansClient(@Param("farmId") Long farmId, @Param("dateDebut") java.time.LocalDate dateDebut,
                                  @Param("dateFin") java.time.LocalDate dateFin);
+
+    // [clientId, Σ montant des ventes actives] pour plusieurs clients (GET /clients/comptes).
+    @Query("SELECT v.client.id, COALESCE(SUM(v.montant), 0) FROM VenteReforme v WHERE v.client.id IN :clientIds " +
+           "AND v.initialisation.removed = false GROUP BY v.client.id")
+    List<Object[]> sumMontantActifsParClient(@Param("clientIds") java.util.Collection<Long> clientIds);
 }

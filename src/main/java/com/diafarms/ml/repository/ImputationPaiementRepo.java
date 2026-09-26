@@ -77,4 +77,21 @@ public interface ImputationPaiementRepo extends JpaRepository<ImputationPaiement
            "WHERE i.paiement.id IN :ids AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
            "GROUP BY i.paiement.id, i.cibleType, i.cibleUniqueId")
     List<Object[]> sumActivesParPaiementEtCible(@Param("ids") java.util.Collection<Long> ids);
+
+    // Versions groupées par client (GET /clients/comptes) de sumActivesByClientId,
+    // sumActivesSurVentesByClientId et sumImputeParCommandeOuverte.
+    @Query("SELECT i.client.id, COALESCE(SUM(i.montant), 0), " +
+           "COALESCE(SUM(CASE WHEN i.cibleType <> com.diafarms.ml.enums.CibleImputation.REMBOURSEMENT THEN i.montant ELSE 0 END), 0) " +
+           "FROM ImputationPaiement i WHERE i.client.id IN :clientIds " +
+           "AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF GROUP BY i.client.id")
+    List<Object[]> sumActivesParClient(@Param("clientIds") java.util.Collection<Long> clientIds);
+
+    @Query("SELECT k.uniqueId, SUM(i.montant) FROM ImputationPaiement i JOIN i.paiement p JOIN p.commande k " +
+           "WHERE i.client.id IN :clientIds AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
+           "AND COALESCE(k.initialisation.removed, false) = false GROUP BY k.uniqueId")
+    List<Object[]> sumImputeParCommandeOuverteParClients(@Param("clientIds") java.util.Collection<Long> clientIds);
 }

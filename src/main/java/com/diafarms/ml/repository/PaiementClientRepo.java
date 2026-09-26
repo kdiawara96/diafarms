@@ -57,4 +57,19 @@ public interface PaiementClientRepo extends JpaRepository<PaiementClient, Long> 
     // CommandeServiceImpl.enrichirTous : paiements de toutes les commandes d'une page.
     @Query("SELECT p FROM PaiementClient p WHERE p.commande.id IN :ids")
     List<PaiementClient> findByCommandeIds(@Param("ids") java.util.Collection<Long> ids);
+
+    // Versions groupées par client de sumActifsByClientId / sumParCommandeOuverte
+    // (GET /clients/comptes : un seul appel pour toute une page de clients).
+    @Query("SELECT p.client.id, COALESCE(SUM(p.montant), 0) FROM PaiementClient p WHERE p.client.id IN :clientIds " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF GROUP BY p.client.id")
+    List<Object[]> sumActifsParClient(@Param("clientIds") java.util.Collection<Long> clientIds);
+
+    @Query("SELECT p.client.id, k.uniqueId, k.dateCommande, SUM(p.montant) FROM PaiementClient p JOIN p.commande k " +
+           "WHERE p.client.id IN :clientIds AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
+           "AND COALESCE(k.initialisation.removed, false) = false " +
+           "GROUP BY p.client.id, k.uniqueId, k.dateCommande ORDER BY k.dateCommande, k.uniqueId")
+    List<Object[]> sumParCommandeOuverteParClient(@Param("clientIds") java.util.Collection<Long> clientIds);
 }

@@ -79,6 +79,21 @@ public class PaiementClientController {
     // seule transaction en lecture seule : les associations paresseuses des entités
     // (p.client, r.effectuePar, i.paiement) doivent être accédées pendant que la session
     // Hibernate est encore ouverte (open-in-view=false), pas après coup dans le contrôleur.
+    // Comptes de tous les clients de la ferme, par page (page 0-based, size 1..500, défaut
+    // 200) : resteAPayer, avanceLibre, avanceReservee (+ détail par commande), solde.
+    // Requêtes groupées, pour que le mobile précharge tous les comptes en un appel.
+    @GetMapping("/clients/comptes")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.others.PaginatedResponse<com.diafarms.ml.DTO.CompteClientDTO>>> comptes(
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "200") int size) {
+        try {
+            return ApiResponse.createResponse("Comptes clients récupérés", HttpStatus.OK, service.comptes(page, size), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/clients/{uid}/compte")
     public ResponseEntity<ApiResponse<Map<String, Object>>> compte(@PathVariable String uid) {
         try {

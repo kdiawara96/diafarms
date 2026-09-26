@@ -108,6 +108,8 @@ public class CommandeController {
     // paiement de cet argent nouveau, ESPECES par défaut. Commande de réforme au KILO :
     // quantite (sujets) et poidsTotalKg (poids pesé) obligatoires, prixKg optionnel
     // (défaut = prixKgEstime de la commande) ; montant = poidsTotalKg x prixKg.
+    // date (AAAA-MM-JJ) / heure (HH:mm) optionnelles : date réelle d'une livraison saisie
+    // hors ligne ; absentes = aujourd'hui.
     @PostMapping("/{uniqueId}/livrer")
     public ResponseEntity<ApiResponse<CommandeDTO>> livrer(
             @PathVariable String uniqueId,
@@ -115,10 +117,12 @@ public class CommandeController {
             @RequestParam(required = false) Double montantRecu,
             @RequestParam(required = false) String mode,
             @RequestParam(required = false) Double poidsTotalKg,
-            @RequestParam(required = false) Double prixKg) {
+            @RequestParam(required = false) Double prixKg,
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) String heure) {
         try {
             return ApiResponse.createResponse("Commande livrée", HttpStatus.OK,
-                    service.livrer(uniqueId, quantite, montantRecu, mode, poidsTotalKg, prixKg), null);
+                    service.livrer(uniqueId, quantite, montantRecu, mode, poidsTotalKg, prixKg, date, heure), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

@@ -296,4 +296,21 @@ public class PaiementClientService {
         data.put("imputations", imputations);
         return data;
     }
+
+    // Comptes de tous les clients actifs de la ferme, par page (tri par nom) : le mobile
+    // les précharge en un appel pour ses contrôles hors ligne, au lieu d'un
+    // /clients/{uid}/compte par client. Mêmes rôles que l'encaissement (tout sauf PRODUCTION).
+    @Transactional(readOnly = true)
+    public com.diafarms.ml.others.PaginatedResponse<com.diafarms.ml.DTO.CompteClientDTO> comptes(int page, int size) {
+        Utilisateurs u = user();
+        ensureCanEncaisser(u);
+        if (u.getFarm() == null) throw new IllegalArgumentException("Ferme introuvable.");
+        if (page < 0) throw new IllegalArgumentException("Numéro de page invalide.");
+        int taille = Math.max(1, Math.min(size, 500));
+        org.springframework.data.domain.Page<Client> clients = clientRepo.findActiveByFarmId(u.getFarm().getId(),
+                org.springframework.data.domain.PageRequest.of(page, taille,
+                        org.springframework.data.domain.Sort.by("nom").ascending().and(org.springframework.data.domain.Sort.by("id"))));
+        return new com.diafarms.ml.others.PaginatedResponse<>(compteClientService.comptes(clients.getContent()),
+                clients.getNumber() + 1, clients.getTotalPages(), clients.getTotalElements(), clients.getSize());
+    }
 }
