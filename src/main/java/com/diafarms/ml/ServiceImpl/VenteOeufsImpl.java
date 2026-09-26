@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.StockOeufsDTO;
 import com.diafarms.ml.DTO.VenteOeufsDTO;
 import com.diafarms.ml.DTO.VenteOeufsRepartitionDTO;
+import com.diafarms.ml.commons.FermeScope;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ModePaiement;
@@ -328,6 +329,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         // en demander la suppression, jamais le vendeur (il effacerait son propre manquant).
         ensureCanModifier(currentUser);
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
         // Client visé par la modification (null = inchangé). Passer de « sans client » à
@@ -500,6 +502,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         ensureCanConfirmerSuppression(currentUser);
 
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
         boolean removed = !v.getInitialisation().getRemoved();
@@ -556,6 +559,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         String motifValide = MotifSuppressionRequest.exiger(motif);
 
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
         if (v.getDemandeSuppressionPar() != null) {
             throw new IllegalArgumentException("Une demande de suppression est déjà en attente pour cette vente.");
@@ -579,6 +583,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         ensureCanConfirmerSuppression(currentUser);
 
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
         if (v.getDemandeSuppressionPar() == null) {
             throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
@@ -617,6 +622,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         ensureCanConfirmerSuppression(currentUser);
 
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
         if (v.getDemandeSuppressionPar() == null) {
             throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");

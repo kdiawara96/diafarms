@@ -166,6 +166,9 @@ public class CommandeServiceImpl implements CommandeService {
         }
         c.setTarification(tarif);
         if (tarif == TypeVenteReforme.TETE) {
+            if (data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null) {
+                throw new IllegalArgumentException("Le prix au kilo et le poids estimé ne concernent que les commandes au kilo.");
+            }
             c.setPrixKgEstime(null);
             c.setPoidsEstimeKg(null);
             return;
@@ -353,7 +356,8 @@ public class CommandeServiceImpl implements CommandeService {
         // chiffres (voir livrer()) : les changer ensuite désynchroniserait ce qui a été
         // livré de ce qui reste à livrer.
         if (nz(c.getQuantiteLivree()) > 0 && (data.getQuantite() != null || data.getMontantEstime() != null || data.getPrixUnitaireEstime() != null
-                || data.getTarification() != null || data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null)) {
+                || (data.getTarification() != null && parseTarification(data.getTarification()) != c.getTarification())
+                || data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null)) {
             throw new IllegalArgumentException("Cette commande a déjà commencé à être livrée : la quantité et le montant ne peuvent plus être modifiés.");
         }
         if (data.getQuantite() != null) {
@@ -365,7 +369,10 @@ public class CommandeServiceImpl implements CommandeService {
             if (data.getMontantEstime() <= 0) throw new IllegalArgumentException("Le montant estimé doit être positif.");
             c.setMontantEstime(data.getMontantEstime());
         }
-        if (data.getTarification() != null || data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null) {
+        // Commande au kilo (ou qui le devient) : toujours repasser par appliquerTarification,
+        // pour qu'un montantEstime envoyé seul ne contredise pas poids estimé x prix/kg.
+        if (data.getTarification() != null || data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null
+                || c.getTarification() == TypeVenteReforme.KILO) {
             appliquerTarification(c, data, false);
         }
         // Un acompte supplémentaire est désormais un paiement à part entière (voir

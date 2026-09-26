@@ -844,3 +844,13 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
 - **SQL** : rien à faire en prod (colonnes nouvelles nullables ou avec défaut ; la contrainte
   CHECK de `tarification` est créée avec la colonne). Tests : `scripts/scenarios-reforme-kilo.sh`
   (44 assertions) ; pesées (74) et stock-sécurité (45) toujours OK.
+- **Suite (revue)** : modifier une vente réforme issue d'une livraison de commande (sujets,
+  typeVente, poids, prix) → 400 « supprimez la livraison puis relivrez » (valeurs identiques
+  tolérées). Vente KILO directe : poids/prix modifié SANS montant → montant = arrondi(poids x
+  prix/kg) ; un montant explicite prime (le web l'envoie déjà recalculé, le mobile ne modifie pas).
+  Stats : RESPONSABLE pur limité à ses projets (autre projet → 400 introuvable), VENTE pur à ses
+  ventes ; total alors = Σ des parts visibles. Commande : prix/kg ou poids estimé sur une commande
+  TETE → 400 ; KILO avec poids estimé : montantEstime toujours recalculé ; tarification identique
+  renvoyée hors verrou. dernier-poids-moyen : dateFin DESC, jamais nulle. Isolation des fermes
+  ajoutée sur modification/suppression/demandes de suppression des ventes œufs, réforme, diverses.
+  Script : 67 assertions.

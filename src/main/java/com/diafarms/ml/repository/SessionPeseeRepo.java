@@ -49,6 +49,13 @@ public interface SessionPeseeRepo extends JpaRepository<SessionPesee, Long> {
                               @Param("statut") StatutSessionPesee statut,
                               Pageable pageable);
 
+    // Dernière session TERMINEE (dateFin la plus récente, jamais une dateFin nulle) — à
+    // appeler avec PageRequest.of(0, 1). Voir SessionPeseeImpl.dernierPoidsMoyen.
+    @Query("SELECT s FROM SessionPesee s WHERE s.projet.id = :projetId AND s.farm.id = :farmId " +
+            "AND s.initialisation.removed = false AND s.dateFin IS NOT NULL " +
+            "AND s.statut = com.diafarms.ml.enums.StatutSessionPesee.TERMINEE ORDER BY s.dateFin DESC, s.id DESC")
+    List<SessionPesee> findDerniereTerminee(@Param("projetId") Long projetId, @Param("farmId") Long farmId, Pageable pageable);
+
     @Query("SELECT s FROM SessionPesee s WHERE s.projet.id = :projetId AND s.farm.id = :farmId " +
             "AND s.initialisation.removed = false " +
             "AND s.statut = com.diafarms.ml.enums.StatutSessionPesee.TERMINEE ORDER BY s.dateFin ASC, s.id ASC")

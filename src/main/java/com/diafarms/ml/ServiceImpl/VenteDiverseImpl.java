@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.DTO.VenteDiverseDTO;
+import com.diafarms.ml.commons.FermeScope;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.ProduitVenteDiverse;
 import com.diafarms.ml.enums.SourceTransaction;
@@ -201,8 +202,11 @@ public class VenteDiverseImpl implements VenteDiverseService {
         return VenteDiverseDTO.fromEntity(saved);
     }
 
+    // Vente d'une autre ferme : même message qu'inexistante (voir FermeScope).
     private VenteDiverse trouver(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
         return venteDiverseRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente introuvable : " + uniqueId));
     }
 

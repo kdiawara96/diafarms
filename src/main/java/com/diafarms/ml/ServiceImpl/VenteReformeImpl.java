@@ -94,6 +94,11 @@ public class VenteReformeImpl implements VenteReformeService {
                 .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
     }
 
+    private boolean isPureRole(Utilisateurs u, String role) {
+        return u != null && u.getRoles() != null && !u.getRoles().isEmpty()
+                && u.getRoles().stream().allMatch(r -> role.equalsIgnoreCase(r.getRole()));
+    }
+
     private boolean isAdmin(Utilisateurs u) {
         return hasRole(u, "ADMIN") || hasRole(u, "SUPER_ADMIN");
     }
@@ -310,7 +315,25 @@ public class VenteReformeImpl implements VenteReformeService {
         // en demander la suppression, jamais le vendeur (il effacerait son propre manquant).
         ensureCanModifier(currentUser);
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
+
+        // Livraison d'une commande : sujets, tarification, poids et prix viennent de la
+        // commande (reste à livrer, poids livré, prix/kg) ; les changer ici les
+        // désynchroniserait. Une valeur renvoyée identique n'est pas un changement.
+        if (v.getCommande() != null) {
+            TypeVenteReforme typeActuel = v.getTypeVente() != null ? v.getTypeVente() : TypeVenteReforme.TETE;
+            boolean change = (data.getTypeVente() != null && parseTypeVente(data.getTypeVente()) != typeActuel)
+                    || (data.getNombreSujets() != null && !data.getNombreSujets().equals(v.getNombreSujets()))
+                    || (data.getPoidsTotalKg() != null && !memeValeur(data.getPoidsTotalKg(), v.getPoidsTotalKg()))
+                    || (data.getPrixUnitaire() != null && !memeValeur(data.getPrixUnitaire(), v.getPrixUnitaire()));
+            if (change) {
+                throw new IllegalArgumentException("Cette vente vient d'une livraison de commande : supprimez la livraison puis relivrez.");
+            }
+        }
+        if (data.getPoidsTotalKg() != null && data.getPoidsTotalKg() <= 0) {
+            throw new IllegalArgumentException("Le poids total (kg) doit être positif.");
+        }
 
         // Client visé par la modification (null = inchangé). Passer de « sans client » à
         // « un client » (ou l'inverse) casserait le modèle d'argent : l'écart du vendeur
@@ -352,6 +375,18 @@ public class VenteReformeImpl implements VenteReformeService {
             v.setPoidsTotalKg(nouveauType == TypeVenteReforme.KILO ? poids : null);
         } else if (data.getPoidsTotalKg() != null && v.getTypeVente() == TypeVenteReforme.KILO) {
             v.setPoidsTotalKg(data.getPoidsTotalKg());
+        }
+
+        // Vente au kilo : poids, prix/kg ou passage en KILO modifié SANS montant explicite
+        // -> montant recalculé = arrondi(poids x prix/kg), même règle que la livraison d'une
+        // commande. Un montant explicite (le web l'envoie déjà recalculé, ou corrigé à la
+        // main) prime toujours. Injecté dans data pour suivre le chemin normal d'un
+        // changement de montant (redistribution, imputations, solde vendeur).
+        boolean tarifChange = data.getPoidsTotalKg() != null || data.getPrixUnitaire() != null || data.getTypeVente() != null;
+        if (tarifChange && data.getMontant() == null && v.getTypeVente() == TypeVenteReforme.KILO
+                && v.getPoidsTotalKg() != null && v.getPrixUnitaire() != null) {
+            double recalcule = arr2(v.getPoidsTotalKg() * v.getPrixUnitaire());
+            if (!memeValeur(recalcule, v.getMontant())) data.setMontant(recalcule);
         }
 
         boolean redistribuer = data.getNombreSujets() != null || data.getMontant() != null;
@@ -485,6 +520,7 @@ public class VenteReformeImpl implements VenteReformeService {
         ensureCanConfirmerSuppression(currentUser);
 
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
 
         boolean removed = !v.getInitialisation().getRemoved();
@@ -536,6 +572,7 @@ public class VenteReformeImpl implements VenteReformeService {
         String motifValide = MotifSuppressionRequest.exiger(motif);
 
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
         if (v.getDemandeSuppressionPar() != null) {
             throw new IllegalArgumentException("Une demande de suppression est déjà en attente pour cette vente.");
@@ -559,6 +596,7 @@ public class VenteReformeImpl implements VenteReformeService {
         ensureCanConfirmerSuppression(currentUser);
 
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
         if (v.getDemandeSuppressionPar() == null) {
             throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
@@ -597,6 +635,7 @@ public class VenteReformeImpl implements VenteReformeService {
         ensureCanConfirmerSuppression(currentUser);
 
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
         if (v.getDemandeSuppressionPar() == null) {
             throw new IllegalArgumentException("Aucune demande de suppression en attente pour cette vente.");
@@ -687,6 +726,10 @@ public class VenteReformeImpl implements VenteReformeService {
     }
 
     private static double arr2(double v) { return Math.round(v * 100.0) / 100.0; }
+
+    private static boolean memeValeur(Double a, Double b) {
+        return a != null && b != null && Math.abs(a - b) < 0.0005;
+    }
     private static double arr3(double v) { return Math.round(v * 1000.0) / 1000.0; }
 
     private static boolean venteAuKilo(VenteReforme v) {
@@ -715,19 +758,34 @@ public class VenteReformeImpl implements VenteReformeService {
             FermeScope.verifier(projetFiltre.getFarm(), currentUser, introuvable);
         }
 
+        // Même visibilité que la page Ventes (VenteListeImpl) : un RESPONSABLE pur ne voit
+        // que SES projets, un vendeur (VENTE pur) que les ventes qu'il a saisies.
+        java.util.Set<Long> projetsAutorises = isPureRole(currentUser, "RESPONSABLE")
+                ? new java.util.HashSet<>(projetsRepo.findProjetIdsAssignedAsResponsableToUser(farmId, currentUser.getUniqueId()))
+                : null;
+        Long vendeurId = isPureRole(currentUser, "VENTE") ? currentUser.getId() : null;
+        if (projetFiltre != null && projetsAutorises != null && !projetsAutorises.contains(projetFiltre.getId())) {
+            throw new IllegalArgumentException("Projet introuvable : " + projetUniqueId);
+        }
+        boolean restreint = projetsAutorises != null || vendeurId != null;
+
         // Par projet : parts de répartition (sujets et montant attribués) ; le poids d'une
         // vente au kilo est réparti au prorata des sujets attribués.
         Map<Long, Cumul> parProjet = new LinkedHashMap<>();
         Map<Long, Projets> projets = new LinkedHashMap<>();
+        Cumul cumulVisible = new Cumul(); // Σ des parts visibles (total quand la vue est restreinte)
         for (VenteReformeRepartition r : repartitionRepo.findPourStats(farmId, deb, fin, hasProjet,
                 hasProjet ? projetUniqueId.trim() : "")) {
             VenteReforme v = r.getVenteReforme();
+            if (projetsAutorises != null && !projetsAutorises.contains(r.getProjet().getId())) continue;
+            if (vendeurId != null && (v.getCreePar() == null || !vendeurId.equals(v.getCreePar().getId()))) continue;
             int sujets = nz(r.getNombreSujetsAttribue());
             boolean kilo = venteAuKilo(v);
             double poids = kilo && nz(v.getNombreSujets()) > 0 ? v.getPoidsTotalKg() * sujets / v.getNombreSujets() : 0.0;
             projets.put(r.getProjet().getId(), r.getProjet());
             parProjet.computeIfAbsent(r.getProjet().getId(), k -> new Cumul())
                     .ajouter(v.getId(), sujets, nz(r.getMontantAttribue()), kilo, poids);
+            cumulVisible.ajouter(v.getId(), sujets, nz(r.getMontantAttribue()), kilo, poids);
         }
         List<StatsReformeDTO.Chiffres> lignes = parProjet.entrySet().stream()
                 .map(e -> e.getValue().chiffres(projets.get(e.getKey()).getUniqueId(), projets.get(e.getKey()).getCode()))
@@ -736,9 +794,9 @@ public class VenteReformeImpl implements VenteReformeService {
                 .toList();
 
         StatsReformeDTO.Chiffres total;
-        if (hasProjet) {
-            Cumul c = projetFiltre != null ? parProjet.get(projetFiltre.getId()) : null;
-            total = (c != null ? c : new Cumul()).chiffres(null, null);
+        if (hasProjet || restreint) {
+            // Un projet précis, ou une vue restreinte : total = Σ des parts visibles.
+            total = cumulVisible.chiffres(null, null);
         } else {
             // Toute la ferme : directement depuis les ventes (inclut d'éventuelles
             // anciennes ventes sans répartition).

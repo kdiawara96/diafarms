@@ -86,6 +86,14 @@ api() { # $1 = méthode, $2 = chemin relatif à BASE, $3 = corps JSON (ou "")
     -H 'X-Client-Type: web' ${3:+-d "$3"} > "$TMP/code"
 }
 
+# Client web (seul accès d'un RESPONSABLE) : le jeton arrive dans le cookie
+# diafarms_access_token, pas dans le corps ; il reste utilisable en Bearer.
+login_web() { # $1 = identifiant, $2 = mot de passe
+  curl -s -i -X POST "$BASE/auth" -H 'X-Client-Type: web' \
+    --data-urlencode grantType=password --data-urlencode "identifiant=$1" \
+    --data-urlencode "password=$2" | sed -n 's/^[Ss]et-[Cc]ookie: diafarms_access_token=\([^;]*\).*/\1/p' | head -1
+}
+
 login() {
   curl -s -X POST "$BASE/auth" -H 'X-Client-Type: mobile' \
     --data-urlencode grantType=password --data-urlencode "identifiant=$1" \
@@ -96,6 +104,12 @@ except Exception: print("")'
 
 
 err() { echo "' '.join(d.get('errors') or [])"; }
+
+api_as() { # $1 = jeton, $2 = méthode, $3 = chemin, $4 = corps
+  curl -s -o "$TMP/body" -w '%{http_code}' -X "$2" "$BASE$3" \
+    -H "Authorization: Bearer $1" -H 'Content-Type: application/json' \
+    -H 'X-Client-Type: web' ${4:+-d "$4"} > "$TMP/code"
+}
 
 # ---------------------------------------------------------------------------
 # Préparation
@@ -159,6 +173,14 @@ check "modification : retour à TETE efface prix/kg et poids estimé" \
   "code == 200 and d['data']['tarification'] == 'TETE' and d['data']['prixKgEstime'] is None and d['data']['poidsEstimeKg'] is None and d['data']['montantEstime'] == 120000"
 api POST "/commandes/$CMD_SANS_POIDS/livrer?quantite=1&poidsTotalKg=2" ""
 check "livrer une commande TETE avec un poids : 400" "code == 400 and 'tarifée par sujet' in $(err)"
+api PUT "/commandes/update/$CMD_SANS_POIDS" '{"prixKgEstime":2500}'
+check "prix/kg sur une commande TETE : 400" "code == 400 and 'que les commandes au kilo' in $(err)"
+api POST /commandes/create "{\"clientUniqueId\":\"$CLIENT\",\"magasinUniqueId\":\"$BOUTIQUE\",\"type\":\"REFORME\",\"quantite\":30,\"montantEstime\":90000,\"poidsEstimeKg\":50}"
+check "poids estimé sur une commande TETE (création) : 400" "code == 400 and 'que les commandes au kilo' in $(err)"
+api POST /commandes/create "{\"clientUniqueId\":\"$CLIENT\",\"magasinUniqueId\":\"$BOUTIQUE\",\"type\":\"REFORME\",\"quantite\":20,\"tarification\":\"KILO\",\"prixKgEstime\":2000,\"poidsEstimeKg\":40}"
+CMD_M1="$(jval "d['data']['uniqueId']")"
+api PUT "/commandes/update/$CMD_M1" '{"montantEstime":1000}'
+check "commande KILO avec poids estimé : montantEstime envoyé seul ignoré, reste 40 x 2000 = 80000" "code == 200 and d['data']['montantEstime'] == 80000"
 
 api POST /commandes/create "{\"clientUniqueId\":\"$CLIENT\",\"magasinUniqueId\":\"$BOUTIQUE\",\"type\":\"OEUFS\",\"quantite\":10,\"montantEstime\":1000}"
 check "commande d'œufs classique : tarification TETE par défaut" "code == 201 and d['data']['tarification'] == 'TETE' and d['data']['poidsLivreKg'] is None"
@@ -215,6 +237,12 @@ check "livré 15, reste 15 sujets, poids livré 27.7, montant livré 46250 + 239
   "code == 200 and d['data']['quantiteLivree'] == 15 and d['data']['resteALivrer'] == 15 and d['data']['poidsLivreKg'] == 27.7 and d['data']['montantLivre'] == 70170 and d['data']['livraisons'][1]['prixUnitaire'] == 2600 and d['data']['livraisons'][1]['montant'] == 23920"
 api PUT "/commandes/update/$CMD" '{"prixKgEstime":3000}'
 check "commande livrée en partie : prix/kg non modifiable (400)" "code == 400"
+psql_run "UPDATE commandes SET statut = 'EN_ATTENTE' WHERE unique_id = '$CMD'" >/dev/null
+api PUT "/commandes/update/$CMD" "{\"tarification\":\"KILO\",\"dateLivraisonPrevue\":\"$AUJ\"}"
+check "commande livrée en partie : tarification identique renvoyée n'est pas un changement (200)" "code == 200 and d['data']['montantEstime'] == 150000"
+api PUT "/commandes/update/$CMD" '{"tarification":"TETE"}'
+check "commande livrée en partie : changer la tarification reste refusé (400)" "code == 400 and 'déjà commencé' in $(err)"
+psql_run "UPDATE commandes SET statut = 'EN_LIVRAISON' WHERE unique_id = '$CMD'" >/dev/null
 
 api GET "/ventes-reforme/stats?dateDebut=$AUJ&dateFin=$AUJ" ""
 APRES="$(cat "$TMP/body")"
@@ -234,6 +262,27 @@ then echo "OK     stats du jour : +2 ventes, +15 sujets (au kilo), +27.7 kg, +70
 else echo "ECHEC  stats du jour : deltas des livraisons"; FAIL=$((FAIL+1)); fi
 
 # ---------------------------------------------------------------------------
+echo "== 4b. Modification d'une vente : livraison de commande verrouillée, vente KILO recalculée"
+for corps in '{"nombreSujets":9}' '{"poidsTotalKg":19}' '{"prixUnitaire":2600}' '{"typeVente":"TETE"}'; do
+  api PUT "/ventes-reforme/update/$VENTE1" "$corps"
+  check "livraison de commande, $corps : 400" "code == 400 and \"supprimez la livraison puis relivrez\" in $(err)"
+done
+api PUT "/ventes-reforme/update/$VENTE1" "{\"nombreSujets\":10,\"typeVente\":\"KILO\",\"poidsTotalKg\":18.5,\"prixUnitaire\":2500,\"date\":\"$AUJ\"}"
+check "livraison de commande, mêmes valeurs renvoyées + date : 200, montant inchangé" "code == 200 and d['data']['montant'] == 46250 and d['data']['nombreSujets'] == 10"
+
+api POST /ventes-reforme/create "{\"magasinUniqueId\":\"$BOUTIQUE\",\"date\":\"$AUJ\",\"nombreSujets\":3,\"typeVente\":\"KILO\",\"poidsTotalKg\":6,\"prixUnitaire\":2500,\"montant\":15000,\"montantRapporte\":15000}"
+VD="$(jval "d['data']['uniqueId']")"
+check "vente directe KILO : 3 sujets, 6 kg, 15000" "code == 201"
+api PUT "/ventes-reforme/update/$VD" '{"poidsTotalKg":6.4}'
+check "poids modifié sans montant : montant recalculé 6.4 x 2500 = 16000, répartition suivie" "code == 200 and d['data']['montant'] == 16000 and sum(r['montantAttribue'] for r in d['data']['repartitions']) == 16000"
+api PUT "/ventes-reforme/update/$VD" '{"prixUnitaire":2600}'
+check "prix/kg modifié sans montant : 6.4 x 2600 = 16640" "code == 200 and d['data']['montant'] == 16640"
+api PUT "/ventes-reforme/update/$VD" '{"poidsTotalKg":7,"montant":17000}'
+check "montant explicite : il prime (17000, pas 18200)" "code == 200 and d['data']['montant'] == 17000 and d['data']['poidsTotalKg'] == 7"
+api PUT "/ventes-reforme/update/$VD" '{"poidsTotalKg":0}'
+check "poids nul : 400" "code == 400 and 'positif' in $(err)"
+
+# ---------------------------------------------------------------------------
 echo "== 5. Statistiques exactes sur une date propre à ce passage"
 for _ in 1 2 3 4 5; do
   JOUR="$(python3 -c 'import random,datetime; print(datetime.date(1950,1,1)+datetime.timedelta(days=random.randint(0,36000)))')"
@@ -245,7 +294,7 @@ check "vente directe KILO : 5 sujets, 10 kg, 25000" "code == 201 and d['data']['
 api POST /ventes-reforme/create "{\"magasinUniqueId\":\"$BOUTIQUE\",\"date\":\"$JOUR\",\"nombreSujets\":4,\"typeVente\":\"TETE\",\"prixUnitaire\":3000,\"montant\":12000,\"montantRapporte\":12000}"
 check "vente directe TETE : 4 sujets, 12000 (pas de poids, pas de prix/kg)" "code == 201 and d['data']['typeVente'] == 'TETE' and d['data']['poidsMoyenParSujet'] is None and d['data']['prixParKg'] is None and d['data']['prixParTete'] == 3000"
 api POST /ventes-reforme/create "{\"magasinUniqueId\":\"$BOUTIQUE\",\"date\":\"$JOUR\",\"nombreSujets\":17,\"prixUnitaire\":3000,\"montant\":51000,\"montantRapporte\":51000}"
-check "stock en SUJETS : 40 - 15 - 9 = 16 restants, 17 refusés" "code == 400 and '16 sujet(s) restants' in $(err)"
+check "stock en SUJETS : 40 - 15 - 3 - 9 = 13 restants, 17 refusés" "code == 400 and '13 sujet(s) restants' in $(err)"
 
 TOTAL_ATTENDU="t['nombreVentes'] == 2 and t['nombreSujetsVendus'] == 9 and t['montantTotal'] == 37000 and t['prixMoyenParTete'] == 4111.11 and t['nombreSujetsVendusAuKilo'] == 5 and t['poidsTotalVenduKg'] == 10 and t['montantVenduAuKilo'] == 25000 and t['prixMoyenKg'] == 2500 and t['poidsMoyenParSujetKg'] == 2.0"
 api GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
@@ -257,6 +306,46 @@ check "stats par projet : mêmes valeurs, projet renseigné" \
 api GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR&projetUniqueId=kilo-projet-sans-pesee" ""
 check "stats d'un projet sans vente : zéros, moyennes nulles" \
   "code == 200 and d['data']['total']['nombreSujetsVendus'] == 0 and d['data']['total']['prixMoyenKg'] is None and d['data']['total']['prixMoyenParTete'] is None and d['data']['parProjet'] == []"
+
+echo "== 5b. Statistiques selon le rôle (RESPONSABLE : ses projets ; VENTE : ses ventes)"
+HASH="$(psql_run "SELECT password FROM utilisateurs WHERE email = '$ADMIN_EMAIL'")"
+RESP_EMAIL="resp-kilo@t.local"
+if [ -z "$(psql_run "SELECT id FROM utilisateurs WHERE email = '$RESP_EMAIL'")" ]; then
+  api POST /users/create-pro-or-finance "{\"fullName\":\"Responsable Kilo\",\"email\":\"$RESP_EMAIL\",\"telephone\":\"6$(python3 -c 'import random; print(random.randint(1000000, 9999999))')\",\"roles\":[\"RESPONSABLE\"]}"
+  check "utilisateur RESPONSABLE créé" "code in (200, 201)"
+fi
+psql_run "UPDATE utilisateurs SET password = '$HASH', must_change_password = false WHERE email = '$RESP_EMAIL'" >/dev/null
+RESP_ID="$(psql_run "SELECT id FROM utilisateurs WHERE email = '$RESP_EMAIL'")"
+TOKEN_RESP="$(login_web "$RESP_EMAIL" "$ADMIN_PWD")"
+[ -n "$TOKEN_RESP" ] || { echo "ECHEC  connexion $RESP_EMAIL"; FAIL=$((FAIL+1)); }
+ANCIEN_RESP="$(psql_run "SELECT COALESCE(responsable_user_id::text, 'NULL') FROM projets WHERE unique_id = '$PROJET'")"
+
+api_as "$TOKEN_RESP" GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
+check "RESPONSABLE sans projet : rien de visible (0 sujet, aucun projet)" "code == 200 and d['data']['total']['nombreSujetsVendus'] == 0 and d['data']['parProjet'] == []"
+api_as "$TOKEN_RESP" GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR&projetUniqueId=$PROJET" ""
+check "RESPONSABLE : projet qui n'est pas le sien -> 400 introuvable" "code == 400 and 'Projet introuvable' in $(err)"
+psql_run "UPDATE projets SET responsable_user_id = $RESP_ID WHERE unique_id = '$PROJET'" >/dev/null
+api_as "$TOKEN_RESP" GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
+check "RESPONSABLE de ce projet : mêmes chiffres exacts" "code == 200 and (lambda t: $TOTAL_ATTENDU)(d['data']['total']) and len(d['data']['parProjet']) == 1"
+api_as "$TOKEN_RESP" GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR&projetUniqueId=kilo-projet-sans-pesee" ""
+check "RESPONSABLE : autre projet de la ferme (pas le sien) -> 400" "code == 400 and 'Projet introuvable' in $(err)"
+psql_run "UPDATE projets SET responsable_user_id = $ANCIEN_RESP WHERE unique_id = '$PROJET'" >/dev/null
+
+TOKEN_VENTE="$(login "vente@t.local" "$ADMIN_PWD")"
+if [ -z "$TOKEN_VENTE" ]; then
+  echo "ECHEC  connexion vente@t.local (utilisateur VENTE absent ?)"; FAIL=$((FAIL+1))
+else
+  api_as "$TOKEN_VENTE" GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
+  check "VENTE : aucune vente saisie par lui ce jour-là -> 0" "code == 200 and d['data']['total']['nombreVentes'] == 0"
+  api_as "$TOKEN_VENTE" POST /ventes-reforme/create "{\"magasinUniqueId\":\"$BOUTIQUE\",\"date\":\"$JOUR\",\"nombreSujets\":2,\"prixUnitaire\":3000,\"montant\":6000,\"montantRapporte\":6000}"
+  check "VENTE : vente de 2 sujets saisie" "code == 201"
+  api_as "$TOKEN_VENTE" GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
+  check "VENTE : ne voit que sa vente (1 vente, 2 sujets, 6000, 3000/tête)" \
+    "code == 200 and d['data']['total']['nombreVentes'] == 1 and d['data']['total']['nombreSujetsVendus'] == 2 and d['data']['total']['montantTotal'] == 6000 and d['data']['total']['prixMoyenParTete'] == 3000"
+  api GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
+  check "ADMIN : voit les 3 ventes (11 sujets, 43000)" "code == 200 and d['data']['total']['nombreVentes'] == 3 and d['data']['total']['nombreSujetsVendus'] == 11 and d['data']['total']['montantTotal'] == 43000"
+fi
+
 api GET "/ventes-reforme/stats?projetUniqueId=pesee-autre-projet" ""
 check "stats d'un projet d'une autre ferme : 400 introuvable" "code == 400 and 'introuvable' in $(err)"
 api GET "/ventes-reforme/stats?dateDebut=2026-02-30" ""
