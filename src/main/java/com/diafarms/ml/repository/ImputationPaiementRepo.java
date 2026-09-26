@@ -37,4 +37,23 @@ public interface ImputationPaiementRepo extends JpaRepository<ImputationPaiement
     // Historique d'une vente ou d'un paiement (annulées comprises).
     @Query("SELECT i FROM ImputationPaiement i JOIN FETCH i.paiement WHERE i.client.id = :clientId ORDER BY i.id DESC")
     List<ImputationPaiement> findAllByClientId(@Param("clientId") Long clientId);
+
+    // [commandeUniqueId, Σ imputations actives des paiements actifs rattachés à cette
+    // commande ouverte]. Voir PaiementClientRepo.sumParCommandeOuverte.
+    @Query("SELECT k.uniqueId, SUM(i.montant) FROM ImputationPaiement i JOIN i.paiement p JOIN p.commande k " +
+           "WHERE i.client.id = :clientId AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
+           "AND k.initialisation.removed = false GROUP BY k.uniqueId")
+    List<Object[]> sumImputeParCommandeOuverte(@Param("clientId") Long clientId);
+
+    // Reprise « acompte réservé » : imputations actives d'un paiement rattaché à une
+    // commande, avec la commande chargée (le contrôle « vente de la commande ? » se fait
+    // dans RepriseAcompteReserveService).
+    @Query("SELECT i FROM ImputationPaiement i JOIN FETCH i.paiement p JOIN FETCH p.commande k " +
+           "WHERE i.client.id = :clientId AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF ORDER BY i.id")
+    List<ImputationPaiement> findActivesDePaiementsDeCommandeByClientId(@Param("clientId") Long clientId);
 }

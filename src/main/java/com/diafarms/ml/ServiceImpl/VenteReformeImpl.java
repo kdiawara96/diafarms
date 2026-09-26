@@ -540,6 +540,12 @@ public class VenteReformeImpl implements VenteReformeService {
             transactionService.setRemovedBySource(r.getUniqueId(), removed);
         }
 
+        // Livraison d'une commande : sa quantité quitte (ou retrouve) la commande. AVANT
+        // imputer() : le statut de la commande décide si ses acomptes sont encore réservés
+        // (voir CompteClientService.estReservee).
+        if (removed) livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
+        else livraisonCommandeService.livraisonRestauree(v.getCommande(), v.getNombreSujets());
+
         if (v.getClient() != null) {
             if (removed) {
                 compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId,
@@ -550,10 +556,6 @@ public class VenteReformeImpl implements VenteReformeService {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
-
-        // Livraison d'une commande : sa quantité quitte (ou retrouve) la commande.
-        if (removed) livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
-        else livraisonCommandeService.livraisonRestauree(v.getCommande(), v.getNombreSujets());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme",
@@ -612,6 +614,7 @@ public class VenteReformeImpl implements VenteReformeService {
         for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(uniqueId)) {
             transactionService.setRemovedBySource(r.getUniqueId(), true);
         }
+        livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
         if (v.getClient() != null) {
             compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId,
                     "Vente supprimée : " + v.getMotifSuppression());
@@ -620,7 +623,6 @@ public class VenteReformeImpl implements VenteReformeService {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -ecart);
         }
-        livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getNombreSujets());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteReforme", "Suppression confirmée pour une vente réforme, motif : " + v.getMotifSuppression());

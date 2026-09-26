@@ -527,6 +527,12 @@ public class VenteOeufsImpl implements VenteOeufsService {
         // Supprimer une vente annule aussi son impact sur le solde (vendeur ou client
         // selon qui le portait — et la restauration le réapplique) — sinon une dette
         // resterait comptée pour une vente qui n'existe plus.
+        // Livraison d'une commande : sa quantité quitte (ou retrouve) la commande. AVANT
+        // imputer() : le statut de la commande décide si ses acomptes sont encore réservés
+        // (voir CompteClientService.estReservee).
+        if (removed) livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getQuantiteOeufs());
+        else livraisonCommandeService.livraisonRestauree(v.getCommande(), v.getQuantiteOeufs());
+
         if (v.getClient() != null) {
             if (removed) {
                 compteClientService.annulerImputationsCible(CibleImputation.VENTE_OEUFS, uniqueId,
@@ -537,10 +543,6 @@ public class VenteOeufsImpl implements VenteOeufsService {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), removed ? -ecart : ecart);
         }
-
-        // Livraison d'une commande : sa quantité quitte (ou retrouve) la commande.
-        if (removed) livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getQuantiteOeufs());
-        else livraisonCommandeService.livraisonRestauree(v.getCommande(), v.getQuantiteOeufs());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs",
@@ -599,6 +601,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         for (VenteOeufsRepartition r : repartitionRepo.findByVenteOeufs_UniqueId(uniqueId)) {
             transactionService.setRemovedBySource(r.getUniqueId(), true);
         }
+        livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getQuantiteOeufs());
         if (v.getClient() != null) {
             compteClientService.annulerImputationsCible(CibleImputation.VENTE_OEUFS, uniqueId,
                     "Vente supprimée : " + v.getMotifSuppression());
@@ -607,7 +610,6 @@ public class VenteOeufsImpl implements VenteOeufsService {
             double ecart = nz(v.getMontant()) - v.getMontantRapporte();
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -ecart);
         }
-        livraisonCommandeService.livraisonSupprimee(v.getCommande(), v.getQuantiteOeufs());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), v.getId(), "VenteOeufs", "Suppression confirmée pour une vente d'œufs, motif : " + v.getMotifSuppression());

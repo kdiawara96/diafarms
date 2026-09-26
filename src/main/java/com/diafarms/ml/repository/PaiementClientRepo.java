@@ -42,4 +42,15 @@ public interface PaiementClientRepo extends JpaRepository<PaiementClient, Long> 
     Double sumActifsByFarmAndDates(@Param("farmId") Long farmId,
                                    @Param("dateDebut") java.time.LocalDate dateDebut,
                                    @Param("dateFin") java.time.LocalDate dateFin);
+
+    // Argent réservé aux commandes ouvertes du client (voir CompteClientService.estReservee) :
+    // [commandeUniqueId, dateCommande, Σ paiements actifs rattachés]. Même filtre que
+    // ImputationPaiementRepo.sumImputeParCommandeOuverte, à garder identiques.
+    @Query("SELECT k.uniqueId, k.dateCommande, SUM(p.montant) FROM PaiementClient p JOIN p.commande k " +
+           "WHERE p.client.id = :clientId AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
+           "AND k.initialisation.removed = false GROUP BY k.uniqueId, k.dateCommande ORDER BY k.dateCommande, k.uniqueId")
+    List<Object[]> sumParCommandeOuverte(@Param("clientId") Long clientId);
 }

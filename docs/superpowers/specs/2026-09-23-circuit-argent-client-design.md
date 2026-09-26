@@ -68,3 +68,38 @@ ventes avec client deviennent des paiements ; « Remboursement au client » devi
 remboursements ; les recopies faites par « marquer payée » dans `montantRapporte` sont
 retirées (elles doublaient le paiement). Un rapport « solde avant / solde recalculé » par
 client est produit en simulation et validé par l'utilisateur avant l'exécution réelle.
+
+## Règle « acompte réservé » (décidée le 2026-09-26)
+
+Avant : l'acompte d'une commande pouvait régler une ancienne vente du client (la commande
+affichait « acompte reçu 10 000, payé sur commande 0 »). Désormais :
+
+- Un paiement rattaché à une commande (acompte, règlement ou paiement à la livraison) est
+  **réservé** à cette commande tant qu'elle est **ouverte** : EN_ATTENTE, CONFIRMEE ou
+  EN_LIVRAISON, et non supprimée (`CompteClientService.estReservee`). Il ne règle que les
+  livraisons de cette commande ; aucune autre vente, aucun remboursement général.
+- Imputation (`CalculImputation.repartir`) : d'abord l'argent réservé (plus anciens
+  d'abord), chacun sur sa seule commande (vente visée, puis ses livraisons) ; puis
+  l'argent libre dans l'ordre d'avant (vente visée, ventes de sa commande, ventes les plus
+  anciennes), qui peut aussi régler des livraisons après les acomptes.
+- Livraison : la vente est créée puis rattachée à sa commande ; les imputations faites
+  avant le rattachement sont retirées et l'imputation repasse, commande encore ouverte,
+  pour que les acomptes réservés la règlent en premier. Le reste reste réservé.
+- **Fin de la réservation** : dès que la commande est CONVERTIE (tout livré), CLOTUREE,
+  ANNULEE ou supprimée, le reste devient une **avance libre** du client et l'imputation
+  repasse aussitôt (les anciennes dettes sont réglées). Annulation avec remboursement : le
+  remboursement passe d'abord, l'imputation ensuite. Une livraison supprimée ou restaurée
+  met d'abord à jour le statut de la commande, puis impute (l'acompte redevient réservé
+  si la commande se rouvre).
+- Remboursement : l'argent réservé n'est pris que si le remboursement vise sa commande
+  (`commandeUniqueId`) ; sinon seule l'avance libre compte (message explicite).
+- Compte client : `avance` inchangée (= avanceLibre + avanceReservee), plus
+  `avanceLibre`, `avanceReservee` et `avancesReservees` (par commande). Commande :
+  `acompteRecu`, `acompteImpute` (sur ses livraisons), `acompteReserve` (0 une fois
+  terminée) et `avanceReservee` (tous ses paiements).
+- Données existantes : `POST /diafarms/api/v1/admin/reprise-acompte-reserve`
+  (SUPER_ADMIN, simulation par défaut, `executer=true` pour écrire, `farmUniqueId`
+  facultatif). Pour chaque commande encore ouverte, les imputations de ses paiements sur
+  des ventes qui ne sont pas ses livraisons sont annulées (motif « Reprise acompte
+  réservé »), puis l'imputation repasse sur le client. Rapport avant/après par client.
+  Idempotent.

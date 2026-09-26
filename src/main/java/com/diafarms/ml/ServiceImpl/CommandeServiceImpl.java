@@ -26,12 +26,15 @@ import com.diafarms.ml.enums.TypeVenteReforme;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Commande;
 import com.diafarms.ml.models.Commande.StatutCommande;
+import com.diafarms.ml.models.ImputationPaiement;
 import com.diafarms.ml.models.Magasin;
+import com.diafarms.ml.models.PaiementClient;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
 import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ClientRepo;
+import com.diafarms.ml.repository.ImputationPaiementRepo;
 import com.diafarms.ml.repository.CommandeRepo;
 import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.PaiementClientRepo;
@@ -68,6 +71,7 @@ public class CommandeServiceImpl implements CommandeService {
     private final VenteOeufsRepo venteOeufsRepo;
     private final VenteReformeRepo venteReformeRepo;
     private final PaiementClientRepo paiementClientRepo;
+    private final ImputationPaiementRepo imputationPaiementRepo;
     private final PaiementClientService paiementClientService;
     private final CompteClientService compteClientService;
     private final LogsServices logs;
@@ -256,9 +260,35 @@ public class CommandeServiceImpl implements CommandeService {
             if (c.getTarification() == TypeVenteReforme.KILO) dto.setPoidsLivreKg(arrondi3(poidsLivre));
         }
 
-        double acompteRecu = paiementClientRepo.findByCommandeId(c.getId()).stream()
-                .filter(p -> p.getStatut() == StatutMouvement.ACTIF && p.getOrigine() == OriginePaiement.ACOMPTE)
-                .mapToDouble(p -> nz(p.getMontant())).sum();
+        // Acomptes : reçu = Σ paiements ACOMPTE actifs ; imputé = ce qu'ils ont réglé sur
+        // les livraisons de CETTE commande ; réservé = ce qui en reste tant que la commande
+        // est ouverte (0 une fois terminée : le reste est alors une avance libre du
+        // client). avanceReservee : pareil pour TOUS les paiements rattachés à la commande
+        // (acomptes, règlements, paiements à la livraison).
+        java.util.Set<String> ventesCommande = new java.util.HashSet<>();
+        livraisons.forEach(l -> ventesCommande.add(l.getVenteUniqueId()));
+        boolean reservee = CompteClientService.estReservee(c);
+        double acompteRecu = 0, acompteImpute = 0, acompteReserve = 0, avanceReservee = 0;
+        for (PaiementClient p : paiementClientRepo.findByCommandeId(c.getId())) {
+            if (p.getStatut() != StatutMouvement.ACTIF) continue;
+            boolean acompte = p.getOrigine() == OriginePaiement.ACOMPTE;
+            double imputeTout = 0, imputeCommande = 0;
+            for (ImputationPaiement i : imputationPaiementRepo.findActivesByPaiementId(p.getId())) {
+                imputeTout += nz(i.getMontant());
+                if (i.getCibleType() != CibleImputation.REMBOURSEMENT && ventesCommande.contains(i.getCibleUniqueId()))
+                    imputeCommande += nz(i.getMontant());
+            }
+            double reste = reservee ? Math.max(0, nz(p.getMontant()) - imputeTout) : 0;
+            avanceReservee += reste;
+            if (acompte) {
+                acompteRecu += nz(p.getMontant());
+                acompteImpute += imputeCommande;
+                acompteReserve += reste;
+            }
+        }
+        dto.setAcompteImpute(CalculImputation.arrondi(acompteImpute));
+        dto.setAcompteReserve(CalculImputation.arrondi(acompteReserve));
+        dto.setAvanceReservee(CalculImputation.arrondi(avanceReservee));
 
         dto.setMontantLivre(CalculImputation.arrondi(montantLivre));
         dto.setAcompteRecu(CalculImputation.arrondi(acompteRecu));
@@ -434,7 +464,9 @@ public class CommandeServiceImpl implements CommandeService {
         c.setStatut(StatutCommande.CLOTUREE);
         c.setMotifFin(motif);
         Commande saved = commandeRepo.save(c);
-        // Un éventuel trop-perçu reste en avance du client (visible sur sa fiche).
+        // Le reste des acomptes n'est plus réservé : il devient une avance libre du client,
+        // qui règle aussitôt ses autres ventes dues (voir CompteClientService.estReservee).
+        compteClientService.imputer(c.getClient());
         if (u != null) logs.addLogs(u.getId(), saved.getId(), "Commande", "Commande clôturée, motif : " + motif);
         return enrichir(saved);
     }
@@ -464,6 +496,9 @@ public class CommandeServiceImpl implements CommandeService {
                         "Annulation de la commande : " + motif, c);
             }
         }
+        // Ce qui n'a pas été rendu n'est plus réservé à la commande : avance libre, qui
+        // règle aussitôt les autres ventes dues du client (APRÈS le remboursement éventuel).
+        compteClientService.imputer(c.getClient());
         if (u != null) logs.addLogs(u.getId(), c.getId(), "Commande", "Commande annulée, motif : " + motif);
         return enrichir(c);
     }
@@ -583,6 +618,14 @@ public class CommandeServiceImpl implements CommandeService {
             venteReformeRepo.save(entity);
         }
 
+        // La vente vient d'être imputée comme une vente ordinaire (sans commande) : on
+        // refait l'imputation maintenant qu'elle porte la commande, commande encore
+        // ouverte, pour que les acomptes réservés la règlent en premier (voir
+        // CalculImputation.repartir). Le reste d'un acompte ne se libère qu'après, quand
+        // le statut passe éventuellement à CONVERTIE.
+        compteClientService.retirerImputationsProvisoires(typeCible, venteUniqueId);
+        compteClientService.imputer(c.getClient());
+
         int quantiteLivreeApres = nz(c.getQuantiteLivree()) + quantite;
         c.setQuantiteLivree(quantiteLivreeApres);
         boolean complete = quantiteLivreeApres >= c.getQuantite();
@@ -647,6 +690,8 @@ public class CommandeServiceImpl implements CommandeService {
         c.getInitialisation().setRemoved(!c.getInitialisation().getRemoved());
         commandeRepo.save(c);
         boolean removed = c.getInitialisation().getRemoved();
+        // Supprimée : ses acomptes deviennent libres ; récupérée : de nouveau réservés.
+        compteClientService.imputer(c.getClient());
         return removed ? "Commande supprimée." : "Commande récupérée.";
     }
 

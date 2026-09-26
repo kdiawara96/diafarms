@@ -55,6 +55,9 @@ public class CommandeDTO {
     // stockés : reflètent l'état réel de l'argent/des livraisons de cette commande.
     private Double montantLivre; // Σ montants des ventes actives de la commande
     private Double acompteRecu; // Σ paiements ACTIFS d'origine ACOMPTE de la commande
+    private Double acompteImpute; // part des acomptes qui a réglé des livraisons de CETTE commande
+    private Double acompteReserve; // reste des acomptes, réservé à la commande tant qu'elle est ouverte (0 ensuite)
+    private Double avanceReservee; // idem pour tous les paiements rattachés à la commande (acomptes, règlements...)
     private Double payeSurCommande; // Σ imputations actives sur ses ventes livrées
     private Double resteAPayerLivre; // montantLivre - payeSurCommande
     private Integer resteALivrer; // quantite - quantiteLivree

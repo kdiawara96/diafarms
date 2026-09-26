@@ -31,6 +31,36 @@ public class CompteClientService {
 
     private static double nz(Double v) { return v == null ? 0.0 : v; }
 
+    /** Règle « acompte réservé » (décidée le 2026-09-26) : l'argent d'un paiement rattaché
+     * à une commande reste réservé à cette commande tant qu'elle est ouverte (EN_ATTENTE,
+     * CONFIRMEE, EN_LIVRAISON, non supprimée) : il ne règle que ses livraisons. Dès que la
+     * commande est terminée (CONVERTIE = tout livré, CLOTUREE, ANNULEE) ou supprimée, le
+     * reste devient une avance libre du client. Même filtre que
+     * PaiementClientRepo.sumParCommandeOuverte / ImputationPaiementRepo.sumImputeParCommandeOuverte. */
+    public static boolean estReservee(Commande k) {
+        if (k == null) return false;
+        if (k.getInitialisation() != null && Boolean.TRUE.equals(k.getInitialisation().getRemoved())) return false;
+        return k.getStatut() == Commande.StatutCommande.EN_ATTENTE
+                || k.getStatut() == Commande.StatutCommande.CONFIRMEE
+                || k.getStatut() == Commande.StatutCommande.EN_LIVRAISON;
+    }
+
+    /** Avance réservée par commande ouverte (ordre des dates de commande). */
+    @Transactional(readOnly = true)
+    public List<CompteClientDTO.AvanceReserveeDTO> avancesReservees(Client client) {
+        java.util.Map<String, Double> impute = new java.util.HashMap<>();
+        for (Object[] r : imputationRepo.sumImputeParCommandeOuverte(client.getId())) {
+            impute.put((String) r[0], ((Number) r[1]).doubleValue());
+        }
+        List<CompteClientDTO.AvanceReserveeDTO> out = new ArrayList<>();
+        for (Object[] r : paiementRepo.sumParCommandeOuverte(client.getId())) {
+            double reste = CalculImputation.arrondi(((Number) r[2]).doubleValue() - impute.getOrDefault((String) r[0], 0.0));
+            if (reste > 0) out.add(CompteClientDTO.AvanceReserveeDTO.builder()
+                    .commandeUniqueId((String) r[0]).dateCommande((java.time.LocalDate) r[1]).montant(reste).build());
+        }
+        return out;
+    }
+
     @Transactional(readOnly = true)
     public CompteClientDTO compte(Client client) {
         Long id = client.getId();
@@ -41,11 +71,15 @@ public class CompteClientService {
         double rembourse = CalculImputation.arrondi(imputeTout - imputeVentes);
         double reste = CalculImputation.arrondi(vendu - imputeVentes);
         double avance = CalculImputation.arrondi(paye - imputeTout);
+        List<CompteClientDTO.AvanceReserveeDTO> reservees = avancesReservees(client);
+        double reservee = CalculImputation.arrondi(reservees.stream().mapToDouble(CompteClientDTO.AvanceReserveeDTO::getMontant).sum());
         return CompteClientDTO.builder()
                 .clientUniqueId(client.getUniqueId()).clientNom(client.getNom())
                 .totalVendu(CalculImputation.arrondi(vendu)).totalPaye(CalculImputation.arrondi(paye))
                 .totalRembourse(rembourse).totalImputeVentes(CalculImputation.arrondi(imputeVentes))
-                .resteAPayer(reste).avance(avance).solde(CalculImputation.arrondi(reste - avance))
+                .resteAPayer(reste).avance(avance)
+                .avanceLibre(CalculImputation.arrondi(avance - reservee)).avanceReservee(reservee).avancesReservees(reservees)
+                .solde(CalculImputation.arrondi(reste - avance))
                 .build();
     }
 
@@ -64,13 +98,15 @@ public class CompteClientService {
             double reste = CalculImputation.arrondi(p.getMontant() - nz(imputationRepo.sumActivesByPaiementId(p.getId())));
             if (reste > 0) {
                 sources.add(new CalculImputation.Source(p.getUniqueId(), reste,
-                        p.getCommande() != null ? p.getCommande().getUniqueId() : null, p.getVenteCibleUniqueId()));
+                        p.getCommande() != null ? p.getCommande().getUniqueId() : null, p.getVenteCibleUniqueId(),
+                        estReservee(p.getCommande())));
             }
         }
         return sources;
     }
 
-    /** Impute l'argent disponible du client sur ses ventes non réglées. Idempotent :
+    /** Impute l'argent disponible du client sur ses ventes non réglées (acomptes réservés
+     * d'abord, sur leur seule commande ; puis l'argent libre). Idempotent :
      * n'ajoute que ce qui manque. Verrouille la ligne client (deux saisies simultanées). */
     @Transactional
     public void imputer(Client clientNonVerrouille) {
@@ -134,11 +170,28 @@ public class CompteClientService {
         imputationRepo.save(i);
     }
 
+    /** Annule une imputation précise (reprise « acompte réservé »). */
+    @Transactional
+    public void annulerImputation(ImputationPaiement i, String motif) {
+        annuler(i, motif);
+    }
+
     private void annuler(ImputationPaiement i, String motif) {
         i.setStatut(StatutMouvement.ANNULE);
         i.setMotifAnnulation(motif);
         i.setDateAnnulation(java.time.LocalDateTime.now());
         imputationRepo.save(i);
+    }
+
+    /** Livraison de commande : la vente est créée (et imputée comme une vente ordinaire)
+     * AVANT d'être rattachée à sa commande. Ces imputations, faites dans la même
+     * transaction une fraction de seconde plus tôt, sont retirées pour que imputer()
+     * repasse avec la commande connue (acomptes réservés d'abord). Suppression physique :
+     * elles n'ont jamais été visibles, les annuler ne ferait que brouiller l'historique. */
+    @Transactional
+    public void retirerImputationsProvisoires(CibleImputation type, String uid) {
+        imputationRepo.deleteAll(imputationRepo.findActivesByCible(type, uid));
+        imputationRepo.flush();
     }
 
     /** Vente supprimée, client retiré, paiement annulé... : l'argent retourne en avance. */
