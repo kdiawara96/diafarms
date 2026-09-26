@@ -32,7 +32,14 @@ public interface CommandeService {
      * livraison précise (0/null si rien de neuf : l'acompte/les paiements déjà faits sur
      * cette commande ont déjà été portés au solde du client). mode = mode de paiement de
      * cet argent nouveau, ESPECES par défaut. */
-    CommandeDTO livrer(String uniqueId, Integer quantite, Double montantRecu, String mode);
+    // poidsTotalKg / prixKg : commande de réforme au KILO seulement (poids pesé des sujets
+    // livrés, obligatoire ; prix/kg optionnel, défaut = prixKgEstime de la commande).
+    CommandeDTO livrer(String uniqueId, Integer quantite, Double montantRecu, String mode,
+                       Double poidsTotalKg, Double prixKg);
+
+    default CommandeDTO livrer(String uniqueId, Integer quantite, Double montantRecu, String mode) {
+        return livrer(uniqueId, quantite, montantRecu, mode, null, null);
+    }
 
     /** Enregistre un paiement (acompte ou règlement) rattaché à cette commande —
      * PaiementClientCreate sans clientUniqueId (déduit de la commande). */

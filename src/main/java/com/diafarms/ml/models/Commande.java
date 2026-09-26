@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.enums.TypeVenteReforme;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -63,6 +64,27 @@ public class Commande {
 
     @Column(name = "montant_estime", nullable = false)
     private Double montantEstime;
+
+    // Tarification d'une commande de RÉFORME : TETE (défaut, prix par sujet) ou KILO
+    // (prix au kilo, montant fixé à chaque livraison sur le poids réellement pesé, voir
+    // CommandeServiceImpl.livrer). Toujours TETE pour une commande d'œufs. La quantité
+    // (commandée, livrée, restante) reste TOUJOURS en sujets : on vend des sujets vivants
+    // entiers, le poids ne sert qu'à fixer le prix. columnDefinition avec DEFAULT :
+    // indispensable pour que ddl-auto=update ajoute la colonne NOT NULL sur la table déjà
+    // peuplée (même principe que VenteReforme.typeVente).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tarification", nullable = false, length = 10,
+            columnDefinition = "varchar(10) not null default 'TETE'")
+    private TypeVenteReforme tarification = TypeVenteReforme.TETE;
+
+    // KILO seulement : prix au kilo convenu à la commande (prix par défaut des
+    // livraisons, surchargeable à chaque livraison) et poids total estimé (optionnel,
+    // sert à calculer montantEstime = poidsEstimeKg x prixKgEstime).
+    @Column(name = "prix_kg_estime")
+    private Double prixKgEstime;
+
+    @Column(name = "poids_estime_kg")
+    private Double poidsEstimeKg;
 
     // Acompte versé à la commande (optionnel) — encaissé et porté au solde du client
     // dès la création (voir CommandeServiceImpl.create/payerDette), PAS reporté à

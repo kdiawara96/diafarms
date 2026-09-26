@@ -19,6 +19,10 @@ public interface SessionPeseeService {
 
     List<EvolutionPoidsDTO> evolution(String projetUniqueId);
 
+    // Dernière session TERMINEE du projet (null si aucune) : estimation du poids d'une
+    // commande/vente de réforme au kilo.
+    com.diafarms.ml.DTO.DernierPoidsMoyenDTO dernierPoidsMoyen(String projetUniqueId);
+
     // Web (utilisateur sans téléphone).
     SessionPeseeDTO creerWeb(SessionPeseeWebRequest request);
 

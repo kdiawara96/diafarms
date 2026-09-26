@@ -30,6 +30,12 @@ public class CommandeDTO {
     private Integer quantiteRestante;
     private Double prixUnitaireEstime;
     private Double montantEstime;
+    // "TETE" (défaut, prix par sujet) ou "KILO" (réforme au kilo) — voir Commande.tarification.
+    private String tarification;
+    private Double prixKgEstime; // KILO seulement
+    private Double poidsEstimeKg; // KILO seulement, optionnel
+    // KILO : Σ poids pesés (kg) des livraisons actives ; null pour une commande TETE.
+    private Double poidsLivreKg;
     // Historique du tout premier acompte versé à la création — plus jamais réécrit
     // ensuite, voir CommandeServiceImpl.update (un acompte supplémentaire est un
     // paiement à part entière, pas un nouveau montantAcompte).
@@ -64,8 +70,11 @@ public class CommandeDTO {
     public static class LivraisonDTO {
         private String venteUniqueId;
         private LocalDate date;
-        private Integer quantite;
+        private Integer quantite; // toujours en sujets pour la réforme
         private Double montant;
+        private String typeVente; // réforme : "TETE" ou "KILO" ; null pour les œufs
+        private Double poidsTotalKg; // KILO : poids pesé de cette livraison
+        private Double prixUnitaire; // prix par sujet (TETE) ou par kg (KILO)
         private Double paye;
         private String statutPaiement; // "PAYEE" | "PARTIELLE" | "NON_PAYEE"
     }
@@ -86,6 +95,9 @@ public class CommandeDTO {
                         : null)
                 .prixUnitaireEstime(c.getPrixUnitaireEstime())
                 .montantEstime(c.getMontantEstime())
+                .tarification(c.getTarification() != null ? c.getTarification().name() : "TETE")
+                .prixKgEstime(c.getPrixKgEstime())
+                .poidsEstimeKg(c.getPoidsEstimeKg())
                 .montantAcompte(c.getMontantAcompte())
                 .dateCommande(c.getDateCommande())
                 .dateLivraisonPrevue(c.getDateLivraisonPrevue())

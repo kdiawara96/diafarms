@@ -22,6 +22,7 @@ import com.diafarms.ml.enums.ModePaiement;
 import com.diafarms.ml.enums.OriginePaiement;
 import com.diafarms.ml.enums.StatutMouvement;
 import com.diafarms.ml.enums.TypeStockMagasin;
+import com.diafarms.ml.enums.TypeVenteReforme;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Commande;
 import com.diafarms.ml.models.Commande.StatutCommande;
@@ -140,6 +141,47 @@ public class CommandeServiceImpl implements CommandeService {
         return v == null ? 0 : v;
     }
 
+    private static double arrondi3(double v) {
+        return Math.round(v * 1000.0) / 1000.0;
+    }
+
+    private static TypeVenteReforme parseTarification(String raw) {
+        if (raw == null || raw.isBlank()) return TypeVenteReforme.TETE;
+        try {
+            return TypeVenteReforme.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Tarification invalide (attendu TETE ou KILO) : " + raw);
+        }
+    }
+
+    // Applique tarification/prixKgEstime/poidsEstimeKg à la commande (création ou
+    // modification) puis recalcule montantEstime = poids x prix/kg quand les deux sont
+    // connus (sinon montantEstime, déjà posé par l'appelant, reste celui du client).
+    private void appliquerTarification(Commande c, CommandeCreate data, boolean creation) {
+        TypeVenteReforme tarif = creation || data.getTarification() != null
+                ? parseTarification(data.getTarification())
+                : (c.getTarification() != null ? c.getTarification() : TypeVenteReforme.TETE);
+        if (tarif == TypeVenteReforme.KILO && c.getType() != TypeStockMagasin.REFORME) {
+            throw new IllegalArgumentException("La tarification au kilo ne concerne que les commandes de réformes.");
+        }
+        c.setTarification(tarif);
+        if (tarif == TypeVenteReforme.TETE) {
+            c.setPrixKgEstime(null);
+            c.setPoidsEstimeKg(null);
+            return;
+        }
+        if (data.getPrixKgEstime() != null) c.setPrixKgEstime(data.getPrixKgEstime());
+        if (data.getPoidsEstimeKg() != null) c.setPoidsEstimeKg(data.getPoidsEstimeKg() > 0 ? data.getPoidsEstimeKg() : null);
+        if (c.getPrixKgEstime() == null || c.getPrixKgEstime() <= 0) {
+            throw new IllegalArgumentException("Le prix au kilo est obligatoire pour une commande au kilo.");
+        }
+        if (c.getPoidsEstimeKg() != null) {
+            c.setMontantEstime(CalculImputation.arrondi(c.getPoidsEstimeKg() * c.getPrixKgEstime()));
+        } else if (c.getMontantEstime() == null || c.getMontantEstime() <= 0) {
+            throw new IllegalArgumentException("Indiquez le poids estimé (kg) ou le montant estimé de la commande.");
+        }
+    }
+
     private static ModePaiement mode(String raw) {
         if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
         try {
@@ -192,17 +234,23 @@ public class CommandeServiceImpl implements CommandeService {
                         .build());
             }
         } else {
+            double poidsLivre = 0.0;
             for (VenteReforme v : venteReformeRepo.findActivesByCommandeId(c.getId())) {
                 double montant = nz(v.getMontant());
                 double paye = compteClientService.payeVente(CibleImputation.VENTE_REFORME, v.getUniqueId());
                 montantLivre += montant;
                 payeSurCommande += paye;
+                if (v.getTypeVente() == TypeVenteReforme.KILO) poidsLivre += nz(v.getPoidsTotalKg());
                 livraisons.add(CommandeDTO.LivraisonDTO.builder()
                         .venteUniqueId(v.getUniqueId()).date(v.getDate()).quantite(v.getNombreSujets())
                         .montant(montant).paye(CalculImputation.arrondi(paye))
                         .statutPaiement(statutPaiementLigne(montant, paye))
+                        .typeVente(v.getTypeVente() != null ? v.getTypeVente().name() : TypeVenteReforme.TETE.name())
+                        .poidsTotalKg(v.getPoidsTotalKg())
+                        .prixUnitaire(v.getPrixUnitaire())
                         .build());
             }
+            if (c.getTarification() == TypeVenteReforme.KILO) dto.setPoidsLivreKg(arrondi3(poidsLivre));
         }
 
         double acompteRecu = paiementClientRepo.findByCommandeId(c.getId()).stream()
@@ -231,7 +279,9 @@ public class CommandeServiceImpl implements CommandeService {
         if (data.getQuantite() == null || data.getQuantite() <= 0) {
             throw new IllegalArgumentException("La quantité commandée doit être positive.");
         }
-        if (data.getMontantEstime() == null || data.getMontantEstime() <= 0) {
+        boolean kiloAvecPoids = parseTarification(data.getTarification()) == TypeVenteReforme.KILO
+                && data.getPoidsEstimeKg() != null && data.getPoidsEstimeKg() > 0;
+        if (!kiloAvecPoids && (data.getMontantEstime() == null || data.getMontantEstime() <= 0)) {
             throw new IllegalArgumentException("Le montant estimé doit être positif.");
         }
         if (data.getMagasinUniqueId() == null || data.getMagasinUniqueId().isBlank()) {
@@ -264,6 +314,7 @@ public class CommandeServiceImpl implements CommandeService {
         c.setPrixUnitaireEstime(data.getPrixUnitaireEstime());
         c.setMontantEstime(data.getMontantEstime());
         c.setMontantAcompte(data.getMontantAcompte());
+        appliquerTarification(c, data, true);
         c.setDateCommande(DateSaisie.parse(data.getDateCommande(), LocalDate.now()));
         c.setDateLivraisonPrevue(DateSaisie.parse(data.getDateLivraisonPrevue(), null));
         c.setStatut(StatutCommande.EN_ATTENTE);
@@ -273,7 +324,8 @@ public class CommandeServiceImpl implements CommandeService {
 
         Commande saved = commandeRepo.save(c);
         logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
-                "Nouvelle commande de " + saved.getQuantite() + " (" + type + ") pour " + client.getNom());
+                "Nouvelle commande de " + saved.getQuantite() + " (" + type
+                        + (saved.getTarification() == TypeVenteReforme.KILO ? ", au kilo" : "") + ") pour " + client.getNom());
 
         // L'acompte est de l'argent RÉELLEMENT encaissé dès maintenant, pas seulement un
         // nombre théorique sur la commande — enregistré comme un vrai paiement client
@@ -300,7 +352,8 @@ public class CommandeServiceImpl implements CommandeService {
         // Une commande déjà (partiellement) livrée a une vente réelle basée sur ces
         // chiffres (voir livrer()) : les changer ensuite désynchroniserait ce qui a été
         // livré de ce qui reste à livrer.
-        if (nz(c.getQuantiteLivree()) > 0 && (data.getQuantite() != null || data.getMontantEstime() != null || data.getPrixUnitaireEstime() != null)) {
+        if (nz(c.getQuantiteLivree()) > 0 && (data.getQuantite() != null || data.getMontantEstime() != null || data.getPrixUnitaireEstime() != null
+                || data.getTarification() != null || data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null)) {
             throw new IllegalArgumentException("Cette commande a déjà commencé à être livrée : la quantité et le montant ne peuvent plus être modifiés.");
         }
         if (data.getQuantite() != null) {
@@ -311,6 +364,9 @@ public class CommandeServiceImpl implements CommandeService {
         if (data.getMontantEstime() != null) {
             if (data.getMontantEstime() <= 0) throw new IllegalArgumentException("Le montant estimé doit être positif.");
             c.setMontantEstime(data.getMontantEstime());
+        }
+        if (data.getTarification() != null || data.getPrixKgEstime() != null || data.getPoidsEstimeKg() != null) {
+            appliquerTarification(c, data, false);
         }
         // Un acompte supplémentaire est désormais un paiement à part entière (voir
         // enregistrerPaiement/PaiementClientService.enregistrerInterne) — plus un simple
@@ -411,12 +467,13 @@ public class CommandeServiceImpl implements CommandeService {
         // Livre tout ce qu'il reste, en un coup, sans nouvel argent compté à cet
         // instant — l'ancien comportement à un seul coup, gardé pour compatibilité
         // (bouton "Convertir en vente" historique).
-        return livrer(uniqueId, null, 0.0, null);
+        return livrer(uniqueId, null, 0.0, null, null, null);
     }
 
     @Override
     @Transactional
-    public CommandeDTO livrer(String uniqueId, Integer quantiteDemandee, Double montantRecu, String modeBrut) {
+    public CommandeDTO livrer(String uniqueId, Integer quantiteDemandee, Double montantRecu, String modeBrut,
+                              Double poidsTotalKg, Double prixKg) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
         Commande c = commandeFarmScoped(uniqueId, currentUser);
@@ -444,9 +501,35 @@ public class CommandeServiceImpl implements CommandeService {
         // Prix au même prorata que le prix unitaire estimé de la commande (ou déduit du
         // montant total si aucun prix unitaire n'a été renseigné) : une livraison
         // partielle de la moitié de la commande vaut la moitié de son montant estimé.
-        double prixUnitaire = c.getPrixUnitaireEstime() != null ? c.getPrixUnitaireEstime()
-                : c.getMontantEstime() / c.getQuantite();
-        double montantLivraison = prixUnitaire * quantite;
+        //
+        // Commande au KILO : la quantité reste en sujets (stock, reste à livrer), mais le
+        // montant se calcule ICI sur le poids réellement pesé à la livraison :
+        // montant = poids x prix/kg (prix de la commande, ou prix/kg surchargé à la
+        // livraison). La vente générée est une VenteReforme typeVente=KILO.
+        boolean auKilo = c.getTarification() == TypeVenteReforme.KILO;
+        double prixUnitaire;
+        double montantLivraison;
+        if (auKilo) {
+            if (poidsTotalKg == null || poidsTotalKg <= 0) {
+                throw new IllegalArgumentException("Commande au kilo : indiquez le poids total pesé (kg) des sujets livrés.");
+            }
+            if (quantiteDemandee == null) {
+                throw new IllegalArgumentException("Commande au kilo : indiquez le nombre de sujets livrés.");
+            }
+            Double prix = prixKg != null ? prixKg : c.getPrixKgEstime();
+            if (prix == null || prix <= 0) {
+                throw new IllegalArgumentException("Commande au kilo : le prix au kilo doit être positif.");
+            }
+            prixUnitaire = prix;
+            montantLivraison = CalculImputation.arrondi(poidsTotalKg * prix);
+        } else {
+            if (poidsTotalKg != null || prixKg != null) {
+                throw new IllegalArgumentException("Cette commande est tarifée par sujet : le poids et le prix au kilo ne s'appliquent pas.");
+            }
+            prixUnitaire = c.getPrixUnitaireEstime() != null ? c.getPrixUnitaireEstime()
+                    : c.getMontantEstime() / c.getQuantite();
+            montantLivraison = prixUnitaire * quantite;
+        }
 
         // montantRapporte/modePaiement laissés vides à la création de la vente : cette
         // livraison n'est PAS un paiement en elle-même — on crée nous-mêmes le paiement
@@ -479,6 +562,8 @@ public class CommandeServiceImpl implements CommandeService {
             data.setNombreSujets(quantite);
             data.setPrixUnitaire(prixUnitaire);
             data.setMontant(montantLivraison);
+            data.setTypeVente(auKilo ? TypeVenteReforme.KILO.name() : TypeVenteReforme.TETE.name());
+            data.setPoidsTotalKg(auKilo ? poidsTotalKg : null);
             data.setMontantRapporte(null);
             data.setModePaiement(null);
             data.setDate(LocalDate.now().toString());
@@ -514,7 +599,9 @@ public class CommandeServiceImpl implements CommandeService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
-                    "Livraison de " + quantite + " (" + c.getType() + ") pour " + c.getClient().getNom()
+                    "Livraison de " + quantite + " (" + c.getType() + ")"
+                            + (auKilo ? ", " + poidsTotalKg + " kg à " + prixUnitaire + " FCFA/kg" : "")
+                            + " pour " + c.getClient().getNom()
                             + (complete ? ", commande entièrement livrée" : ", reste " + (c.getQuantite() - quantiteLivreeApres)));
         }
         return enrichir(saved);

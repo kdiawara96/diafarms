@@ -57,6 +57,19 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
         "WHERE r.venteReforme.magasin.id = :magasinId AND r.venteReforme.initialisation.removed = false")
     Integer sumSujetsByMagasinId(@Param("magasinId") Long magasinId);
 
+    // Statistiques réforme (VenteReformeImpl.stats) : parts de répartition des ventes
+    // actives de la ferme sur la période, filtrées sur un projet si hasProjet (jamais de
+    // "(:x IS NULL OR ...)", plantage Postgres). Dates attendues non nulles.
+    @Query("SELECT r FROM VenteReformeRepartition r JOIN FETCH r.venteReforme v JOIN FETCH r.projet p " +
+        "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
+        "AND v.date >= :dateDebut AND v.date <= :dateFin " +
+        "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId)")
+    List<VenteReformeRepartition> findPourStats(@Param("farmId") Long farmId,
+                                                @Param("dateDebut") java.time.LocalDate dateDebut,
+                                                @Param("dateFin") java.time.LocalDate dateFin,
+                                                @Param("hasProjet") boolean hasProjet,
+                                                @Param("projetUniqueId") String projetUniqueId);
+
     @Query("SELECT r FROM VenteReformeRepartition r JOIN FETCH r.projet WHERE r.venteReforme.id IN :venteIds")
     List<com.diafarms.ml.models.VenteReformeRepartition> findByVenteIds(@Param("venteIds") List<Long> venteIds);
 }

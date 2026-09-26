@@ -701,6 +701,23 @@ public class SessionPeseeImpl implements SessionPeseeService {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public com.diafarms.ml.DTO.DernierPoidsMoyenDTO dernierPoidsMoyen(String projetUniqueId) {
+        Long farmId = farmIdOuErreur(getCurrentUserSafe());
+        Projets projet = projetDeLaFerme(projetUniqueId, farmId);
+        List<SessionPesee> terminees = sessionRepo.findTermineesByProjet(projet.getId(), farmId);
+        if (terminees.isEmpty()) return null;
+        SessionPesee s = terminees.get(terminees.size() - 1); // triées par dateFin croissante
+        return com.diafarms.ml.DTO.DernierPoidsMoyenDTO.builder()
+                .projetUniqueId(projet.getUniqueId())
+                .poidsMoyenKg(s.getPoidsMoyenKg())
+                .dateFin(s.getDateFin())
+                .sessionUniqueId(s.getUniqueId())
+                .nombreTotalSujets(s.getNombreTotalSujets())
+                .build();
+    }
+
     // ------------------------------------------------------------------ DTO
 
     private SessionPeseeDTO base(SessionPesee s) {

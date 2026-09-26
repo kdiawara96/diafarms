@@ -14,4 +14,10 @@ public class CommandeCreate {
     private String dateCommande; // optionnel, défaut = aujourd'hui
     private String dateLivraisonPrevue; // optionnel
     private String modePaiement; // ModePaiement de l'acompte, optionnel — défaut ESPECES
+    // Réforme seulement : "TETE" (défaut) ou "KILO". En KILO, prixKgEstime obligatoire,
+    // poidsEstimeKg optionnel ; montantEstime calculé par le serveur si le poids est
+    // connu, sinon obligatoire comme d'habitude. Quantité toujours en sujets.
+    private String tarification;
+    private Double prixKgEstime;
+    private Double poidsEstimeKg;
 }

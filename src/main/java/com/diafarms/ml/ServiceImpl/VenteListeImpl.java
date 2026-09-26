@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.VenteLigneDTO;
+import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ProduitVenteDiverse;
 import com.diafarms.ml.enums.StatutTransaction;
@@ -165,6 +166,11 @@ public class VenteListeImpl {
             d.setQuantite(v.getNombreSujets() != null ? v.getNombreSujets().doubleValue() : null);
             d.setUnite("sujets");
             d.setPrixUnitaire(v.getPrixUnitaire());
+            d.setTypeVente(v.getTypeVente() != null ? v.getTypeVente().name() : "TETE");
+            d.setPoidsTotalKg(v.getPoidsTotalKg());
+            d.setPoidsMoyenParSujet(VenteReformeDTO.poidsMoyenParSujet(v));
+            d.setPrixParKg(VenteReformeDTO.prixParKg(v));
+            d.setPrixParTete(VenteReformeDTO.prixParTete(v));
             d.setDescription(v.getNombreSujets() + " sujet(s) réformé(s)"
                     + (v.getPoidsTotalKg() != null ? ", " + v.getPoidsTotalKg() + " kg" : "")
                     + (v.getMagasin() != null ? ", magasin " + v.getMagasin().getNom() : ""));

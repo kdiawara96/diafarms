@@ -54,4 +54,10 @@ public class VenteLigneDTO {
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;
     private String motifSuppression;
+    // Vente réforme seulement (null sinon) — voir VenteReformeDTO pour le détail.
+    private String typeVente; // "TETE" ou "KILO"
+    private Double poidsTotalKg;
+    private Double poidsMoyenParSujet;
+    private Double prixParKg;
+    private Double prixParTete;
 }

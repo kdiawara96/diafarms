@@ -105,16 +105,20 @@ public class CommandeController {
     // collecte, en plusieurs fois) — voir CommandeServiceImpl.livrer. quantite absente =
     // tout ce qu'il reste (même résultat que /convertir-en-vente) ; montantRecu = argent
     // NOUVEAU reçu à CETTE livraison précise, 0/absent si rien de neuf ; mode = mode de
-    // paiement de cet argent nouveau, ESPECES par défaut.
+    // paiement de cet argent nouveau, ESPECES par défaut. Commande de réforme au KILO :
+    // quantite (sujets) et poidsTotalKg (poids pesé) obligatoires, prixKg optionnel
+    // (défaut = prixKgEstime de la commande) ; montant = poidsTotalKg x prixKg.
     @PostMapping("/{uniqueId}/livrer")
     public ResponseEntity<ApiResponse<CommandeDTO>> livrer(
             @PathVariable String uniqueId,
             @RequestParam(required = false) Integer quantite,
             @RequestParam(required = false) Double montantRecu,
-            @RequestParam(required = false) String mode) {
+            @RequestParam(required = false) String mode,
+            @RequestParam(required = false) Double poidsTotalKg,
+            @RequestParam(required = false) Double prixKg) {
         try {
             return ApiResponse.createResponse("Commande livrée", HttpStatus.OK,
-                    service.livrer(uniqueId, quantite, montantRecu, mode), null);
+                    service.livrer(uniqueId, quantite, montantRecu, mode, poidsTotalKg, prixKg), null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

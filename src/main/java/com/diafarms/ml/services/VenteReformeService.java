@@ -29,4 +29,10 @@ public interface VenteReformeService {
     PaginatedResponse<VenteReformeDTO> list(int page, int size);
 
     StockReformeDTO getStock();
+
+    VenteReformeDTO detail(String uniqueId);
+
+    // Statistiques réforme sur la période (bornes optionnelles), ferme entière ou un
+    // projet — voir StatsReformeDTO.
+    com.diafarms.ml.DTO.StatsReformeDTO stats(java.time.LocalDate dateDebut, java.time.LocalDate dateFin, String projetUniqueId);
 }

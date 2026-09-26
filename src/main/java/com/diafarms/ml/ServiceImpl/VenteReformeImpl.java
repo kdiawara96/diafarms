@@ -14,9 +14,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.diafarms.ml.DTO.StatsReformeDTO;
 import com.diafarms.ml.DTO.StockReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeDTO;
 import com.diafarms.ml.DTO.VenteReformeRepartitionDTO;
+import com.diafarms.ml.commons.FermeScope;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ModePaiement;
@@ -631,6 +633,131 @@ public class VenteReformeImpl implements VenteReformeService {
                 resultPage.getTotalElements(),
                 resultPage.getSize()
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public VenteReformeDTO detail(String uniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        String introuvable = "Vente réforme introuvable : " + uniqueId;
+        VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException(introuvable));
+        FermeScope.verifier(v.getFarm(), currentUser, introuvable);
+        if (v.getInitialisation() != null && Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
+            throw new IllegalArgumentException(introuvable);
+        }
+        return VenteReformeDTO.fromEntity(v);
+    }
+
+    // Cumul pour StatsReformeDTO.Chiffres (montants arrondis au franc près, poids à 3 décimales).
+    private static final class Cumul {
+        final java.util.Set<Long> ventes = new java.util.HashSet<>();
+        int sujets;
+        double montant;
+        int sujetsKilo;
+        double poidsKilo;
+        double montantKilo;
+
+        void ajouter(Long venteId, int sujets, double montant, boolean kilo, double poids) {
+            ventes.add(venteId);
+            this.sujets += sujets;
+            this.montant += montant;
+            if (kilo) {
+                sujetsKilo += sujets;
+                poidsKilo += poids;
+                montantKilo += montant;
+            }
+        }
+
+        StatsReformeDTO.Chiffres chiffres(String projetUniqueId, String projetCode) {
+            return StatsReformeDTO.Chiffres.builder()
+                    .projetUniqueId(projetUniqueId)
+                    .projetCode(projetCode)
+                    .nombreVentes(ventes.size())
+                    .nombreSujetsVendus(sujets)
+                    .montantTotal(arr2(montant))
+                    .prixMoyenParTete(sujets > 0 ? arr2(montant / sujets) : null)
+                    .nombreSujetsVendusAuKilo(sujetsKilo)
+                    .poidsTotalVenduKg(arr3(poidsKilo))
+                    .montantVenduAuKilo(arr2(montantKilo))
+                    .prixMoyenKg(poidsKilo > 0 ? arr2(montantKilo / poidsKilo) : null)
+                    .poidsMoyenParSujetKg(sujetsKilo > 0 ? arr3(poidsKilo / sujetsKilo) : null)
+                    .build();
+        }
+    }
+
+    private static double arr2(double v) { return Math.round(v * 100.0) / 100.0; }
+    private static double arr3(double v) { return Math.round(v * 1000.0) / 1000.0; }
+
+    private static boolean venteAuKilo(VenteReforme v) {
+        return v.getTypeVente() == TypeVenteReforme.KILO && v.getPoidsTotalKg() != null && v.getPoidsTotalKg() > 0;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StatsReformeDTO stats(LocalDate dateDebut, LocalDate dateFin, String projetUniqueId) {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) {
+            throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
+        }
+        Long farmId = currentUser.getFarm().getId();
+        LocalDate deb = dateDebut != null ? dateDebut : LocalDate.of(1900, 1, 1);
+        LocalDate fin = dateFin != null ? dateFin : LocalDate.of(2999, 12, 31);
+        if (fin.isBefore(deb)) {
+            throw new IllegalArgumentException("La date de fin précède la date de début.");
+        }
+        boolean hasProjet = projetUniqueId != null && !projetUniqueId.isBlank();
+        Projets projetFiltre = null;
+        if (hasProjet) {
+            String introuvable = "Projet introuvable : " + projetUniqueId;
+            projetFiltre = projetsRepo.findByUniqueId(projetUniqueId.trim())
+                    .orElseThrow(() -> new IllegalArgumentException(introuvable));
+            FermeScope.verifier(projetFiltre.getFarm(), currentUser, introuvable);
+        }
+
+        // Par projet : parts de répartition (sujets et montant attribués) ; le poids d'une
+        // vente au kilo est réparti au prorata des sujets attribués.
+        Map<Long, Cumul> parProjet = new LinkedHashMap<>();
+        Map<Long, Projets> projets = new LinkedHashMap<>();
+        for (VenteReformeRepartition r : repartitionRepo.findPourStats(farmId, deb, fin, hasProjet,
+                hasProjet ? projetUniqueId.trim() : "")) {
+            VenteReforme v = r.getVenteReforme();
+            int sujets = nz(r.getNombreSujetsAttribue());
+            boolean kilo = venteAuKilo(v);
+            double poids = kilo && nz(v.getNombreSujets()) > 0 ? v.getPoidsTotalKg() * sujets / v.getNombreSujets() : 0.0;
+            projets.put(r.getProjet().getId(), r.getProjet());
+            parProjet.computeIfAbsent(r.getProjet().getId(), k -> new Cumul())
+                    .ajouter(v.getId(), sujets, nz(r.getMontantAttribue()), kilo, poids);
+        }
+        List<StatsReformeDTO.Chiffres> lignes = parProjet.entrySet().stream()
+                .map(e -> e.getValue().chiffres(projets.get(e.getKey()).getUniqueId(), projets.get(e.getKey()).getCode()))
+                .sorted(java.util.Comparator.comparing(StatsReformeDTO.Chiffres::getProjetCode,
+                        java.util.Comparator.nullsLast(String::compareTo)))
+                .toList();
+
+        StatsReformeDTO.Chiffres total;
+        if (hasProjet) {
+            Cumul c = projetFiltre != null ? parProjet.get(projetFiltre.getId()) : null;
+            total = (c != null ? c : new Cumul()).chiffres(null, null);
+        } else {
+            // Toute la ferme : directement depuis les ventes (inclut d'éventuelles
+            // anciennes ventes sans répartition).
+            Cumul c = new Cumul();
+            for (VenteReforme v : venteReformeRepo.findActivesPourListe(farmId, deb, fin)) {
+                boolean kilo = venteAuKilo(v);
+                c.ajouter(v.getId(), nz(v.getNombreSujets()), nz(v.getMontant()), kilo, kilo ? v.getPoidsTotalKg() : 0.0);
+            }
+            total = c.chiffres(null, null);
+        }
+
+        return StatsReformeDTO.builder()
+                .dateDebut(dateDebut)
+                .dateFin(dateFin)
+                .projetUniqueId(projetFiltre != null ? projetFiltre.getUniqueId() : null)
+                .projetCode(projetFiltre != null ? projetFiltre.getCode() : null)
+                .total(total)
+                .parProjet(lignes)
+                .build();
     }
 
     @Override

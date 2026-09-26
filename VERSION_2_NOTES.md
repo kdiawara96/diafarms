@@ -812,3 +812,35 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   notifications, lignes et pied de page des PDF, e-mails) : remplacés par « : », « , » ou « · » ;
   le vide « — » de l'e-mail d'abonnement devient « - ». Les commentaires ne changent pas.
   Les lignes DÉJÀ en base (transactions, logs, notifications) gardent l'ancien texte.
+
+## Mise à jour 2026-09-26 (réformes au kilo : commandes, statistiques, estimation par pesée)
+
+- **Principe** : le stock de réforme reste TOUJOURS compté en sujets (on vend des sujets vivants
+  entiers) ; le poids ne sert qu'à fixer le prix. Reste à livrer, quantités livrées, contrôle du
+  stock magasin : en sujets.
+- **Commande** : nouveaux champs `tarification` (TETE défaut | KILO, colonne `varchar(10) not null
+  default 'TETE'`), `prixKgEstime`, `poidsEstimeKg` (nullables). KILO réservé aux commandes
+  REFORME (400 sinon) ; prix/kg obligatoire ; si le poids estimé est connu, montantEstime =
+  poids x prix/kg calculé par le serveur (valeur envoyée ignorée), sinon montantEstime requis.
+  Modifiables tant que rien n'est livré (même verrou que quantité/montant) ; repasser en TETE
+  efface prix/kg et poids.
+- **Livraison** `POST /commandes/{uid}/livrer` : nouveaux paramètres `poidsTotalKg` et `prixKg`.
+  Commande KILO : `quantite` (sujets) et `poidsTotalKg` obligatoires, `prixKg` facultatif (défaut
+  prixKgEstime) ; crée une VenteReforme `typeVente=KILO`, prixUnitaire = prix/kg, montant =
+  arrondi(poids x prix/kg) calculé serveur. `/convertir-en-vente` d'une commande KILO : 400 (pas de
+  poids). Commande TETE avec poids/prix/kg : 400. Acomptes, paiements, imputations inchangés.
+- **DTO** : CommandeDTO + `tarification`, `prixKgEstime`, `poidsEstimeKg`, `poidsLivreKg` (Σ poids
+  des livraisons actives, KILO seulement) ; LivraisonDTO + `typeVente`, `poidsTotalKg`,
+  `prixUnitaire`. VenteReformeDTO et VenteLigneDTO (ligne REFORME de `/ventes/list`) + calculés
+  `poidsMoyenParSujet` (3 déc., KILO), `prixParKg` (montant/poids, KILO), `prixParTete`
+  (montant/sujets) ; VenteReformeDTO + `commandeUniqueId`. Nouveau `GET /ventes-reforme/{uid}`.
+- **Statistiques** `GET /ventes-reforme/stats?dateDebut&dateFin&projetUniqueId` (tout optionnel) :
+  `total` + `parProjet[]` (parts de répartition ; poids d'une vente KILO réparti au prorata des
+  sujets attribués) : nombreVentes, nombreSujetsVendus, montantTotal, prixMoyenParTete,
+  nombreSujetsVendusAuKilo, poidsTotalVenduKg, montantVenduAuKilo, prixMoyenKg,
+  poidsMoyenParSujetKg. Pas de reporting réforme existant à étendre : endpoint dédié.
+- **Estimation** `GET /pesees/dernier-poids-moyen?projetUniqueId` : dernière session TERMINEE
+  (poidsMoyenKg, dateFin, sessionUniqueId, nombreTotalSujets), `data: null` si aucune.
+- **SQL** : rien à faire en prod (colonnes nouvelles nullables ou avec défaut ; la contrainte
+  CHECK de `tarification` est créée avec la colonne). Tests : `scripts/scenarios-reforme-kilo.sh`
+  (44 assertions) ; pesées (74) et stock-sécurité (45) toujours OK.

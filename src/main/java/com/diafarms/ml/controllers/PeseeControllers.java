@@ -84,6 +84,22 @@ public class PeseeControllers {
         }
     }
 
+    // Poids moyen de la dernière session TERMINEE du projet (data null si aucune) — pour
+    // estimer le poids d'une commande/vente de réforme au kilo.
+    @GetMapping("/dernier-poids-moyen")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.DernierPoidsMoyenDTO>> dernierPoidsMoyen(
+            @RequestParam(required = false) String projetUniqueId) {
+        try {
+            com.diafarms.ml.DTO.DernierPoidsMoyenDTO d = service.dernierPoidsMoyen(projetUniqueId);
+            return ApiResponse.createResponse(d != null ? "Dernier poids moyen récupéré" : "Aucune session de pesée terminée pour ce projet",
+                    HttpStatus.OK, d, null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     // ------------------------------------------------------------------ web
 
     private ResponseEntity<ApiResponse<SessionPeseeDTO>> action(String message, Supplier<SessionPeseeDTO> f) {

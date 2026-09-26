@@ -49,6 +49,45 @@ public class VenteReformeControllers {
         }
     }
 
+    // Statistiques réforme : sujets vendus, poids vendu au kilo, prix moyen au kilo et par
+    // tête, poids moyen par sujet — voir StatsReformeDTO. Dates "yyyy-MM-dd" optionnelles.
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.StatsReformeDTO>> stats(
+            @RequestParam(required = false) String dateDebut,
+            @RequestParam(required = false) String dateFin,
+            @RequestParam(required = false) String projetUniqueId) {
+        try {
+            java.time.LocalDate deb = parseDate(dateDebut, "dateDebut");
+            java.time.LocalDate fin = parseDate(dateFin, "dateFin");
+            return ApiResponse.createResponse("Statistiques réforme récupérées", HttpStatus.OK,
+                    service.stats(deb, fin, projetUniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    private static java.time.LocalDate parseDate(String raw, String nom) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("Date invalide pour " + nom + " (attendu AAAA-MM-JJ) : " + raw);
+        }
+    }
+
+    @GetMapping("/{uniqueId}")
+    public ResponseEntity<ApiResponse<VenteReformeDTO>> detail(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Vente réforme récupérée", HttpStatus.OK, service.detail(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<VenteReformeDTO>> create(@RequestBody VenteReformeCreate request) {
         try {
