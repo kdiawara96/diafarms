@@ -85,7 +85,8 @@ public class RepriseAcompteReserveService {
 
     private void traiterFerme(Long farmId, String nomFerme, boolean executer, RepriseAcompteReserveRapportDTO rapport) {
         List<Client> clients = em.createQuery(
-                "SELECT c FROM Client c WHERE c.farm.id = :f ORDER BY c.nom, c.id", Client.class)
+                // Ordre des id, comme CompteClientService.verrouiller (jamais d'interblocage).
+                "SELECT c FROM Client c WHERE c.farm.id = :f ORDER BY c.id", Client.class)
                 .setParameter("f", farmId).getResultList();
         for (Client c : clients) {
             // Exécution : verrou client AVANT de lire ses imputations (une saisie

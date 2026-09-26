@@ -25,7 +25,7 @@
 # « Boutique Scen » avec du stock d'œufs), super-admin seedé. Rejouable : chaque passage
 # crée ses propres clients.
 #
-# Variables : BASE (défaut http://localhost:9199/diafarms/api/v1), PGHOST (dossier
+# Variables : BASE (défaut http://localhost:9199/diafarms/api/v1), PGHOST (127.0.0.1 par défaut, ou dossier
 # socket ou hôte), PGPORT (55432), PGUSER (postgres), PGDATABASE (diafarms_scen),
 # SUPERADMIN_ID / SUPERADMIN_PWD (superadmin / change-me).
 #
@@ -33,6 +33,7 @@
 set -uo pipefail
 
 BASE="${BASE:-http://localhost:9199/diafarms/api/v1}"
+PGHOST="${PGHOST:-127.0.0.1}"
 PGPORT="${PGPORT:-55432}"
 PGUSER="${PGUSER:-postgres}"
 PGDATABASE="${PGDATABASE:-diafarms_scen}"

@@ -79,6 +79,8 @@ public class CommandeServiceImpl implements CommandeService {
     private final PaiementClientService paiementClientService;
     private final CompteClientService compteClientService;
     private final LogsServices logs;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
     private final OtherService otherService;
 
     private Utilisateurs getCurrentUserSafe() {
@@ -137,10 +139,24 @@ public class CommandeServiceImpl implements CommandeService {
         return commandeFarmScoped(uniqueId, u, false, false);
     }
 
-    // verrou : PESSIMISTIC_WRITE sur la commande (livraison, clôture, annulation) pour que
-    // deux actions simultanées ne livrent pas deux fois le même reste.
+    // verrou : deux actions simultanées sur la même commande (livrer, clôturer, annuler,
+    // confirmer, encaisser) sont sérialisées. Ordre des verrous partout : client PUIS
+    // commande (comme CompteClientService.verrouiller, puis imputer) pour ne jamais
+    // s'interbloquer avec une saisie qui verrouille le client d'abord. La commande est
+    // donc lue sans verrou, son client verrouillé, puis elle est relue sous verrou
+    // (findByUniqueIdForUpdate + refresh : l'état est celui de la base, pas celui déjà en
+    // mémoire).
     private Commande commandeFarmScoped(String uniqueId, Utilisateurs u, boolean inclureSupprimees, boolean verrou) {
-        Commande c = verrou ? commandeRepo.findByUniqueIdForUpdate(uniqueId) : commandeRepo.findByUniqueId(uniqueId);
+        Commande c = commandeFarmScoped(uniqueId, u, inclureSupprimees);
+        if (!verrou) return c;
+        compteClientService.verrouiller(c.getClient());
+        Commande v = commandeRepo.findByUniqueIdForUpdate(uniqueId);
+        entityManager.refresh(v);
+        return commandeFarmScoped(uniqueId, u, inclureSupprimees);
+    }
+
+    private Commande commandeFarmScoped(String uniqueId, Utilisateurs u, boolean inclureSupprimees) {
+        Commande c = commandeRepo.findByUniqueId(uniqueId);
         if (c == null || u == null || u.getFarm() == null
                 || c.getFarm() == null || !c.getFarm().getId().equals(u.getFarm().getId())
                 || (!inclureSupprimees && c.getInitialisation() != null && Boolean.TRUE.equals(c.getInitialisation().getRemoved()))) {
@@ -497,7 +513,7 @@ public class CommandeServiceImpl implements CommandeService {
     public CommandeDTO confirmer(String uniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
-        Commande c = commandeFarmScoped(uniqueId, currentUser);
+        Commande c = commandeFarmScoped(uniqueId, currentUser, false, true);
         if (c.getStatut() != StatutCommande.EN_ATTENTE) {
             throw new IllegalArgumentException("Seule une commande en attente peut être confirmée.");
         }
@@ -721,7 +737,7 @@ public class CommandeServiceImpl implements CommandeService {
     public CommandeDTO enregistrerPaiement(String uniqueId, PaiementClientCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanEncaisser(currentUser);
-        Commande c = commandeFarmScoped(uniqueId, currentUser);
+        Commande c = commandeFarmScoped(uniqueId, currentUser, false, true);
         if (c.getStatut() == StatutCommande.CLOTUREE || c.getStatut() == StatutCommande.ANNULEE) {
             throw new IllegalArgumentException("Cette commande est terminée, elle ne peut plus recevoir de paiement.");
         }
