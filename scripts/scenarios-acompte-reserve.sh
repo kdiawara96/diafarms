@@ -11,10 +11,14 @@
 # C. Annulation sans remboursement : l'acompte libéré règle l'ancienne dette.
 # D. Paiement général et avance libre pendant qu'un acompte est réservé ; remboursement
 #    sans commande refusé sur l'argent réservé, accepté depuis la commande.
-# E. Livraison qui termine la commande, puis supprimée et restaurée : l'acompte redevient
-#    réservé puis libre au bon moment.
 # F. Reprise admin (POST /admin/reprise-acompte-reserve) sur un cas faux semé en SQL :
 #    simulation (rien d'écrit), exécution réelle, rejeu idempotent.
+# G. Acompte 15 000, livraison complète 10 x 1000 puis supprimée : les 15 000 sont de
+#    nouveau réservés et l'ancienne dette de nouveau due ; restaurée : libre à nouveau.
+# H. Commande supprimée puis récupérée : l'acompte redevient réservé et paie la livraison
+#    suivante ; l'argent reçu à une livraison règle d'abord cette livraison.
+# M. Refus : paiement sur une commande visant une vente hors commande, changement du
+#    client d'une livraison.
 #
 # Pré-requis (non gérés ici) : Postgres + backend démarrés, base seedée par
 # scenarios-circuit-client.sh (ferme + ADMIN admin@t.local / Test1234! + magasin
@@ -173,6 +177,8 @@ nouveau_client() { # $1=nom -> positionne CLIENT_UID
 }
 
 CLIENT_TEL_SEQ=$((83000000 + (RANDOM % 900) * 1000))
+# Suffixe propre à ce passage : le script se rejoue sur la même base.
+SUFFIXE="$(date +%H%M%S)-$RANDOM"
 
 # Commande d'œufs pour $1 (client), quantité $2, prix $3, acompte $4 -> CMD_UID
 nouvelle_commande() {
@@ -219,7 +225,7 @@ echo "Stock d'œufs dans Boutique Scen : $(jpath "$BODY" "data.oeufsDisponible")
 scenarioA() {
   echo "== A : ancienne dette 20 000, acompte 10 000 réservé, livraison 17 480 =="
   local client ancienne cmd
-  nouveau_client "Acompte reserve A"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve A $SUFFIXE"; client="$CLIENT_UID"
   ancienne_vente "$client" 20000; ancienne="$VENTE_UID"
   nouvelle_commande "$client" 100 874 10000; cmd="$CMD_UID"
 
@@ -253,7 +259,7 @@ scenarioA() {
 scenarioB() {
   echo "== B : reste d'acompte gardé pour les livraisons suivantes, puis clôture =="
   local client ancienne cmd
-  nouveau_client "Acompte reserve B"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve B $SUFFIXE"; client="$CLIENT_UID"
   ancienne_vente "$client" 5000; ancienne="$VENTE_UID"
   nouvelle_commande "$client" 100 1000 30000; cmd="$CMD_UID"
   call POST "/commandes/$cmd/livrer?quantite=10"
@@ -283,7 +289,7 @@ scenarioB() {
 scenarioC() {
   echo "== C : annulation sans remboursement, l'acompte libéré règle l'ancienne dette =="
   local client ancienne cmd
-  nouveau_client "Acompte reserve C"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve C $SUFFIXE"; client="$CLIENT_UID"
   ancienne_vente "$client" 8000; ancienne="$VENTE_UID"
   nouvelle_commande "$client" 50 1000 10000; cmd="$CMD_UID"
   verifier "C ancienne vente non réglée par l'acompte" "0" "$(paye_vente "$ancienne")"
@@ -299,7 +305,7 @@ scenarioC() {
 scenarioD() {
   echo "== D : paiement général, avance libre et remboursement pendant qu'un acompte est réservé =="
   local client ancienne cmd
-  nouveau_client "Acompte reserve D"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve D $SUFFIXE"; client="$CLIENT_UID"
   ancienne_vente "$client" 20000; ancienne="$VENTE_UID"
   nouvelle_commande "$client" 100 1000 10000; cmd="$CMD_UID"
   call POST /paiements-client/create "{\"clientUniqueId\":\"$client\",\"montant\":25000,\"mode\":\"ESPECES\"}"
@@ -334,37 +340,92 @@ scenarioD() {
   invariants "$COMPTE" "D fin"
 }
 
-scenarioE() {
-  echo "== E : livraison qui termine la commande, supprimée puis restaurée =="
+scenarioG() {
+  echo "== G : acompte 15 000, livraison complète de 10 x 1000 puis supprimée et restaurée =="
   local client ancienne cmd vente
-  nouveau_client "Acompte reserve E"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve G $SUFFIXE"; client="$CLIENT_UID"
   ancienne_vente "$client" 20000; ancienne="$VENTE_UID"
   nouvelle_commande "$client" 10 1000 15000; cmd="$CMD_UID"
   call POST "/commandes/$cmd/livrer?quantite=10"
-  verifier "E livraison complète HTTP" "200" "$HTTP_STATUS"
-  verifier "E statut" "CONVERTIE" "$(jpath "$BODY" "data.statut")"
+  verifier "G livraison complète HTTP" "200" "$HTTP_STATUS"
+  verifier "G statut" "CONVERTIE" "$(jpath "$BODY" "data.statut")"
   vente=$(jpath "$BODY" "data.livraisons.0.venteUniqueId")
-  verifier "E livraison payée par l'acompte" "10000" "$(paye_vente "$vente")"
-  verifier "E reste de l'acompte (libre) sur l'ancienne vente" "5000" "$(paye_vente "$ancienne")"
+  verifier "G livraison payée par l'acompte" "10000" "$(paye_vente "$vente")"
+  verifier "G reste de l'acompte (libre) sur l'ancienne vente" "5000" "$(paye_vente "$ancienne")"
   call PUT "/ventes-oeufs/deleteOrRecover/$vente" '{"motif":"Livraison saisie par erreur"}'
-  verifier "E suppression de la livraison HTTP" "200" "$HTTP_STATUS"
+  verifier "G suppression de la livraison HTTP" "200" "$HTTP_STATUS"
   compte "$client"
-  verifier "E acompte de nouveau réservé" "10000" "$(champ "$COMPTE" avanceReservee)"
-  verifier "E ancienne vente inchangée" "5000" "$(paye_vente "$ancienne")"
-  invariants "$COMPTE" "E après suppression"
+  verifier "G les 15 000 de nouveau réservés" "15000" "$(champ "$COMPTE" avanceReservee)"
+  verifier "G ancienne vente de nouveau due (plus rien d'imputé)" "0" "$(paye_vente "$ancienne")"
+  verifier "G resteAPayer" "20000" "$(champ "$COMPTE" resteAPayer)"
+  invariants "$COMPTE" "G après suppression"
   call PUT "/ventes-oeufs/deleteOrRecover/$vente"
-  verifier "E restauration HTTP" "200" "$HTTP_STATUS"
+  verifier "G restauration HTTP" "200" "$HTTP_STATUS"
   compte "$client"
-  verifier "E livraison restaurée payée par l'acompte" "10000" "$(paye_vente "$vente")"
-  verifier "E avanceReservee après restauration" "0" "$(champ "$COMPTE" avanceReservee)"
-  verifier "E resteAPayer" "15000" "$(champ "$COMPTE" resteAPayer)"
-  invariants "$COMPTE" "E après restauration"
+  verifier "G livraison restaurée payée par l'acompte" "10000" "$(paye_vente "$vente")"
+  verifier "G reste libéré sur l'ancienne vente" "5000" "$(paye_vente "$ancienne")"
+  verifier "G avanceReservee après restauration" "0" "$(champ "$COMPTE" avanceReservee)"
+  verifier "G resteAPayer" "15000" "$(champ "$COMPTE" resteAPayer)"
+  invariants "$COMPTE" "G après restauration"
+}
+
+scenarioH() {
+  echo "== H : commande supprimée puis récupérée, livraison suivante payée par l'acompte =="
+  local client ancienne cmd
+  nouveau_client "Acompte reserve H $SUFFIXE"; client="$CLIENT_UID"
+  ancienne_vente "$client" 20000; ancienne="$VENTE_UID"
+  nouvelle_commande "$client" 100 1000 10000; cmd="$CMD_UID"
+  call PUT "/commandes/deleteOrRecover/$cmd"
+  verifier "H suppression de la commande HTTP" "200" "$HTTP_STATUS"
+  verifier "H acompte libéré sur l'ancienne vente" "10000" "$(paye_vente "$ancienne")"
+  call POST "/commandes/$cmd/livrer?quantite=1"
+  verifier "H commande supprimée introuvable pour une livraison" "400" "$HTTP_STATUS"
+  call PUT "/commandes/deleteOrRecover/$cmd"
+  verifier "H récupération de la commande HTTP" "200" "$HTTP_STATUS"
+  compte "$client"
+  verifier "H acompte de nouveau réservé" "10000" "$(champ "$COMPTE" avanceReservee)"
+  verifier "H ancienne vente de nouveau due" "0" "$(paye_vente "$ancienne")"
+  invariants "$COMPTE" "H après récupération"
+  call POST "/commandes/$cmd/livrer?quantite=6"
+  verifier "H livraison HTTP" "200" "$HTTP_STATUS"
+  verifier "H livraison payée par l'acompte" "6000" "$(jpath "$BODY" "data.livraisons.0.paye")"
+  verifier "H acompteReserve" "4000" "$(jpath "$BODY" "data.acompteReserve")"
+  # Argent reçu à la livraison : il règle d'abord SA livraison, l'acompte reste réservé.
+  call POST "/commandes/$cmd/livrer?quantite=3&montantRecu=3000&mode=ESPECES"
+  verifier "H livraison payée à la livraison HTTP" "200" "$HTTP_STATUS"
+  verifier "H livraison réglée par l'argent reçu" "3000" "$(jpath "$BODY" "data.livraisons.1.paye")"
+  verifier "H acompte intact pour la suite" "4000" "$(jpath "$BODY" "data.acompteReserve")"
+  compte "$client"
+  verifier "H ancienne vente toujours due" "20000" "$(champ "$COMPTE" resteAPayer)"
+  invariants "$COMPTE" "H"
+}
+
+scenarioM() {
+  echo "== M : refus (paiement de commande visant une autre vente, client d'une livraison changé) =="
+  local client autre ancienne cmd vente
+  nouveau_client "Acompte reserve M $SUFFIXE"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve M autre $SUFFIXE"; autre="$CLIENT_UID"
+  ancienne_vente "$client" 5000; ancienne="$VENTE_UID"
+  nouvelle_commande "$client" 100 1000 2000; cmd="$CMD_UID"
+  call POST /paiements-client/create "{\"clientUniqueId\":\"$client\",\"montant\":5000,\"mode\":\"ESPECES\",\"commandeUniqueId\":\"$cmd\",\"venteCibleType\":\"VENTE_OEUFS\",\"venteCibleUniqueId\":\"$ancienne\"}"
+  verifier "M paiement sur commande visant une autre vente HTTP" "400" "$HTTP_STATUS"
+  message_contient "M message" "ne peut régler que les livraisons de cette commande"
+  verifier "M ancienne vente inchangée" "0" "$(paye_vente "$ancienne")"
+  call POST "/commandes/$cmd/livrer?quantite=2"
+  vente=$(jpath "$BODY" "data.livraisons.0.venteUniqueId")
+  call POST /paiements-client/create "{\"clientUniqueId\":\"$client\",\"montant\":1000,\"mode\":\"ESPECES\",\"commandeUniqueId\":\"$cmd\",\"venteCibleType\":\"VENTE_OEUFS\",\"venteCibleUniqueId\":\"$vente\"}"
+  verifier "M paiement sur commande visant sa livraison HTTP" "201" "$HTTP_STATUS"
+  call PUT "/ventes-oeufs/update/$vente" "{\"clientUniqueId\":\"$autre\"}"
+  verifier "M changement de client d'une livraison HTTP" "400" "$HTTP_STATUS"
+  message_contient "M message client" "livraison de commande"
+  compte "$client"
+  invariants "$COMPTE" "M"
 }
 
 scenarioF() {
   echo "== F : reprise admin sur un cas faux (acompte imputé à une ancienne vente) =="
   local client ancienne cmd paiement farm token_admin rapport
-  nouveau_client "Acompte reserve F"; client="$CLIENT_UID"
+  nouveau_client "Acompte reserve F $SUFFIXE"; client="$CLIENT_UID"
   ancienne_vente "$client" 20000; ancienne="$VENTE_UID"
   nouvelle_commande "$client" 100 1000 10000; cmd="$CMD_UID"
   # Cas faux semé en SQL, comme l'ancienne règle le produisait.
@@ -426,8 +487,10 @@ scenarioA
 scenarioB
 scenarioC
 scenarioD
-scenarioE
 scenarioF
+scenarioG
+scenarioH
+scenarioM
 
 echo
 echo "$PASS OK, $FAILURES échec(s)."

@@ -214,4 +214,17 @@ class CalculImputationTest {
         assertEquals(1000, a.get(1).montant());
         assertEquals(6000, total(a));
     }
+
+    @Test
+    void paiementALaLivraisonRegleSaLivraisonAvantLAcompte() {
+        // Acompte 10 000 (plus ancien), livraison 8 000 payée 8 000 à la livraison : le
+        // paiement de la livraison la règle, l'acompte reste entier pour la suite.
+        var a = CalculImputation.repartir(
+                List.of(new Source("Acompte", 10000, "C1", null, true),
+                        new Source("PaieLivraison", 8000, "C1", "L1", true)),
+                List.of(new Besoin("VENTE_OEUFS", "L1", 8000, "C1")));
+        assertEquals(1, a.size());
+        assertEquals("PaieLivraison", a.get(0).paiementUniqueId());
+        assertEquals(8000, a.get(0).montant());
+    }
 }

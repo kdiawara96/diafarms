@@ -410,6 +410,12 @@ public class VenteOeufsImpl implements VenteOeufsService {
         String ancienClientId = ancienClient != null ? ancienClient.getUniqueId() : null;
         String nouveauClientId = v.getClient() != null ? v.getClient().getUniqueId() : null;
         boolean clientChanged = ancienClientId == null ? nouveauClientId != null : !ancienClientId.equals(nouveauClientId);
+        // Livraison d'une commande : le client est celui de la commande (son acompte lui
+        // est réservé) ; changer le client casserait ce lien.
+        if (clientChanged && v.getCommande() != null) {
+            throw new IllegalArgumentException("Cette vente est une livraison de commande : son client ne peut pas être changé. "
+                    + "Supprimez la livraison et livrez la bonne commande.");
+        }
         // Sert aussi plus bas (hors client) à rafraîchir le texte de traçabilité des
         // lignes de répartition existantes quand il n'y a pas eu de redistribution.
         boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;

@@ -1,7 +1,9 @@
 package com.diafarms.ml.ServiceImpl;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -9,11 +11,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.diafarms.ml.DTO.RepriseAcompteReserveRapportDTO;
 import com.diafarms.ml.commons.CalculImputation;
-import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.models.*;
 import com.diafarms.ml.repository.ImputationPaiementRepo;
-import com.diafarms.ml.repository.VenteOeufsRepo;
-import com.diafarms.ml.repository.VenteReformeRepo;
 import com.diafarms.ml.services.LogsServices;
 
 import jakarta.persistence.EntityManager;
@@ -40,18 +39,13 @@ public class RepriseAcompteReserveService {
     private final TransactionTemplate txTemplate;
     private final CompteClientService compteClientService;
     private final ImputationPaiementRepo imputationRepo;
-    private final VenteOeufsRepo venteOeufsRepo;
-    private final VenteReformeRepo venteReformeRepo;
     private final LogsServices logs;
 
     public RepriseAcompteReserveService(PlatformTransactionManager txManager, CompteClientService compteClientService,
-                                        ImputationPaiementRepo imputationRepo, VenteOeufsRepo venteOeufsRepo,
-                                        VenteReformeRepo venteReformeRepo, LogsServices logs) {
+                                        ImputationPaiementRepo imputationRepo, LogsServices logs) {
         this.txTemplate = new TransactionTemplate(txManager);
         this.compteClientService = compteClientService;
         this.imputationRepo = imputationRepo;
-        this.venteOeufsRepo = venteOeufsRepo;
-        this.venteReformeRepo = venteReformeRepo;
         this.logs = logs;
     }
 
@@ -67,7 +61,7 @@ public class RepriseAcompteReserveService {
             RepriseAcompteReserveRapportDTO partiel = new RepriseAcompteReserveRapportDTO();
             try {
                 txTemplate.executeWithoutResult(status -> {
-                    traiterFerme(farm.getId(), nomFerme, partiel);
+                    traiterFerme(farm.getId(), nomFerme, executer, partiel);
                     if (executer) {
                         if (lanceur != null && !partiel.getLignes().isEmpty())
                             logs.addLogs(lanceur.getId(), farm.getId(), "Farm", ACTION_LOG_EXECUTION);
@@ -89,37 +83,29 @@ public class RepriseAcompteReserveService {
         return rapport;
     }
 
-    /** La vente visée est-elle une livraison de cette commande ? */
-    private boolean estLivraisonDe(ImputationPaiement i, Commande k) {
-        Commande kv = null;
-        if (i.getCibleType() == CibleImputation.VENTE_OEUFS) {
-            kv = venteOeufsRepo.findByUniqueId(i.getCibleUniqueId()).map(VenteOeufs::getCommande).orElse(null);
-        } else if (i.getCibleType() == CibleImputation.VENTE_REFORME) {
-            kv = venteReformeRepo.findByUniqueId(i.getCibleUniqueId()).map(VenteReforme::getCommande).orElse(null);
-        }
-        return kv != null && kv.getId().equals(k.getId());
-    }
-
-    private void traiterFerme(Long farmId, String nomFerme, RepriseAcompteReserveRapportDTO rapport) {
+    private void traiterFerme(Long farmId, String nomFerme, boolean executer, RepriseAcompteReserveRapportDTO rapport) {
         List<Client> clients = em.createQuery(
                 "SELECT c FROM Client c WHERE c.farm.id = :f ORDER BY c.nom, c.id", Client.class)
                 .setParameter("f", farmId).getResultList();
         for (Client c : clients) {
-            List<ImputationPaiement> fautives = new ArrayList<>();
+            // Exécution : verrou client AVANT de lire ses imputations (une saisie
+            // simultanée ne peut plus les changer entre la lecture et l'annulation). En
+            // simulation on ne verrouille pas toute la ferme : seuls les clients concernés
+            // le sont, par imputer(), et tout est annulé à la fin.
+            if (executer) compteClientService.verrouiller(c);
+            Map<Long, Commande> commandes = new LinkedHashMap<>();
             for (ImputationPaiement i : imputationRepo.findActivesDePaiementsDeCommandeByClientId(c.getId())) {
                 Commande k = i.getPaiement().getCommande();
-                if (!CompteClientService.estReservee(k)) continue; // commande terminée : argent libre
-                if (i.getCibleType() == CibleImputation.REMBOURSEMENT) continue; // déjà rendu
-                if (estLivraisonDe(i, k)) continue;
-                fautives.add(i);
+                if (CompteClientService.estReservee(k)) commandes.putIfAbsent(k.getId(), k);
             }
+            List<ImputationPaiement> fautives = new ArrayList<>();
+            for (Commande k : commandes.values()) fautives.addAll(compteClientService.imputationsHorsCommande(k));
             if (fautives.isEmpty()) continue;
 
             RepriseAcompteReserveRapportDTO.Ligne ligne = new RepriseAcompteReserveRapportDTO.Ligne();
             ligne.setFerme(nomFerme);
             ligne.setClientUniqueId(c.getUniqueId());
             ligne.setClientNom(c.getNom());
-            compteClientService.verrouiller(c);
             ligne.setAvant(compteClientService.compte(c));
             double total = 0;
             for (ImputationPaiement i : fautives) {
@@ -127,9 +113,10 @@ public class RepriseAcompteReserveService {
                 ligne.getMouvements().add(fcfa(i.getMontant()) + " du paiement du " + i.getPaiement().getDate()
                         + " (commande du " + k.getDateCommande() + ") retirés de la vente " + i.getCibleUniqueId()
                         + " : de nouveau réservés à la commande");
-                compteClientService.annulerImputation(i, MOTIF);
                 total += i.getMontant();
             }
+            // Même traitement que la réouverture d'une commande (CompteClientService.reReserver).
+            for (Commande k : commandes.values()) compteClientService.annulerHorsCommande(k, MOTIF);
             em.flush();
             compteClientService.imputer(c);
             em.flush();

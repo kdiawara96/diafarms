@@ -30,14 +30,19 @@ public final class CalculImputation {
     }
 
     /** Sources et besoins triés du plus ancien au plus récent. D'abord l'argent réservé
-     * (acomptes des commandes ouvertes, plus anciens d'abord), qui ne règle que les
+     * (paiement reçu à une livraison et qui la vise, puis acomptes des commandes
+     * ouvertes, plus anciens d'abord), qui ne règle que les
      * ventes de sa commande ; puis l'argent libre, qui peut tout régler. Pour chaque
      * paiement : d'abord la vente qu'il vise, puis les ventes de sa commande, puis les
      * autres (argent libre seulement). */
     public static List<Affectation> repartir(List<Source> sources, List<Besoin> besoins) {
         double[] restesBesoins = besoins.stream().mapToDouble(b -> arrondi(b.reste())).toArray();
         List<Affectation> out = new ArrayList<>();
-        List<Source> ordreSources = new ArrayList<>(sources.stream().filter(Source::reservee).toList());
+        // Parmi l'argent réservé, celui qui vise une vente précise (paiement reçu à une
+        // livraison) passe avant les acomptes : il règle d'abord SA livraison.
+        List<Source> ordreSources = new ArrayList<>(sources.stream()
+                .filter(s -> s.reservee() && s.venteCibleUniqueId() != null).toList());
+        ordreSources.addAll(sources.stream().filter(s -> s.reservee() && s.venteCibleUniqueId() == null).toList());
         ordreSources.addAll(sources.stream().filter(s -> !s.reservee()).toList());
         for (Source s : ordreSources) {
             double dispo = arrondi(s.reste());

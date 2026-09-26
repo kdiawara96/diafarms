@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 public class LivraisonCommandeService {
 
     private final CommandeRepo commandeRepo;
+    private final CompteClientService compteClientService;
 
     private static int nz(Integer v) { return v == null ? 0 : v; }
 
@@ -26,9 +27,13 @@ public class LivraisonCommandeService {
     @Transactional
     public void livraisonSupprimee(Commande c, Integer quantite) {
         if (c == null) return;
+        boolean etaitReservee = CompteClientService.estReservee(c);
         c.setQuantiteLivree(Math.max(0, nz(c.getQuantiteLivree()) - nz(quantite)));
         recalculerStatut(c);
         commandeRepo.save(c);
+        // Commande qui se rouvre (CONVERTIE -> EN_LIVRAISON/CONFIRMEE) : son argent
+        // redevient réservé, y compris ce qui avait déjà réglé d'autres ventes.
+        if (!etaitReservee && CompteClientService.estReservee(c)) compteClientService.reReserver(c);
     }
 
     /** Vérifie AVANT de restaurer la vente qu'on peut remettre sa quantité sur la commande. */

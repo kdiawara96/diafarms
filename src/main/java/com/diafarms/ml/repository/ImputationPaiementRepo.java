@@ -46,7 +46,7 @@ public interface ImputationPaiementRepo extends JpaRepository<ImputationPaiement
            "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
            "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
            "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
-           "AND k.initialisation.removed = false GROUP BY k.uniqueId")
+           "AND COALESCE(k.initialisation.removed, false) = false GROUP BY k.uniqueId")
     List<Object[]> sumImputeParCommandeOuverte(@Param("clientId") Long clientId);
 
     // Reprise « acompte réservé » : imputations actives d'un paiement rattaché à une
@@ -56,4 +56,25 @@ public interface ImputationPaiementRepo extends JpaRepository<ImputationPaiement
            "WHERE i.client.id = :clientId AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
            "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF ORDER BY i.id")
     List<ImputationPaiement> findActivesDePaiementsDeCommandeByClientId(@Param("clientId") Long clientId);
+
+    // Imputations actives des paiements actifs rattachés à une commande (re-réservation,
+    // voir CompteClientService.annulerHorsCommande).
+    @Query("SELECT i FROM ImputationPaiement i JOIN FETCH i.paiement p WHERE p.commande.id = :commandeId " +
+           "AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF ORDER BY i.id")
+    List<ImputationPaiement> findActivesDePaiementsDeCommande(@Param("commandeId") Long commandeId);
+
+    // CommandeServiceImpl.enrichirTous : [cibleUniqueId, Σ imputations actives] pour une
+    // liste de ventes.
+    @Query("SELECT i.cibleUniqueId, SUM(i.montant) FROM ImputationPaiement i WHERE i.cibleUniqueId IN :uids " +
+           "AND i.cibleType <> com.diafarms.ml.enums.CibleImputation.REMBOURSEMENT " +
+           "AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF GROUP BY i.cibleUniqueId")
+    List<Object[]> sumActivesParVente(@Param("uids") java.util.Collection<String> uids);
+
+    // CommandeServiceImpl.enrichirTous : [paiementId, cibleType, cibleUniqueId, Σ] pour
+    // une liste de paiements.
+    @Query("SELECT i.paiement.id, i.cibleType, i.cibleUniqueId, SUM(i.montant) FROM ImputationPaiement i " +
+           "WHERE i.paiement.id IN :ids AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "GROUP BY i.paiement.id, i.cibleType, i.cibleUniqueId")
+    List<Object[]> sumActivesParPaiementEtCible(@Param("ids") java.util.Collection<Long> ids);
 }

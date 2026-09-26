@@ -2,7 +2,11 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -128,10 +132,18 @@ public class CommandeServiceImpl implements CommandeService {
     // Commande introuvable OU d'une autre ferme -> même message (même principe que
     // FactureServiceImpl.factureFarmScoped) : sans ce contrôle, un utilisateur d'une ferme
     // pouvait livrer, encaisser, annuler... la commande d'une autre ferme par son uniqueId.
+    // Une commande supprimée est introuvable, sauf pour deleteOrRecover (récupération).
     private Commande commandeFarmScoped(String uniqueId, Utilisateurs u) {
-        Commande c = commandeRepo.findByUniqueId(uniqueId);
+        return commandeFarmScoped(uniqueId, u, false, false);
+    }
+
+    // verrou : PESSIMISTIC_WRITE sur la commande (livraison, clôture, annulation) pour que
+    // deux actions simultanées ne livrent pas deux fois le même reste.
+    private Commande commandeFarmScoped(String uniqueId, Utilisateurs u, boolean inclureSupprimees, boolean verrou) {
+        Commande c = verrou ? commandeRepo.findByUniqueIdForUpdate(uniqueId) : commandeRepo.findByUniqueId(uniqueId);
         if (c == null || u == null || u.getFarm() == null
-                || c.getFarm() == null || !c.getFarm().getId().equals(u.getFarm().getId())) {
+                || c.getFarm() == null || !c.getFarm().getId().equals(u.getFarm().getId())
+                || (!inclureSupprimees && c.getInitialisation() != null && Boolean.TRUE.equals(c.getInitialisation().getRemoved()))) {
             throw new IllegalArgumentException("Commande introuvable : " + uniqueId);
         }
         return c;
@@ -221,6 +233,52 @@ public class CommandeServiceImpl implements CommandeService {
     // méthodes qui renvoient un CommandeDTO (y compris list(), acceptable à l'échelle
     // d'une ferme).
     private CommandeDTO enrichir(Commande c) {
+        return enrichirTous(List.of(c)).get(0);
+    }
+
+    // Même calcul pour toute une page de commandes, en requêtes groupées (livraisons,
+    // payé par livraison, paiements, imputations) : plus une requête par vente ou par
+    // paiement.
+    private List<CommandeDTO> enrichirTous(List<Commande> commandes) {
+        if (commandes.isEmpty()) return List.of();
+        List<Long> ids = commandes.stream().map(Commande::getId).toList();
+        Map<Long, List<VenteOeufs>> oeufs = new HashMap<>();
+        for (VenteOeufs v : venteOeufsRepo.findActivesByCommandeIds(ids))
+            oeufs.computeIfAbsent(v.getCommande().getId(), k -> new ArrayList<>()).add(v);
+        Map<Long, List<VenteReforme>> reformes = new HashMap<>();
+        for (VenteReforme v : venteReformeRepo.findActivesByCommandeIds(ids))
+            reformes.computeIfAbsent(v.getCommande().getId(), k -> new ArrayList<>()).add(v);
+        Set<String> venteUids = new HashSet<>();
+        oeufs.values().forEach(l -> l.forEach(v -> venteUids.add(v.getUniqueId())));
+        reformes.values().forEach(l -> l.forEach(v -> venteUids.add(v.getUniqueId())));
+        Map<String, Double> payeParVente = new HashMap<>();
+        if (!venteUids.isEmpty()) {
+            for (Object[] r : imputationPaiementRepo.sumActivesParVente(venteUids))
+                payeParVente.put((String) r[0], ((Number) r[1]).doubleValue());
+        }
+        Map<Long, List<PaiementClient>> paiements = new HashMap<>();
+        List<Long> paiementIds = new ArrayList<>();
+        for (PaiementClient p : paiementClientRepo.findByCommandeIds(ids)) {
+            paiements.computeIfAbsent(p.getCommande().getId(), k -> new ArrayList<>()).add(p);
+            paiementIds.add(p.getId());
+        }
+        // [cibleType, cibleUniqueId, montant] par paiement
+        Map<Long, List<Object[]>> imputations = new HashMap<>();
+        if (!paiementIds.isEmpty()) {
+            for (Object[] r : imputationPaiementRepo.sumActivesParPaiementEtCible(paiementIds))
+                imputations.computeIfAbsent((Long) r[0], k -> new ArrayList<>()).add(new Object[]{r[1], r[2], r[3]});
+        }
+        List<CommandeDTO> out = new ArrayList<>();
+        for (Commande c : commandes) {
+            out.add(enrichir(c, oeufs.getOrDefault(c.getId(), List.of()), reformes.getOrDefault(c.getId(), List.of()),
+                    payeParVente, paiements.getOrDefault(c.getId(), List.of()), imputations));
+        }
+        return out;
+    }
+
+    private CommandeDTO enrichir(Commande c, List<VenteOeufs> ventesOeufs, List<VenteReforme> ventesReforme,
+                                 Map<String, Double> payeParVente, List<PaiementClient> paiements,
+                                 Map<Long, List<Object[]>> imputations) {
         CommandeDTO dto = CommandeDTO.fromEntity(c);
         dto.setStatutLibelle(statutLibelle(c.getStatut()));
         dto.setResteALivrer(nz(c.getQuantite()) - nz(c.getQuantiteLivree()));
@@ -229,28 +287,28 @@ public class CommandeServiceImpl implements CommandeService {
         double montantLivre = 0.0;
         double payeSurCommande = 0.0;
         if (c.getType() == TypeStockMagasin.OEUFS) {
-            for (VenteOeufs v : venteOeufsRepo.findActivesByCommandeId(c.getId())) {
+            for (VenteOeufs v : ventesOeufs) {
                 double montant = nz(v.getMontant());
-                double paye = compteClientService.payeVente(CibleImputation.VENTE_OEUFS, v.getUniqueId());
+                double paye = CalculImputation.arrondi(payeParVente.getOrDefault(v.getUniqueId(), 0.0));
                 montantLivre += montant;
                 payeSurCommande += paye;
                 livraisons.add(CommandeDTO.LivraisonDTO.builder()
                         .venteUniqueId(v.getUniqueId()).date(v.getDate()).quantite(v.getQuantiteOeufs())
-                        .montant(montant).paye(CalculImputation.arrondi(paye))
+                        .montant(montant).paye(paye)
                         .statutPaiement(statutPaiementLigne(montant, paye))
                         .build());
             }
         } else {
             double poidsLivre = 0.0;
-            for (VenteReforme v : venteReformeRepo.findActivesByCommandeId(c.getId())) {
+            for (VenteReforme v : ventesReforme) {
                 double montant = nz(v.getMontant());
-                double paye = compteClientService.payeVente(CibleImputation.VENTE_REFORME, v.getUniqueId());
+                double paye = CalculImputation.arrondi(payeParVente.getOrDefault(v.getUniqueId(), 0.0));
                 montantLivre += montant;
                 payeSurCommande += paye;
                 if (v.getTypeVente() == TypeVenteReforme.KILO) poidsLivre += nz(v.getPoidsTotalKg());
                 livraisons.add(CommandeDTO.LivraisonDTO.builder()
                         .venteUniqueId(v.getUniqueId()).date(v.getDate()).quantite(v.getNombreSujets())
-                        .montant(montant).paye(CalculImputation.arrondi(paye))
+                        .montant(montant).paye(paye)
                         .statutPaiement(statutPaiementLigne(montant, paye))
                         .typeVente(v.getTypeVente() != null ? v.getTypeVente().name() : TypeVenteReforme.TETE.name())
                         .poidsTotalKg(v.getPoidsTotalKg())
@@ -265,18 +323,18 @@ public class CommandeServiceImpl implements CommandeService {
         // est ouverte (0 une fois terminée : le reste est alors une avance libre du
         // client). avanceReservee : pareil pour TOUS les paiements rattachés à la commande
         // (acomptes, règlements, paiements à la livraison).
-        java.util.Set<String> ventesCommande = new java.util.HashSet<>();
+        Set<String> ventesCommande = new HashSet<>();
         livraisons.forEach(l -> ventesCommande.add(l.getVenteUniqueId()));
         boolean reservee = CompteClientService.estReservee(c);
         double acompteRecu = 0, acompteImpute = 0, acompteReserve = 0, avanceReservee = 0;
-        for (PaiementClient p : paiementClientRepo.findByCommandeId(c.getId())) {
+        for (PaiementClient p : paiements) {
             if (p.getStatut() != StatutMouvement.ACTIF) continue;
             boolean acompte = p.getOrigine() == OriginePaiement.ACOMPTE;
             double imputeTout = 0, imputeCommande = 0;
-            for (ImputationPaiement i : imputationPaiementRepo.findActivesByPaiementId(p.getId())) {
-                imputeTout += nz(i.getMontant());
-                if (i.getCibleType() != CibleImputation.REMBOURSEMENT && ventesCommande.contains(i.getCibleUniqueId()))
-                    imputeCommande += nz(i.getMontant());
+            for (Object[] i : imputations.getOrDefault(p.getId(), List.of())) {
+                double m = ((Number) i[2]).doubleValue();
+                imputeTout += m;
+                if (i[0] != CibleImputation.REMBOURSEMENT && ventesCommande.contains((String) i[1])) imputeCommande += m;
             }
             double reste = reservee ? Math.max(0, nz(p.getMontant()) - imputeTout) : 0;
             avanceReservee += reste;
@@ -453,7 +511,7 @@ public class CommandeServiceImpl implements CommandeService {
         Utilisateurs u = getCurrentUserSafe();
         ensureCanDecider(u);
         String motif = MotifSuppressionRequest.exiger(motifBrut);
-        Commande c = commandeFarmScoped(uniqueId, u);
+        Commande c = commandeFarmScoped(uniqueId, u, false, true);
         if (nz(c.getQuantiteLivree()) == 0) {
             throw new IllegalArgumentException("Rien n'a été livré : annulez la commande au lieu de la clôturer.");
         }
@@ -477,7 +535,7 @@ public class CommandeServiceImpl implements CommandeService {
         Utilisateurs u = getCurrentUserSafe();
         ensureCanDecider(u);
         String motif = MotifSuppressionRequest.exiger(motifBrut);
-        Commande c = commandeFarmScoped(uniqueId, u);
+        Commande c = commandeFarmScoped(uniqueId, u, false, true);
         if (nz(c.getQuantiteLivree()) > 0) {
             throw new IllegalArgumentException("Cette commande a déjà été livrée en partie : clôturez-la au lieu de l'annuler.");
         }
@@ -518,7 +576,7 @@ public class CommandeServiceImpl implements CommandeService {
                               Double poidsTotalKg, Double prixKg) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanManage(currentUser);
-        Commande c = commandeFarmScoped(uniqueId, currentUser);
+        Commande c = commandeFarmScoped(uniqueId, currentUser, false, true);
         if (c.getStatut() == StatutCommande.CLOTUREE) {
             throw new IllegalArgumentException("Cette commande est clôturée, elle ne peut plus être livrée.");
         }
@@ -623,8 +681,16 @@ public class CommandeServiceImpl implements CommandeService {
         // ouverte, pour que les acomptes réservés la règlent en premier (voir
         // CalculImputation.repartir). Le reste d'un acompte ne se libère qu'après, quand
         // le statut passe éventuellement à CONVERTIE.
+        // Argent reçu à cette livraison : enregistré ICI, avant de refaire l'imputation,
+        // pour qu'il règle d'abord cette livraison (il la vise ; CalculImputation.repartir
+        // passe les paiements réservés qui visent une vente avant les autres).
         compteClientService.retirerImputationsProvisoires(typeCible, venteUniqueId);
-        compteClientService.imputer(c.getClient());
+        if (nz(montantRecu) > 0) {
+            paiementClientService.enregistrerInterne(c.getClient(), montantRecu, mode(modeBrut), OriginePaiement.LIVRAISON,
+                    c, typeCible, venteUniqueId, null, null, LocalDate.now());
+        } else {
+            compteClientService.imputer(c.getClient());
+        }
 
         int quantiteLivreeApres = nz(c.getQuantiteLivree()) + quantite;
         c.setQuantiteLivree(quantiteLivreeApres);
@@ -636,16 +702,9 @@ public class CommandeServiceImpl implements CommandeService {
         c.setStatut(complete ? StatutCommande.CONVERTIE : StatutCommande.EN_LIVRAISON);
         Commande saved = commandeRepo.save(c);
 
-        // L'argent NOUVEAU reçu à cette livraison précise devient un paiement LIVRAISON ;
-        // sinon (rien de neuf) on laisse une éventuelle avance déjà au compte du client
-        // (acompte, paiement complémentaire) régler cette livraison maintenant qu'elle
-        // est rattachée à la commande — priorité voir CalculImputation.ordrePour.
-        if (nz(montantRecu) > 0) {
-            paiementClientService.enregistrerInterne(c.getClient(), montantRecu, mode(modeBrut), OriginePaiement.LIVRAISON,
-                    c, typeCible, venteUniqueId, null, null, LocalDate.now());
-        } else {
-            compteClientService.imputer(c.getClient());
-        }
+        // Commande entièrement livrée : le reste de ses acomptes devient libre et règle
+        // les autres ventes dues du client (idempotent si rien ne change).
+        if (complete) compteClientService.imputer(c.getClient());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
@@ -683,15 +742,17 @@ public class CommandeServiceImpl implements CommandeService {
     public String deleteOrRecover(String uniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
         ensureCanDelete(currentUser);
-        Commande c = commandeFarmScoped(uniqueId, currentUser);
+        Commande c = commandeFarmScoped(uniqueId, currentUser, true, false);
         if (!c.getInitialisation().getRemoved() && c.getStatut() != StatutCommande.EN_ATTENTE) {
             throw new IllegalArgumentException("Seule une commande en attente peut être supprimée : annulez-la plutôt.");
         }
         c.getInitialisation().setRemoved(!c.getInitialisation().getRemoved());
         commandeRepo.save(c);
         boolean removed = c.getInitialisation().getRemoved();
-        // Supprimée : ses acomptes deviennent libres ; récupérée : de nouveau réservés.
-        compteClientService.imputer(c.getClient());
+        // Supprimée : ses acomptes deviennent libres ; récupérée : de nouveau réservés, y
+        // compris ce qui avait réglé d'autres ventes entre-temps (reReserver).
+        if (removed) compteClientService.imputer(c.getClient());
+        else compteClientService.reReserver(c);
         return removed ? "Commande supprimée." : "Commande récupérée.";
     }
 
@@ -715,7 +776,7 @@ public class CommandeServiceImpl implements CommandeService {
         Page<Commande> commandePage = commandeRepo.search(currentUser.getFarm().getId(),
                 hasStatut, hasStatut ? statutEnum : StatutCommande.EN_ATTENTE,
                 hasClient, hasClient ? clientUniqueId : "", pageable);
-        List<CommandeDTO> dtoList = commandePage.getContent().stream().map(this::enrichir).toList();
+        List<CommandeDTO> dtoList = enrichirTous(commandePage.getContent());
 
         return new PaginatedResponse<>(
                 dtoList,

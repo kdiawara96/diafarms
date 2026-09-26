@@ -63,6 +63,10 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     @Query("SELECT v FROM VenteReforme v WHERE v.commande.id = :commandeId AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
     List<VenteReforme> findActivesByCommandeId(@Param("commandeId") Long commandeId);
 
+    // CommandeServiceImpl.enrichirTous : livraisons actives d'une page de commandes.
+    @Query("SELECT v FROM VenteReforme v WHERE v.commande.id IN :ids AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
+    List<VenteReforme> findActivesByCommandeIds(@Param("ids") java.util.Collection<Long> ids);
+
     // Voir VenteOeufsRepo.sumRapporteSansClient (même raisonnement : une vente à
     // client n'a plus de montantRapporte, payée via PaiementClient/sumEntreesHorsVentesStock).
     @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteReforme v " +

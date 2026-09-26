@@ -91,6 +91,14 @@ affichait « acompte reçu 10 000, payé sur commande 0 »). Désormais :
   remboursement passe d'abord, l'imputation ensuite. Une livraison supprimée ou restaurée
   met d'abord à jour le statut de la commande, puis impute (l'acompte redevient réservé
   si la commande se rouvre).
+- Réouverture (commande récupérée, livraison supprimée qui fait repasser une commande
+  CONVERTIE en cours) : `CompteClientService.reReserver` annule ce que l'argent de la
+  commande réglait hors de ses livraisons, puis impute de nouveau. Même traitement que la
+  reprise ci-dessous (`annulerHorsCommande`).
+- Paiement à la livraison : enregistré avant la ré-imputation, il règle d'abord SA
+  livraison (l'argent réservé qui vise une vente passe avant les acomptes).
+- Refus (400) : paiement sur une commande en cours qui vise une vente hors de cette
+  commande ; changement du client d'une livraison de commande.
 - Remboursement : l'argent réservé n'est pris que si le remboursement vise sa commande
   (`commandeUniqueId`) ; sinon seule l'avance libre compte (message explicite).
 - Compte client : `avance` inchangée (= avanceLibre + avanceReservee), plus

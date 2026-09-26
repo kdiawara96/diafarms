@@ -45,6 +45,54 @@ public class CompteClientService {
                 || k.getStatut() == Commande.StatutCommande.EN_LIVRAISON;
     }
 
+    public static final String MOTIF_RE_RESERVATION = "Acompte de nouveau réservé à sa commande";
+
+    /** La vente (type, uid) est-elle une livraison de cette commande ? */
+    public boolean estLivraisonDe(CibleImputation type, String venteUid, Commande k) {
+        if (k == null || type == null || venteUid == null) return false;
+        Commande kv = null;
+        if (type == CibleImputation.VENTE_OEUFS) {
+            kv = venteOeufsRepo.findByUniqueId(venteUid).map(VenteOeufs::getCommande).orElse(null);
+        } else if (type == CibleImputation.VENTE_REFORME) {
+            kv = venteReformeRepo.findByUniqueId(venteUid).map(VenteReforme::getCommande).orElse(null);
+        }
+        return kv != null && kv.getId().equals(k.getId());
+    }
+
+    /** Imputations actives des paiements de la commande qui règlent une vente qui n'est
+     * PAS une de ses livraisons : interdites tant que la commande est ouverte. Les
+     * remboursements ne sont pas concernés (l'argent est déjà rendu). */
+    @Transactional(readOnly = true)
+    public List<ImputationPaiement> imputationsHorsCommande(Commande k) {
+        List<ImputationPaiement> out = new ArrayList<>();
+        if (!estReservee(k)) return out;
+        for (ImputationPaiement i : imputationRepo.findActivesDePaiementsDeCommande(k.getId())) {
+            if (i.getCibleType() == CibleImputation.REMBOURSEMENT) continue;
+            if (!estLivraisonDe(i.getCibleType(), i.getCibleUniqueId(), k)) out.add(i);
+        }
+        return out;
+    }
+
+    /** Annule les imputations hors commande (voir imputationsHorsCommande). Le client doit
+     * déjà être verrouillé. Partagé par reReserver et RepriseAcompteReserveService. */
+    @Transactional
+    public List<ImputationPaiement> annulerHorsCommande(Commande k, String motif) {
+        List<ImputationPaiement> hors = imputationsHorsCommande(k);
+        for (ImputationPaiement i : hors) annuler(i, motif);
+        return hors;
+    }
+
+    /** Commande qui redevient ouverte (récupérée, livraison supprimée...) : son argent
+     * redevient réservé. Ce qu'il réglait hors de la commande est annulé, puis on impute
+     * de nouveau (l'argent libre règle ce qui a été libéré). */
+    @Transactional
+    public void reReserver(Commande k) {
+        if (k == null || k.getClient() == null || !estReservee(k)) return;
+        verrouiller(k.getClient());
+        if (!annulerHorsCommande(k, MOTIF_RE_RESERVATION).isEmpty()) imputationRepo.flush();
+        imputer(k.getClient());
+    }
+
     /** Avance réservée par commande ouverte (ordre des dates de commande). */
     @Transactional(readOnly = true)
     public List<CompteClientDTO.AvanceReserveeDTO> avancesReservees(Client client) {

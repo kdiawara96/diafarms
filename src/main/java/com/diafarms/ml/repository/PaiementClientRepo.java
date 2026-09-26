@@ -51,6 +51,10 @@ public interface PaiementClientRepo extends JpaRepository<PaiementClient, Long> 
            "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
            "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
            "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
-           "AND k.initialisation.removed = false GROUP BY k.uniqueId, k.dateCommande ORDER BY k.dateCommande, k.uniqueId")
+           "AND COALESCE(k.initialisation.removed, false) = false GROUP BY k.uniqueId, k.dateCommande ORDER BY k.dateCommande, k.uniqueId")
     List<Object[]> sumParCommandeOuverte(@Param("clientId") Long clientId);
+
+    // CommandeServiceImpl.enrichirTous : paiements de toutes les commandes d'une page.
+    @Query("SELECT p FROM PaiementClient p WHERE p.commande.id IN :ids")
+    List<PaiementClient> findByCommandeIds(@Param("ids") java.util.Collection<Long> ids);
 }

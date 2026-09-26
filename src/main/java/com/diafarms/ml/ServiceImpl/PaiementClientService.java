@@ -111,6 +111,15 @@ public class PaiementClientService {
                 : OriginePaiement.valueOf(d.getOrigine().trim().toUpperCase());
         CibleImputation cibleType = d.getVenteCibleType() == null || d.getVenteCibleType().isBlank() ? null
                 : CibleImputation.valueOf(d.getVenteCibleType().trim().toUpperCase());
+        // Paiement sur une commande ouverte : son argent lui est réservé (voir
+        // CompteClientService.estReservee), il ne peut donc pas viser une vente qui n'est
+        // pas une de ses livraisons.
+        if (commande != null && d.getVenteCibleUniqueId() != null && !d.getVenteCibleUniqueId().isBlank()
+                && CompteClientService.estReservee(commande)
+                && !compteClientService.estLivraisonDe(cibleType, d.getVenteCibleUniqueId(), commande)) {
+            throw new IllegalArgumentException("Un paiement sur une commande en cours ne peut régler que les livraisons de "
+                    + "cette commande. Pour régler une autre vente, enregistrez le paiement sans commande.");
+        }
         PaiementClient p = enregistrerInterne(c, d.getMontant(), mode(d.getMode()), origine, commande, cibleType,
                 d.getVenteCibleUniqueId(), facture, d.getObservations(),
                 DateSaisie.parse(d.getDate(), LocalDate.now()));

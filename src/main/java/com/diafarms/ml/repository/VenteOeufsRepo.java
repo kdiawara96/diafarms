@@ -84,6 +84,10 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
     @Query("SELECT v FROM VenteOeufs v WHERE v.commande.id = :commandeId AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
     List<VenteOeufs> findActivesByCommandeId(@Param("commandeId") Long commandeId);
 
+    // CommandeServiceImpl.enrichirTous : livraisons actives d'une page de commandes.
+    @Query("SELECT v FROM VenteOeufs v WHERE v.commande.id IN :ids AND v.initialisation.removed = false ORDER BY v.date ASC, v.id ASC")
+    List<VenteOeufs> findActivesByCommandeIds(@Param("ids") java.util.Collection<Long> ids);
+
     // Circuit argent client (TransactionServiceImpl.getStats) : argent rapporté des
     // ventes SANS client — une vente à client n'a plus de montantRapporte (payée via
     // PaiementClient + transaction ENTREE "Paiement client", voir sumEntreesHorsVentesStock),

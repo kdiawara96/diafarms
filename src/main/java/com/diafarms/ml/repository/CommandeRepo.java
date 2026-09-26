@@ -14,6 +14,11 @@ public interface CommandeRepo extends JpaRepository<Commande, Long> {
 
     Commande findByUniqueId(String uniqueId);
 
+    // Livraison / clôture : deux actions simultanées sur la même commande sont sérialisées.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM Commande c WHERE c.uniqueId = :uid")
+    Commande findByUniqueIdForUpdate(@Param("uid") String uniqueId);
+
     // Pas d'ORDER BY ici : le tri vient du Pageable (Sort.by("dateCommande") côté
     // service) — un ORDER BY explicite en plus provoquerait un conflit.
     // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel :
