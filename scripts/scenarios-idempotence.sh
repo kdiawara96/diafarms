@@ -216,6 +216,30 @@ check_eq "deux envois sans clé = deux mortalités" "$((AVANT + 2))" "$(compter 
 api POST /mortalites/create "$CORPS" "clé invalide !"
 check "clé mal formée : 400" "code == 400"
 
+echo "== 8. Réponses non définitives (404, 409) : clé libérée"
+CLE="$(uuid)"
+api POST /route-inexistante/create '{"a":1}' "$CLE"
+check "route absente : 404" "code == 404"
+check_eq "404 non mémorisé (clé libérée)" "0" "$(idem_sql "$CLE" "count(*)")"
+# 409 métier : conflit d'identifiant simulé à l'enregistrement d'une session de pesée.
+psql_run "CREATE OR REPLACE FUNCTION idem_conflit() RETURNS trigger AS \$\$ BEGIN RAISE EXCEPTION 'conflit simulé' USING ERRCODE = 'unique_violation'; END \$\$ LANGUAGE plpgsql" >/dev/null
+psql_run "DROP TRIGGER IF EXISTS idem_conflit ON sessions_pesee; CREATE TRIGGER idem_conflit BEFORE INSERT ON sessions_pesee FOR EACH ROW EXECUTE FUNCTION idem_conflit()" >/dev/null 2>&1
+CLE="$(uuid)"; SID="$(uuid)"
+CORPS="{\"uniqueId\":\"$SID\",\"projetUniqueId\":\"$PROJET\",\"nombreParDefaut\":3,\"dateDebut\":\"2026-09-25T08:00:00\",\"statut\":\"EN_COURS\",\"pesees\":[]}"
+sync_pesee() {
+  : > "$TMP/headers"
+  curl -s -D "$TMP/headers" -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/pesees/sessions/sync" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -H 'X-Pesee-Contrat: 2' \
+    -H "Idempotency-Key: $CLE" -d "$CORPS" > "$TMP/code"
+}
+sync_pesee
+check "conflit d'enregistrement : 409" "code == 409"
+check_eq "409 non mémorisé (clé libérée)" "0" "$(idem_sql "$CLE" "count(*)")"
+psql_run "DROP TRIGGER idem_conflit ON sessions_pesee; DROP FUNCTION idem_conflit()" >/dev/null
+sync_pesee
+check "renvoi après le conflit : exécuté (200, non rejoué)" "code == 200 and not rejoue"
+check_eq "session de pesée créée une fois" "1" "$(psql_run "SELECT count(*) FROM sessions_pesee WHERE unique_id = '$SID'")"
+
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
 [ "$FAIL" -eq 0 ]

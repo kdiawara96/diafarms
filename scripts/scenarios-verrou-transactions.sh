@@ -126,6 +126,18 @@ check "soin créé" "code in (200, 201)"
 SOIN="$(jval "d['data']['uniqueId']")"
 T_SOIN="$(tx_de_source "$SOIN")"
 verrou "soin" "$T_SOIN" "Santé / Vétérinaire"
+MONTANT_SOIN="$(psql_run "SELECT montant FROM transactions WHERE unique_id = '$T_SOIN'")"
+api PUT "/transactions/update/$T_SOIN" "{\"montant\":$MONTANT_SOIN,\"categorie\":\"$(psql_run "SELECT categorie FROM transactions WHERE unique_id = '$T_SOIN'")\",\"batimentUniqueId\":\"\"}"
+check "soin : modification du SEUL rattachement (poulailler retiré, autres champs identiques) acceptée" "code == 200 and d['data'].get('batimentUniqueId') is None and d['data']['rattachementModifiable'] is True"
+api PUT "/transactions/update/$T_SOIN" "{\"batimentUniqueId\":\"$BATIMENT\"}"
+check "soin : poulailler remis depuis la Comptabilité" "code == 200 and d['data'].get('batimentUniqueId') == '$BATIMENT'"
+api PUT "/transactions/update/$T_SOIN" "{\"montant\":$MONTANT_SOIN,\"batimentUniqueId\":\"\",\"description\":\"Autre texte\"}"
+check "soin : rattachement + description modifiée : refusé en bloc" "code == 400 and 'description' in err"
+check_eq "soin : rien n'a changé après le refus" "$BATIMENT" "$(psql_run "SELECT b.unique_id FROM transactions t JOIN batiments b ON b.id = t.batiment_id WHERE t.unique_id = '$T_SOIN'")"
+api PUT "/transactions/update/$T_SOIN" '{"montant":1}'
+check "soin : modification du montant refusée" "code == 400 and 'montant' in err"
+api PUT "/transactions/rejeter/$T_SOIN" '{"commentaire":"Essai de rejet"}'
+check "soin : message du rejet renvoie vers la suppression de la saisie" "code == 400 and 'pour la rejeter, supprimez cette saisie' in err"
 api PUT "/soins/deleteOrRecover/$SOIN"
 check "suppression du soin (écran source)" "code == 200"
 check_eq "transaction du soin retirée avec lui" "t" "$(tx_removed "$SOIN")"
@@ -158,6 +170,34 @@ api PUT "/transactions/update/$T_MAN" '{"montant":800}'
 check "modification d'une transaction MANUEL : acceptée" "code == 200 and d['data']['montant'] == 800 and d['data'].get('saisieSource') is None"
 api PUT "/transactions/deleteOrRecover/$T_MAN" '{"motif":"Doublon de test"}'
 check "suppression d'une transaction MANUEL : acceptée" "code == 200"
+
+echo "== 6. Projet supprimé puis restauré : ses transactions générées suivent"
+ADMIN_ID="$(psql_run "SELECT id FROM utilisateurs WHERE email = '$ADMIN_EMAIL'")"
+RACE_ID="$(psql_run "SELECT race_id FROM projets WHERE unique_id = '$PROJET'")"
+api POST /batiments/create "{\"nom\":\"Poulailler verrou $SUFFIXE\",\"capacite\":500}"
+BAT2_ID="$(jval "d['data']['id']")"
+api POST /projets/create "{\"titre\":\"Projet verrou $SUFFIXE\",\"responsableId\":$ADMIN_ID,\"dateDebut\":\"$AUJ\",\"dateFinPrevue\":\"2027-12-31\",\"nbSujets\":100,\"puSujet\":500,\"autresDepense\":2000,\"objectif\":\"PONTE\",\"raceId\":$RACE_ID,\"alimentNom\":\"Maïs\",\"sac\":1,\"quantiteKg\":50,\"coutTotalAliment\":3000,\"vaccins\":[{\"nomVaccin\":\"Newcastle\",\"quantite\":10,\"prixUnitaire\":100,\"coutTotal\":1000}],\"occupations\":[{\"batimentId\":$BAT2_ID,\"dateEntree\":\"$AUJ\",\"nbSujets\":100}]}"
+check "projet créé (sujets, charges, aliment, vaccin)" "code in (200, 201)"
+P2="$(jval "d['data']['uniqueId']")"
+P2_ID="$(psql_run "SELECT id FROM projets WHERE unique_id = '$P2'")"
+etat_p2() { psql_run "SELECT string_agg(source_type || '=' || CASE WHEN coalesce(removed,false) THEN 'retiree' ELSE 'active' END, ',' ORDER BY source_type) FROM transactions WHERE projet_id = $P2_ID AND source_type <> 'SOINS'"; }
+check_eq "transactions générées actives" "ALIMENTATION=active,PROJET_ACHAT_SUJETS=active,PROJET_CHARGES=active,VACCINATION=active" "$(etat_p2)"
+api POST /soins/create "{\"projetUniqueId\":\"$P2\",\"date\":\"$AUJ\",\"type\":\"MEDICAMENT\",\"produit\":\"Supprimé à part\",\"quantite\":1,\"coutTotal\":500}"
+SOIN2="$(jval "d['data']['uniqueId']")"
+api PUT "/soins/deleteOrRecover/$SOIN2"
+check_eq "soin supprimé à part : transaction retirée" "t" "$(tx_removed "$SOIN2")"
+api DELETE "/projets/delete/$P2"
+check "projet supprimé" "code == 200"
+check_eq "suppression du projet : ses transactions générées retirées" "ALIMENTATION=retiree,PROJET_ACHAT_SUJETS=retiree,PROJET_CHARGES=retiree,VACCINATION=retiree" "$(etat_p2)"
+api DELETE "/projets/delete/$P2"
+check "projet restauré" "code == 200"
+check_eq "restauration du projet : transactions générées restaurées" "ALIMENTATION=active,PROJET_ACHAT_SUJETS=active,PROJET_CHARGES=active,VACCINATION=active" "$(etat_p2)"
+check_eq "le soin supprimé à part reste retiré" "t" "$(tx_removed "$SOIN2")"
+api DELETE "/projets/delete/$P2"
+check "projet de test remis à la corbeille" "code == 200"
+
+# Nettoyage : les transactions posées en base n'ont pas de saisie source.
+psql_run "DELETE FROM transactions WHERE categorie = 'Test verrou' AND ref LIKE 'VR-%'" >/dev/null
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

@@ -34,8 +34,6 @@ public class AlimentationControllers {
             return ApiResponse.createResponse("Alimentation créée avec succès", HttpStatus.OK, result, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
-        } catch (RuntimeException e) {
-            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
@@ -51,7 +49,7 @@ public class AlimentationControllers {
         try {
             AlimentationDTO result = services.update(uniqueId, request);
             return ApiResponse.createResponse("Alimentation mise à jour avec succès", HttpStatus.OK, result, null);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Erreur de validation", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
@@ -67,7 +65,7 @@ public class AlimentationControllers {
         try {
             AlimentationDTO result = services.delete(uniqueId);
             return ApiResponse.createResponse("Alimentation supprimée avec succès", HttpStatus.OK, result, null);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
@@ -83,7 +81,7 @@ public class AlimentationControllers {
         try {
             List<AlimentationDTO> result = services.findByProjetUniqueId(uniqueIdProjet);
             return ApiResponse.createResponse("Liste récupérée", HttpStatus.OK, result, null);
-        } catch (RuntimeException e) {
+        } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);

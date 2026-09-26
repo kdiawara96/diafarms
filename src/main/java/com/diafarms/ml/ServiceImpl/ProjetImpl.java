@@ -194,6 +194,35 @@ public class ProjetImpl implements ProjetServices {
                 projet.getDebut(), description, SourceTransaction.PROJET_ACHAT_SUJETS, "SUJETS-" + projet.getUniqueId(), currentUser);
     }
 
+    // Corbeille du projet : ses dépenses générées (achat des sujets, autres charges,
+    // achats d'aliment, soins et vaccinations du projet) quittent la Comptabilité avec lui
+    // et y reviennent à sa restauration. Ces transactions sont verrouillées côté
+    // Comptabilité (voir TransactionServiceImpl.ensurePasLieeAUneVente) : c'est donc ici
+    // qu'elles doivent suivre le projet. Seules les saisies encore actives sont touchées :
+    // une saisie supprimée à part garde sa transaction retirée à la restauration du projet.
+    private void basculerTransactionsGenerees(Projets projet, boolean removed) {
+        String uid = projet.getUniqueId();
+        if (removed) {
+            transactionService.setRemovedBySource("SUJETS-" + uid, true);
+            transactionService.setRemovedBySource("CHARGES-" + uid, true);
+        } else {
+            // syncSortie ne restaure que si le montant est encore positif.
+            Utilisateurs currentUser = getCurrentUserSafe();
+            syncAchatSujets(projet, currentUser);
+            syncAutresCharges(projet, currentUser);
+        }
+        for (Alimentation a : alimentationRepo.findByProjetUniqueIdAndInitialisationRemovedFalse(uid)) {
+            if (removed || (a.getCoutTotal() != null && a.getCoutTotal() > 0)) {
+                transactionService.setRemovedBySource(a.getUniqueId(), removed);
+            }
+        }
+        for (Soins so : soinsRepo.findByProjetUniqueIdAndInitialisationRemovedFalse(uid)) {
+            if (removed || (so.getCoutTotal() != null && so.getCoutTotal() > 0)) {
+                transactionService.setRemovedBySource(so.getUniqueId(), removed);
+            }
+        }
+    }
+
     private void syncAutresCharges(Projets projet, Utilisateurs currentUser) {
         if (currentUser == null || currentUser.getFarm() == null) return;
         String description = "Autres charges initiales, projet " + projet.getTitre();
@@ -582,6 +611,7 @@ public class ProjetImpl implements ProjetServices {
             investissementRepartitionRepo.saveAll(repartitionsActives);
             libererOccupationsActives(projet);
         }
+        basculerTransactionsGenerees(projet, removed);
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {

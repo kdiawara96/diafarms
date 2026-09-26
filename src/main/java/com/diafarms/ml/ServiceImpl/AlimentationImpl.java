@@ -110,6 +110,9 @@ public class AlimentationImpl implements AlimentationService {
         if (data.getCoutTotal() == null || data.getCoutTotal() <= 0) {
             throw new IllegalArgumentException("Le coût total de l'achat est obligatoire.");
         }
+        if (data.getSac() == null || data.getSac() < 0) {
+            throw new IllegalArgumentException("Le nombre de sacs est obligatoire.");
+        }
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
 
         // 3. Créer l'entité
@@ -157,11 +160,11 @@ public class AlimentationImpl implements AlimentationService {
         ensureCanManageAchat(getCurrentUserSafe());
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
+                .orElseThrow(() -> new IllegalArgumentException("Alimentation non trouvée avec l'UID : " + uniqueId));
 
         // 2. Vérifier si non supprimée
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
-            throw new RuntimeException("Cette alimentation a été supprimée et ne peut pas être modifiée.");
+            throw new IllegalArgumentException("Cette alimentation a été supprimée et ne peut pas être modifiée.");
         }
 
         // 3. Sauvegarder anciennes valeurs pour le log
@@ -183,7 +186,7 @@ public class AlimentationImpl implements AlimentationService {
                 double totalConsomme = consommationAlimentRepo.sumConsommeByProjetId(projetId);
                 double nouveauTotalAchete = totalAchete - ancienneQuantite + data.getQuantiteKg();
                 if (nouveauTotalAchete < totalConsomme) {
-                    throw new RuntimeException(
+                    throw new IllegalArgumentException(
                         "Impossible de réduire cet achat : le stock consommé (" + totalConsomme
                             + " kg) dépasserait le stock acheté (" + nouveauTotalAchete + " kg) pour ce projet."
                     );
@@ -239,11 +242,11 @@ public class AlimentationImpl implements AlimentationService {
         ensureCanManageAchat(getCurrentUserSafe());
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
+                .orElseThrow(() -> new IllegalArgumentException("Alimentation non trouvée avec l'UID : " + uniqueId));
 
         // 2. Vérifier si déjà supprimée
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
-            throw new RuntimeException("Cette alimentation est déjà supprimée.");
+            throw new IllegalArgumentException("Cette alimentation est déjà supprimée.");
         }
 
         // 3. Soft delete (le hard delete précédent effaçait définitivement la ligne,
@@ -287,7 +290,7 @@ public class AlimentationImpl implements AlimentationService {
     @Transactional(readOnly = true)
     public AlimentationDTO findByUniqueId(String uniqueId) {
         Alimentation alimentation = alimentationRepo.findByUniqueIdAndInitialisationRemovedFalse(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Alimentation non trouvée avec l'UID : " + uniqueId));
+                .orElseThrow(() -> new IllegalArgumentException("Alimentation non trouvée avec l'UID : " + uniqueId));
         return AlimentationDTO.fromEntityList(alimentation);
     }
 

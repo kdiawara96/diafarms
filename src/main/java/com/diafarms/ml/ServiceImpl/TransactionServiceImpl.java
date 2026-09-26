@@ -563,6 +563,9 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Transaction introuvable : " + uniqueId));
+        if (TransactionDTO.saisieSourceGeneree(t.getSourceType()) != null) {
+            return updateRattachementSeul(t, data);
+        }
         ensurePasLieeAUneVente(t);
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
@@ -605,6 +608,52 @@ public class TransactionServiceImpl implements TransactionService {
                     "Modification de la transaction '" + saved.getRef() + "'");
         }
 
+        return TransactionDTO.fromEntity(saved);
+    }
+
+    // Transaction générée par une saisie : seul le rattachement (site, poulailler) se
+    // corrige depuis la Comptabilité ; montant, date, type, projet, catégorie et
+    // description appartiennent à la saisie source (réécrits à chaque modification de
+    // celle-ci par syncSortie). Un champ envoyé à l'identique n'est pas un changement : le
+    // formulaire web peut renvoyer toute la transaction. Pour l'aliment et les soins, une
+    // modification ultérieure de la saisie source réapplique son propre poulailler.
+    private TransactionDTO updateRattachementSeul(Transaction t, TransactionUpdate data) {
+        java.util.List<String> changes = new java.util.ArrayList<>();
+        if (data.getType() != null && (t.getType() == null || !data.getType().equals(t.getType().name()))) changes.add("type");
+        if (data.getDate() != null && !data.getDate().equals(t.getDate())) changes.add("date");
+        if (data.getMontant() != null && (t.getMontant() == null || Math.abs(data.getMontant() - t.getMontant()) > 0.005)) changes.add("montant");
+        if (data.getCategorie() != null && !data.getCategorie().equals(t.getCategorie())) changes.add("catégorie");
+        if (data.getDescription() != null && !data.getDescription().equals(t.getDescription() == null ? "" : t.getDescription())) changes.add("description");
+        String projetActuel = t.getProjet() != null ? t.getProjet().getUniqueId() : null;
+        if (Boolean.TRUE.equals(data.getCommun()) && projetActuel != null) changes.add("projet");
+        if (Boolean.FALSE.equals(data.getCommun()) && projetActuel == null) changes.add("projet");
+        if (data.getProjetUniqueId() != null && !data.getProjetUniqueId().isBlank() && !data.getProjetUniqueId().equals(projetActuel)) changes.add("projet");
+        if (Boolean.TRUE.equals(data.getCommun()) && data.getProjetsConcernesUniqueIds() != null) {
+            java.util.Set<String> actuels = new java.util.HashSet<>();
+            if (t.getProjetsConcernes() != null) t.getProjetsConcernes().forEach(p -> actuels.add(p.getUniqueId()));
+            if (!actuels.equals(new java.util.HashSet<>(data.getProjetsConcernesUniqueIds()))) changes.add("projets concernés");
+        }
+        if (!changes.isEmpty()) {
+            throw new IllegalArgumentException("Cette transaction est générée automatiquement par "
+                    + TransactionDTO.saisieSourceGeneree(t.getSourceType())
+                    + " : modifiez cette saisie à la place (" + String.join(", ", new java.util.LinkedHashSet<>(changes))
+                    + "). Ici, seuls le site et le poulailler se corrigent.");
+        }
+        Utilisateurs utilisateurCourant = getCurrentUserSafe();
+        if (data.getSiteUniqueId() != null) {
+            t.setSite(resoudreSite(data.getSiteUniqueId(), utilisateurCourant));
+        }
+        if (data.getBatimentUniqueId() != null) {
+            t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), utilisateurCourant));
+        }
+        if (t.getInitialisation() != null) {
+            t.getInitialisation().setUpdatedAt(LocalDateTime.now());
+        }
+        Transaction saved = transactionRepo.save(t);
+        if (utilisateurCourant != null) {
+            logs.addLogs(utilisateurCourant.getId(), saved.getId(), "Transaction",
+                    "Modification du rattachement (site, poulailler) de la transaction '" + saved.getRef() + "'");
+        }
         return TransactionDTO.fromEntity(saved);
     }
 
@@ -774,6 +823,12 @@ public class TransactionServiceImpl implements TransactionService {
         }
         // Rejeter une vente = la retirer des comptes sans rendre le stock ni corriger le
         // solde : même désynchronisation qu'une suppression, passer par la vente.
+        // Transaction générée par une saisie : la rejeter revient à supprimer la saisie.
+        String saisie = TransactionDTO.saisieSourceGeneree(t.getSourceType());
+        if (saisie != null) {
+            throw new IllegalArgumentException("Cette transaction est générée automatiquement par " + saisie
+                    + " : pour la rejeter, supprimez cette saisie (sa transaction sera retirée avec elle).");
+        }
         ensurePasLieeAUneVente(t);
 
         t.setStatut(StatutTransaction.REJETE);

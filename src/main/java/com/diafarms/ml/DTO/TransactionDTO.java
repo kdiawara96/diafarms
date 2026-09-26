@@ -88,6 +88,10 @@ public class TransactionDTO {
     // null sinon. Modifier/supprimer/rejeter la transaction seule est refusé (voir
     // TransactionServiceImpl.ensurePasLieeAUneVente).
     private String saisieSource;
+    // true = le rattachement (site, poulailler) se modifie depuis la Comptabilité : toute
+    // transaction non verrouillée, y compris une transaction générée (saisieSource non
+    // null), pour laquelle c'est même la SEULE modification permise.
+    private boolean rattachementModifiable;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -125,6 +129,7 @@ public class TransactionDTO {
                 .lieeAUneVente(isSourceVente(t.getSourceType()))
                 .verrouillee(isSourceVerrouillee(t.getSourceType()))
                 .saisieSource(saisieSourceGeneree(t.getSourceType()))
+                .rattachementModifiable(!isSourceVerrouillee(t.getSourceType()))
                 // Une vente diverse n'a qu'une transaction, pointant directement vers elle ;
                 // œufs/réforme passent par leur ligne de répartition (enrichMontantReel).
                 .venteUniqueId(t.getSourceType() == SourceTransaction.VENTE_DIVERSE ? t.getSourceUniqueId() : null)

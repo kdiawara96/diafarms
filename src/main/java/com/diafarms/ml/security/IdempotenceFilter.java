@@ -36,19 +36,30 @@ import lombok.extern.slf4j.Slf4j;
 //
 // Sans l'en-tête : rien ne change (web, anciens APK). Avec l'en-tête, sur POST/PUT/PATCH :
 // - première requête : enregistrement EN_COURS (contrainte unique clé+utilisateur, validé
-//   tout de suite), exécution normale, puis réponse mémorisée si 2xx ou 4xx ; sur 5xx ou
-//   exception, l'enregistrement est supprimé pour qu'un nouvel envoi ré-exécute la saisie ;
+//   tout de suite), exécution normale, puis réponse mémorisée seulement si elle est
+//   définitive : 2xx, ou refus métier déterministe 400/403/422 (voir estMemorisable). Tout
+//   le reste (5xx, exception, 404, 405, 408, 409, 413, 415, 429..., réponse de plus de
+//   1 Mo, échec d'écriture de la réponse) libère la clé : un nouvel envoi ré-exécute ;
 // - même clé, même chemin, même corps, déjà TERMINE : la réponse mémorisée est rejouée
 //   telle quelle (statut + corps) avec l'en-tête Idempotency-Replayed: true, sans rien
 //   ré-exécuter ;
 // - même clé mais autre chemin ou autre corps : 422 ;
 // - même clé encore EN_COURS (envoi simultané) : 409, le téléphone réessaiera plus tard.
+//
+// Limite connue : un EN_COURS de plus de 5 minutes est considéré abandonné (serveur arrêté
+// en pleine exécution) et repris par l'envoi suivant, sinon le téléphone recevrait 409 à
+// vie. Une requête réellement plus lente que 5 minutes pourrait donc être exécutée deux
+// fois si elle est renvoyée pendant ce temps ; aucune création mobile n'en approche
+// (quelques dizaines de millisecondes), le délai est dans IdempotenceStore.MINUTES_ABANDON.
 // Placé après l'authentification (le username du JWT fait partie de la clé).
 @Slf4j
 public class IdempotenceFilter extends OncePerRequestFilter {
 
     public static final String ENTETE_CLE = "Idempotency-Key";
     public static final String ENTETE_REJOUE = "Idempotency-Replayed";
+
+    // Au-delà, la réponse n'est pas mémorisée (texte en base) : la clé est libérée.
+    private static final int TAILLE_MAX_REPONSE = 1024 * 1024;
 
     private static final Pattern CLE_VALIDE = Pattern.compile("[A-Za-z0-9._:-]{1,100}");
     private static final ObjectMapper JSON_TRIE = new ObjectMapper()
@@ -92,11 +103,12 @@ public class IdempotenceFilter extends OncePerRequestFilter {
                 + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
         String hash = hashCorps(corps);
 
+        Long farmId = store.farmIdDe(utilisateur);
         Long id = null;
         // Deux tours au plus : si l'enregistrement concurrent disparaît entre notre
         // tentative d'insertion et sa lecture (5xx côté concurrent), on retente l'insertion.
         for (int tour = 0; tour < 2 && id == null; tour++) {
-            id = store.reserver(cle, utilisateur, store.farmIdDe(utilisateur), methodeChemin, hash);
+            id = store.reserver(cle, utilisateur, farmId, methodeChemin, hash);
             if (id != null) break;
             Enregistrement e = store.trouver(cle, utilisateur).orElse(null);
             if (e == null) continue;
@@ -131,20 +143,27 @@ public class IdempotenceFilter extends OncePerRequestFilter {
             throw ex;
         }
         int statut = reponse.getStatus();
-        if ((statut >= 200 && statut < 300) || (statut >= 400 && statut < 500)) {
+        byte[] contenu = reponse.getContentAsByteArray();
+        boolean memorise = false;
+        if (estMemorisable(statut) && contenu.length <= TAILLE_MAX_REPONSE) {
             try {
-                store.terminer(id, statut, new String(reponse.getContentAsByteArray(), StandardCharsets.UTF_8),
-                        reponse.getContentType());
+                store.terminer(id, statut, new String(contenu, StandardCharsets.UTF_8), reponse.getContentType());
+                memorise = true;
             } catch (RuntimeException ex) {
-                // La saisie est faite mais sa réponse n'a pas pu être mémorisée : on garde
-                // l'enregistrement EN_COURS (un renvoi reçoit 409 puis, après abandon, est
-                // ré-exécuté) plutôt que de le supprimer et risquer un doublon immédiat.
                 log.error("Idempotence : réponse de la clé {} non mémorisée ({})", cle, ex.getMessage());
             }
-        } else {
+        }
+        if (!memorise) {
             liberer(id, cle);
         }
         reponse.copyBodyToResponse();
+    }
+
+    // Réponse définitive, rejouable telle quelle : succès, ou refus métier qui se
+    // reproduirait à l'identique (400 données invalides, 403 droits, 422). Les autres 4xx
+    // (404 route absente, 409 conflit passager, 429, 408...) peuvent réussir plus tard.
+    static boolean estMemorisable(int statut) {
+        return (statut >= 200 && statut < 300) || statut == 400 || statut == 403 || statut == 422;
     }
 
     private void liberer(long id, String cle) {
