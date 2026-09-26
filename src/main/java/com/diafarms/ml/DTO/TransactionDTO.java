@@ -83,6 +83,11 @@ public class TransactionDTO {
     // paiement/remboursement client — ne se modifie ni ne se supprime depuis la
     // Comptabilité, seulement via sa source (vente, paiement, remboursement).
     private boolean verrouillee;
+    // Transaction générée par une saisie (soins, aliment, investissement, salaire, coûts
+    // de démarrage du projet) : libellé de cette saisie et de l'écran où la modifier ;
+    // null sinon. Modifier/supprimer/rejeter la transaction seule est refusé (voir
+    // TransactionServiceImpl.ensurePasLieeAUneVente).
+    private String saisieSource;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;
@@ -119,6 +124,7 @@ public class TransactionDTO {
                 .motifSuppression(t.getMotifSuppression())
                 .lieeAUneVente(isSourceVente(t.getSourceType()))
                 .verrouillee(isSourceVerrouillee(t.getSourceType()))
+                .saisieSource(saisieSourceGeneree(t.getSourceType()))
                 // Une vente diverse n'a qu'une transaction, pointant directement vers elle ;
                 // œufs/réforme passent par leur ligne de répartition (enrichMontantReel).
                 .venteUniqueId(t.getSourceType() == SourceTransaction.VENTE_DIVERSE ? t.getSourceUniqueId() : null)
@@ -134,5 +140,22 @@ public class TransactionDTO {
     // TransactionServiceImpl.ensurePasLieeAUneVente.
     public static boolean isSourceVerrouillee(SourceTransaction s) {
         return isSourceVente(s) || s == SourceTransaction.PAIEMENT_CLIENT || s == SourceTransaction.REMBOURSEMENT_CLI;
+    }
+
+    // Libellé (avec l'écran où la modifier) de la saisie qui a généré la transaction ;
+    // null pour une transaction saisie à la main (MANUEL) ou une source traitée ailleurs
+    // (ventes, paiements/remboursements client : voir isSourceVerrouillee).
+    public static String saisieSourceGeneree(SourceTransaction source) {
+        if (source == null) return null;
+        return switch (source) {
+            case SOINS -> "un soin (fiche du projet, section Santé / Vétérinaire)";
+            case VACCINATION -> "une vaccination (fiche du projet, section Santé / Vétérinaire)";
+            case ALIMENTATION -> "un achat d'aliment (fiche du projet, section Alimentation)";
+            case INVESTISSEMENT -> "un investissement (page Investissements)";
+            case SALAIRE -> "un paiement de salaire (page Salaires)";
+            case PROJET_ACHAT_SUJETS -> "l'achat des sujets du projet (page Projets, modification du projet)";
+            case PROJET_CHARGES -> "les charges de démarrage du projet (page Projets, modification du projet)";
+            default -> null;
+        };
     }
 }

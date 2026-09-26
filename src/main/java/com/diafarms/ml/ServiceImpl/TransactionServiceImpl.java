@@ -146,6 +146,16 @@ public class TransactionServiceImpl implements TransactionService {
         if (t.getSourceType() == SourceTransaction.PAIEMENT_CLIENT || t.getSourceType() == SourceTransaction.REMBOURSEMENT_CLI) {
             throw new IllegalArgumentException("Cette transaction vient d'un paiement ou d'un remboursement client : annulez-le depuis la fiche du client.");
         }
+        // Même principe pour les dépenses générées par une saisie (soins, aliment,
+        // investissement, salaire, coûts de démarrage du projet) : la saisie source et sa
+        // transaction doivent rester d'accord, donc tout passe par la saisie, dont la
+        // modification ou la suppression met déjà la transaction à jour (syncSortie,
+        // updateMontantBySource, setRemovedBySource).
+        String saisie = TransactionDTO.saisieSourceGeneree(t.getSourceType());
+        if (saisie != null) {
+            throw new IllegalArgumentException("Cette transaction est générée automatiquement par " + saisie
+                    + " : modifiez ou supprimez cette saisie à la place.");
+        }
     }
 
     /**
