@@ -127,11 +127,16 @@ public class SecurityConfiguration {
         // ===  CHAÎNE PRIVÉE (avec JWT) ===
         @Bean
         @Order(2)
-        public SecurityFilterChain filterChain(HttpSecurity httpSecurity, com.diafarms.ml.repository.UtilisateursRepo utilisateursRepo) throws Exception {
+        public SecurityFilterChain filterChain(HttpSecurity httpSecurity, com.diafarms.ml.repository.UtilisateursRepo utilisateursRepo,
+                                               com.diafarms.ml.commons.IdempotenceStore idempotenceStore) throws Exception {
             httpSecurity
                 // Après la lecture du JWT : refuse toute écriture pour un compte en consultation seule.
                 .addFilterAfter(new ConsultationSeuleFilter(utilisateursRepo),
                         org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
+                // Idempotency-Key (appli mobile) : un renvoi de la même saisie rejoue la
+                // première réponse au lieu de créer un doublon. Voir IdempotenceFilter.
+                .addFilterAfter(new IdempotenceFilter(idempotenceStore),
+                        org.springframework.security.web.access.intercept.AuthorizationFilter.class)
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth

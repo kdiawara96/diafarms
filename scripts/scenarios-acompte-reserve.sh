@@ -199,9 +199,9 @@ commande_dto() { # $1=cmd -> COMMANDE (JSON de la commande)
   call GET "/commandes/list?size=200"
   COMMANDE=$(python3 -c "
 import json, sys
-items = ((json.loads(sys.argv[1]).get('data') or {}).get('data')) or []
-print(json.dumps(next((c for c in items if c.get('uniqueId') == sys.argv[2]), {})))
-" "$BODY" "$1")
+items = ((json.load(sys.stdin).get('data') or {}).get('data')) or []
+print(json.dumps(next((c for c in items if c.get('uniqueId') == sys.argv[1]), {})))
+" "$1" <<<"$BODY")
 }
 
 paye_vente() { # $1=vente uid -> Σ imputations actives (SQL)
