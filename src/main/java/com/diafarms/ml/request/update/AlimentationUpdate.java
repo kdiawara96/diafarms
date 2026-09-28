@@ -14,4 +14,5 @@ public class AlimentationUpdate {
     private String observations;
     private String batimentUniqueId; // optionnel
     private String fournisseur; // optionnel
+    private String typeAliment; // optionnel : DEMARRAGE | CROISSANCE | PONTE | AUTRE
 }

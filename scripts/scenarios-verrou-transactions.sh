@@ -6,6 +6,8 @@
 # modifie, ne se supprime, ne se rejette et ne fait l'objet d'une demande de suppression
 # QUE par sa saisie source (message qui nomme l'écran). Supprimer la saisie source retire
 # toujours sa transaction. Une transaction MANUEL reste modifiable depuis la Comptabilité.
+# Section 7 : l'achat d'aliment (catégorie de la sortie d'argent) crée stock + dépense en
+# une saisie ; une sortie manuelle catégorie Aliment / Achat d'aliment est refusée.
 #
 # Pré-requis : Postgres + backend démarrés, base seedée par scenarios-circuit-client.sh.
 # Variables : BASE, PGHOST, PGPORT (55432), PGUSER (postgres), PGDATABASE (diafarms_scen),
@@ -195,6 +197,45 @@ check_eq "restauration du projet : transactions générées restaurées" "ALIMEN
 check_eq "le soin supprimé à part reste retiré" "t" "$(tx_removed "$SOIN2")"
 api DELETE "/projets/delete/$P2"
 check "projet de test remis à la corbeille" "code == 200"
+
+echo "== 7. Achat d'aliment = catégorie de la sortie d'argent (une saisie : dépense + stock)"
+stock_kg() { api GET "/consommations-aliment/stock/$PROJET"; jval "(d.get('data') or d)['totalAchete']"; }
+AVANT="$(stock_kg)"
+api POST "/alimentations/create/$PROJET" "{\"typeAliment\":\"PONTE\",\"sac\":10,\"poidsSacKg\":50,\"coutTotal\":175000,\"dateDistribution\":\"$AUJ\",\"fournisseur\":\"Sedima $SUFFIXE\"}"
+check "achat typé (10 sacs de 50 kg, sans kg ni nom) créé" "code in (200, 201) and d['data']['typeAliment'] == 'PONTE' and d['data']['quantiteKg'] == 500 and d['data']['nomAliment'] == 'Aliment ponte'"
+ALIM2="$(jval "d['data']['uniqueId']")"
+APRES="$(stock_kg)"
+check_eq "stock acheté du projet : +500 kg exactement (pas d'étape de réception)" "500.0" "$(python3 -c "print(round(float('$APRES') - float('$AVANT'), 1))")"
+check_eq "une seule sortie générée : 175000, catégorie Aliment, source ALIMENTATION" "1|175000|Aliment|ALIMENTATION|SORTIE" \
+  "$(psql_run "SELECT count(*) || '|' || max(montant)::bigint || '|' || max(categorie) || '|' || max(source_type) || '|' || max(type) FROM transactions WHERE source_unique_id = '$ALIM2' AND coalesce(removed,false) = false")"
+api GET "/alimentations/list-by-projet/$PROJET"
+check "liste des achats : typeAliment renvoyé" "code == 200 and any(a['uniqueId'] == '$ALIM2' and a['typeAliment'] == 'PONTE' for a in d['data'])"
+api PUT "/alimentations/update/$ALIM2" '{"typeAliment":"CROISSANCE"}'
+check "modification du type d'aliment" "code == 200 and d['data']['typeAliment'] == 'CROISSANCE'"
+api POST "/alimentations/create/$PROJET" "{\"typeAliment\":\"FINITION\",\"sac\":1,\"coutTotal\":1000,\"dateDistribution\":\"$AUJ\"}"
+check "type d'aliment inconnu : 400" "code == 400 and \"Type d'aliment inconnu\" in err"
+api POST "/alimentations/create/$PROJET" "{\"sac\":2,\"coutTotal\":30000,\"dateDistribution\":\"$AUJ\",\"nomAliment\":\"Maïs concassé\"}"
+check "sans type ni poids : 2 sacs x 50 kg par défaut, nom saisi gardé" "code in (200, 201) and d['data']['typeAliment'] is None and d['data']['quantiteKg'] == 100 and d['data']['nomAliment'] == 'Maïs concassé'"
+ALIM3="$(jval "d['data']['uniqueId']")"
+NB_TX="$(psql_run "SELECT count(*) FROM transactions WHERE farm_id = $FARM_ID")"
+for cat in "Aliment" "Achat d'aliment" "achat d’aliment" "ALIMENTS"; do
+  api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Contournement $SUFFIXE\",\"montant\":5000,\"categorie\":\"$cat\"}"
+  check "sortie manuelle catégorie « $cat » : refusée, renvoi vers la catégorie Achat d'aliment" "code == 400 and \"Utilisez la catégorie Achat d'aliment du formulaire de sortie d'argent : elle enregistre aussi le stock\" in err"
+done
+check_eq "aucune transaction créée par ces refus" "$NB_TX" "$(psql_run "SELECT count(*) FROM transactions WHERE farm_id = $FARM_ID")"
+api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Sacs vides $SUFFIXE\",\"montant\":900,\"categorie\":\"Matériels\"}"
+T_MAT="$(jval "d['data']['uniqueId']")"
+api PUT "/transactions/update/$T_MAT" '{"categorie":"Aliment"}'
+check "sortie manuelle : passage à la catégorie Aliment refusé" "code == 400 and 'Achat d' in err"
+t="$(uuid)"
+psql_run "INSERT INTO transactions (unique_id, ref, type, date, montant, categorie, statut, source_type, farm_id, removed, archive, created_at)
+  VALUES ('$t', 'VR-$(uuid | cut -c1-10)', 'SORTIE', current_date, 4000, 'Aliment', 'VALIDE', 'MANUEL', $FARM_ID, false, false, now())" >/dev/null
+api PUT "/transactions/update/$t" '{"montant":4500,"categorie":"Aliment","description":"Ancienne sortie aliment"}'
+check "ancienne sortie manuelle « Aliment » : reste modifiable (catégorie gardée)" "code == 200 and d['data']['montant'] == 4500"
+psql_run "DELETE FROM transactions WHERE unique_id = '$t'" >/dev/null
+api PUT "/transactions/deleteOrRecover/$T_MAT" '{"motif":"Test"}'
+for a in "$ALIM2" "$ALIM3"; do api DELETE "/alimentations/delete/$a"; done
+check_eq "achats de test supprimés : stock revenu à l'état initial" "$AVANT" "$(stock_kg)"
 
 # Nettoyage : les transactions posées en base n'ont pas de saisie source.
 psql_run "DELETE FROM transactions WHERE categorie = 'Test verrou' AND ref LIKE 'VR-%'" >/dev/null

@@ -183,7 +183,9 @@ public class ProjetsDTO {
                 // Sécurité au cas où l'initialisation est nulle
                 .createdAt(data.getInitialisation() != null ? data.getInitialisation().getCreatedAt() : null)
 
+                // Achats supprimés (soft delete) exclus : ils ne comptent plus dans le stock.
                 .alimentation(data.getAlimentations() != null ? data.getAlimentations().stream()
+                        .filter(a -> a.getInitialisation() == null || !Boolean.TRUE.equals(a.getInitialisation().getRemoved()))
                         .map(AlimentationDTO::fromEntityList)
                         .toList() : java.util.Collections.emptyList()) // Remplacer null par une liste vide est plus propre pour le Front
 

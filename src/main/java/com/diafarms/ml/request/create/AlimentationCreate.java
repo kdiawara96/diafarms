@@ -13,4 +13,7 @@ public class AlimentationCreate {
     private String observations;
     private String batimentUniqueId; // optionnel
     private String fournisseur; // optionnel
+    private String typeAliment; // optionnel : DEMARRAGE | CROISSANCE | PONTE | AUTRE
+    // Optionnel, non stocké : si quantiteKg est absent, quantiteKg = sac x poidsSacKg (50 par défaut).
+    private Double poidsSacKg;
 }

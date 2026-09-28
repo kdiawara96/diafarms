@@ -26,6 +26,11 @@ public class Alimentation {
     @Column(name = "nom_aliment", nullable = false, length = 100)
     private String nomAliment; // ex: "Aliment Démarrage Poulettes", "Finisseur"
 
+    // Facultatif (colonne nullable : les achats existants restent sans type).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_aliment", length = 20)
+    private com.diafarms.ml.enums.TypeAliment typeAliment;
+
     @Column(name = "sac", nullable = false)
     private Double sac; // Quantité distribuée ou achetée en sacs (ex: 2.5 sacs)
 

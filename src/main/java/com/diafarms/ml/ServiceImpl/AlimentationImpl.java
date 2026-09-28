@@ -24,6 +24,7 @@ import com.diafarms.ml.repository.BatimentRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
 import com.diafarms.ml.enums.SourceTransaction;
+import com.diafarms.ml.enums.TypeAliment;
 import com.diafarms.ml.request.create.AlimentationCreate;
 import com.diafarms.ml.request.update.AlimentationUpdate;
 import com.diafarms.ml.services.AlimentationService;
@@ -59,6 +60,13 @@ public class AlimentationImpl implements AlimentationService {
         transactionService.syncSortie(a.getProjet(), currentUser.getFarm(), a.getCoutTotal(), "Aliment",
                 a.getDateDistribution(), description, SourceTransaction.ALIMENTATION, a.getUniqueId(), currentUser,
                 a.getBatiment(), a.getProjet() != null ? a.getProjet().getSite() : null, true);
+    }
+
+    // nomAliment reste obligatoire en base : vide, il est déduit du type ("Aliment ponte").
+    private static String nomOuDefaut(String nom, TypeAliment type) {
+        if (nom != null && !nom.isBlank()) return nom.trim();
+        if (type == null || type == TypeAliment.AUTRE) return "Aliment";
+        return "Aliment " + type.getLabel().toLowerCase();
     }
 
     // --- Génération UID ---   
@@ -114,13 +122,25 @@ public class AlimentationImpl implements AlimentationService {
             throw new IllegalArgumentException("Le nombre de sacs est obligatoire.");
         }
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
+        TypeAliment type = TypeAliment.parse(data.getTypeAliment());
+        // La quantité achetée EST le stock (pas d'étape de réception) : sans kg saisi, on
+        // prend sacs x poids d'un sac (50 kg par défaut).
+        Double quantiteKg = data.getQuantiteKg();
+        if (quantiteKg == null) {
+            double poidsSac = data.getPoidsSacKg() != null && data.getPoidsSacKg() > 0 ? data.getPoidsSacKg() : 50.0;
+            quantiteKg = data.getSac() * poidsSac;
+        }
+        if (quantiteKg <= 0) {
+            throw new IllegalArgumentException("La quantité achetée (kg) doit être supérieure à 0.");
+        }
 
         // 3. Créer l'entité
         Alimentation alimentation = new Alimentation();
         alimentation.setUniqueId(generateUID());
-        alimentation.setNomAliment(data.getNomAliment());
+        alimentation.setTypeAliment(type);
+        alimentation.setNomAliment(nomOuDefaut(data.getNomAliment(), type));
         alimentation.setSac(data.getSac());
-        alimentation.setQuantiteKg(data.getQuantiteKg());
+        alimentation.setQuantiteKg(quantiteKg);
         alimentation.setCoutTotal(data.getCoutTotal());
         alimentation.setDateDistribution(
             data.getDateDistribution() != null
@@ -161,6 +181,8 @@ public class AlimentationImpl implements AlimentationService {
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Alimentation non trouvée avec l'UID : " + uniqueId));
+        // Isolation des fermes (via le projet, toujours renseigné) : autre ferme = introuvable.
+        projetsFerme.verifier(alimentation.getProjet(), "Alimentation non trouvée avec l'UID : " + uniqueId);
 
         // 2. Vérifier si non supprimée
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
@@ -175,6 +197,9 @@ public class AlimentationImpl implements AlimentationService {
         // 4. Mettre à jour les champs
         if (data.getNomAliment() != null && !data.getNomAliment().trim().isEmpty()) {
             alimentation.setNomAliment(data.getNomAliment());
+        }
+        if (data.getTypeAliment() != null) {
+            alimentation.setTypeAliment(TypeAliment.parse(data.getTypeAliment()));
         }
         if (data.getSac() != null) {
             alimentation.setSac(data.getSac());
@@ -243,6 +268,8 @@ public class AlimentationImpl implements AlimentationService {
         // 1. Trouver l'alimentation
         Alimentation alimentation = alimentationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Alimentation non trouvée avec l'UID : " + uniqueId));
+        // Isolation des fermes (via le projet, toujours renseigné) : autre ferme = introuvable.
+        projetsFerme.verifier(alimentation.getProjet(), "Alimentation non trouvée avec l'UID : " + uniqueId);
 
         // 2. Vérifier si déjà supprimée
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
@@ -291,6 +318,8 @@ public class AlimentationImpl implements AlimentationService {
     public AlimentationDTO findByUniqueId(String uniqueId) {
         Alimentation alimentation = alimentationRepo.findByUniqueIdAndInitialisationRemovedFalse(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Alimentation non trouvée avec l'UID : " + uniqueId));
+        // Isolation des fermes (via le projet, toujours renseigné) : autre ferme = introuvable.
+        projetsFerme.verifier(alimentation.getProjet(), "Alimentation non trouvée avec l'UID : " + uniqueId);
         return AlimentationDTO.fromEntityList(alimentation);
     }
 

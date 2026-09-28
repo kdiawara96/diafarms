@@ -23,6 +23,7 @@ public class AlimentationDTO {
     private Long id;
     private String uniqueId;
     private String nomAliment;
+    private String typeAliment; // DEMARRAGE | CROISSANCE | PONTE | AUTRE, null pour les anciens achats
     private Double sac;
     private Double quantiteKg;
     private Double coutTotal;
@@ -48,6 +49,7 @@ public class AlimentationDTO {
                 .id(data.getId())
                 .uniqueId(data.getUniqueId())
                 .nomAliment(data.getNomAliment())
+                .typeAliment(data.getTypeAliment() != null ? data.getTypeAliment().name() : null)
                 .sac(data.getSac())
                 .quantiteKg(data.getQuantiteKg())
                 .coutTotal(data.getCoutTotal())

@@ -294,9 +294,30 @@ public class TransactionServiceImpl implements TransactionService {
                 && farm.getId().equals(currentUser.getFarm().getId());
     }
 
+    // Un achat d'aliment ne se saisit plus en sortie manuelle : il passe par
+    // POST /alimentations/create/{projet} (catégorie "Achat d'aliment" du formulaire de
+    // sortie d'argent), qui crée l'entrée en stock ET la sortie comptable (catégorie
+    // "Aliment", générée). Une sortie manuelle "Aliment" ferait la dépense sans le stock.
+    // Choix : refus (400) plutôt que délégation, car une sortie manuelle n'a ni sacs ni
+    // kg ni projet obligatoire. Les anciennes transactions restent telles quelles.
+    static final String MESSAGE_ACHAT_ALIMENT_MANUEL =
+            "Utilisez la catégorie Achat d'aliment du formulaire de sortie d'argent : elle enregistre aussi le stock";
+
+    static boolean estCategorieAchatAliment(String categorie) {
+        if (categorie == null) return false;
+        String c = java.text.Normalizer.normalize(categorie, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase().replaceAll("[^a-z]", "");
+        return c.equals("aliment") || c.equals("aliments") || c.equals("achataliment")
+                || c.equals("achataliments") || c.equals("achatdaliment") || c.equals("achatdaliments")
+                || c.equals("achatdealiment") || c.equals("alimentation");
+    }
+
     @Override
     @Transactional
     public TransactionDTO create(TransactionCreate data) {
+        if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatAliment(data.getCategorie())) {
+            throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
+        }
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = new Transaction();
@@ -572,7 +593,14 @@ public class TransactionServiceImpl implements TransactionService {
         if (data.getDate() != null) t.setDate(data.getDate());
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(data.getMontant());
-        if (data.getCategorie() != null) t.setCategorie(data.getCategorie());
+        if (data.getCategorie() != null) {
+            // Garder "Aliment" sur une ancienne sortie est permis ; y passer, non.
+            if (t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(data.getCategorie())
+                    && !estCategorieAchatAliment(t.getCategorie())) {
+                throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
+            }
+            t.setCategorie(data.getCategorie());
+        }
         if (Boolean.TRUE.equals(data.getCommun())) {
             t.setProjet(null);
             t.setProjetsConcernes(data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()

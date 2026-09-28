@@ -253,6 +253,17 @@ api GET "/magasin-transferts/disponible-batiment?magasinStockageUniqueId=$AUTRE_
 check "disponible d'un stockage de l'autre ferme refusé (400)" "code == 400"
 api POST /collectes-oeufs/create "{\"projetUniqueId\":\"$AUTRE_PROJET\",\"magasinStockageUniqueId\":\"$STOCK\",\"date\":\"$JOUR\",\"oeufsCollectes\":1,\"oeufsCasses\":0,\"oeufsNonUtilisables\":0}"
 check "collecte sur le projet de l'autre ferme refusée (400)" "code == 400"
+AUTRE_ALIM="ALI-securite-autre-ferme"
+psql_run "INSERT INTO alimentations (unique_id, nom_aliment, sac, quantite_kg, cout_total, date_distribution, projet_id, farm_id, removed, archive, created_at)
+  SELECT '$AUTRE_ALIM', 'Aliment autre ferme', 1, 50, 1000, current_date, p.id, p.farm_id, false, false, now()
+  FROM projets p WHERE p.unique_id = '$AUTRE_PROJET' ON CONFLICT (unique_id) DO NOTHING" >/dev/null
+api GET "/alimentations/$AUTRE_ALIM"
+check "achat d'aliment de l'autre ferme : lecture refusée" "code in (400, 404)"
+api PUT "/alimentations/update/$AUTRE_ALIM" '{"quantiteKg":999}'
+check "achat d'aliment de l'autre ferme : modification refusée (400)" "code == 400"
+api DELETE "/alimentations/delete/$AUTRE_ALIM"
+check "achat d'aliment de l'autre ferme : suppression refusée (400)" "code == 400"
+check_sql "achat de l'autre ferme intact" "SELECT quantite_kg || '|' || CASE WHEN COALESCE(removed, false) THEN 't' ELSE 'f' END FROM alimentations WHERE unique_id = '$AUTRE_ALIM'" "50|f"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
