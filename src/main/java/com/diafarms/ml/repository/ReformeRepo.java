@@ -48,4 +48,10 @@ public interface ReformeRepo extends JpaRepository<Reforme, Long> {
     // Voir CollecteOeufsRepo.findAllByProjetId — même usage pour RapportJournalierServiceImpl.
     @Query("SELECT r FROM Reforme r WHERE r.projet.id = :projetId AND r.initialisation.removed = false")
     java.util.List<Reforme> findAllByProjetId(@Param("projetId") Long projetId);
+
+    // Vue plan : sujets réformés PAR BÂTIMENT pour toute une ferme, en une requête
+    // (mêmes règles que sumSujetsByBatimentId). Lignes [batimentId, total].
+    @Query("SELECT r.batiment.id, COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
+        "WHERE r.batiment.farm.id = :farmId AND r.initialisation.removed = false GROUP BY r.batiment.id")
+    java.util.List<Object[]> sumSujetsParBatimentDeLaFerme(@Param("farmId") Long farmId);
 }

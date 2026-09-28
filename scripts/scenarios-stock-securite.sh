@@ -265,6 +265,15 @@ api DELETE "/alimentations/delete/$AUTRE_ALIM"
 check "achat d'aliment de l'autre ferme : suppression refusée (400)" "code == 400"
 check_sql "achat de l'autre ferme intact" "SELECT quantite_kg || '|' || CASE WHEN COALESCE(removed, false) THEN 't' ELSE 'f' END FROM alimentations WHERE unique_id = '$AUTRE_ALIM'" "50|f"
 
+echo "== 9. Vue plan des poulaillers : seulement la ferme de l'utilisateur"
+psql_run "INSERT INTO batiments (unique_id, nom, capacite, statut, farm_id, removed, archive, created_at)
+  SELECT 'plan-bat-autre-ferme', 'Poulailler autre ferme', 300, 'DISPONIBLE', f.id, false, false, now()
+  FROM farms f WHERE f.unique_id = 'pesee-autre-ferme' ON CONFLICT (unique_id) DO NOTHING" >/dev/null
+NB_BAT_FERME="$(psql_run "SELECT count(*) FROM batiments b JOIN utilisateurs u ON u.farm_id = b.farm_id WHERE u.email = '$ADMIN_EMAIL' AND coalesce(b.removed,false) = false")"
+api GET /batiments/plan
+check "plan : autant de poulaillers que la ferme en a, aucun de l'autre ferme" "code == 200 and len(d['data']) == $NB_BAT_FERME and all(b['uniqueId'] != 'plan-bat-autre-ferme' for b in d['data'])"
+check "plan : poulailler occupé avec effectif vivant <= sujets placés et projet présent" "any(b['occupe'] and b['projets'] and b['sujetsPlaces'] is not None and b['effectifVivant'] <= b['sujetsPlaces'] for b in d['data'])"
+
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
 [ "$FAIL" -eq 0 ]

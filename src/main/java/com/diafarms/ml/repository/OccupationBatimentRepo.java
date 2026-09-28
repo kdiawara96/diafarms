@@ -37,4 +37,18 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
     // saisie peut être antidatée) — voir PoulaillerObligatoire.
     @Query("SELECT DISTINCT o.batiment FROM OccupationBatiment o WHERE o.projet.id = :projetId")
     java.util.List<com.diafarms.ml.models.Batiment> findBatimentsByProjetId(@Param("projetId") Long projetId);
+
+    // Vue plan (BatimentImpl.plan) : toutes les occupations actives des poulaillers d'une
+    // ferme en UNE requête (projet et bâtiment chargés), au lieu d'une requête par bâtiment.
+    @Query("""
+        SELECT o FROM OccupationBatiment o
+        JOIN FETCH o.projet p
+        JOIN FETCH o.batiment b
+        WHERE b.farm.id = :farmId
+        AND b.initialisation.removed = false
+        AND p.initialisation.removed = false
+        AND (o.dateSortie IS NULL OR o.dateSortie > CURRENT_DATE)
+        ORDER BY o.dateEntree DESC
+        """)
+    java.util.List<OccupationBatiment> findActivesByFarmId(@Param("farmId") Long farmId);
 }

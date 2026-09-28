@@ -20,4 +20,7 @@ public interface BatimentServices {
      * une dépense. */
     List<BatimentsDTO> tous();
     PaginatedResponse<BatimentsDTO> listPaginated(int page, int size, String search);
+
+    /** Vue plan : tous les poulaillers actifs de la ferme avec effectif et occupants. */
+    List<com.diafarms.ml.DTO.BatimentPlanDTO> plan();
 }

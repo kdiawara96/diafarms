@@ -32,6 +32,9 @@ public class BatimentImpl implements BatimentServices {
     private final LogsServices logs;
     private final OtherService OtherService;
     private final com.diafarms.ml.repository.InvestissementRepository investissementRepo;
+    private final com.diafarms.ml.repository.OccupationBatimentRepo occupationBatimentRepo;
+    private final com.diafarms.ml.repository.MortaliteRepo mortaliteRepo;
+    private final com.diafarms.ml.repository.ReformeRepo reformeRepo;
 
     // Remplit BatimentsDTO.investissements (badge « Investissement : <nom> ») en une
     // seule requête pour toute la liste.
@@ -247,6 +250,64 @@ public class BatimentImpl implements BatimentServices {
                         .map(BatimentsDTO::toDTO)
                         .collect(Collectors.toList()));
     }
+
+   @Override
+   @Transactional(readOnly = true)
+   // Vue plan : 4 requêtes au total (poulaillers, occupations actives, mortalité et
+   // réforme groupées par poulailler), quel que soit le nombre de poulaillers. Effectif
+   // vivant = même règle que EffectifVivantHelper.effectifBatiment.
+   public List<com.diafarms.ml.DTO.BatimentPlanDTO> plan() {
+        Utilisateurs currentUser = null;
+        try {
+            currentUser = OtherService.getCurrentUser();
+        } catch (Exception e) {
+            return List.of();
+        }
+        if (currentUser == null || currentUser.getFarm() == null) return List.of();
+        Long farmId = currentUser.getFarm().getId();
+
+        java.util.Map<Long, List<com.diafarms.ml.models.OccupationBatiment>> occupations = occupationBatimentRepo
+                .findActivesByFarmId(farmId).stream()
+                .collect(Collectors.groupingBy(o -> o.getBatiment().getId()));
+        java.util.Map<Long, Integer> morts = versMap(mortaliteRepo.sumMortsParBatimentDeLaFerme(farmId));
+        java.util.Map<Long, Integer> reformes = versMap(reformeRepo.sumSujetsParBatimentDeLaFerme(farmId));
+
+        return batimentRepo.findActiveByFarmId(farmId).stream()
+                .sorted(java.util.Comparator.comparing(Batiment::getNom, String.CASE_INSENSITIVE_ORDER))
+                .map(b -> {
+                    List<com.diafarms.ml.models.OccupationBatiment> actives = occupations.getOrDefault(b.getId(), List.of());
+                    // Comme effectifBatiment : l'occupation active la plus récente fait foi.
+                    Integer base = actives.isEmpty() ? null : actives.get(0).getNbSujetsDansBatiment();
+                    Integer effectif = base == null ? null
+                            : Math.max(0, base - morts.getOrDefault(b.getId(), 0) - reformes.getOrDefault(b.getId(), 0));
+                    return com.diafarms.ml.DTO.BatimentPlanDTO.builder()
+                            .uniqueId(b.getUniqueId())
+                            .nom(b.getNom())
+                            .capacite(b.getCapacite())
+                            .statut(b.getStatut() != null ? b.getStatut().name() : null)
+                            .superficieM2(b.getSuperficieM2())
+                            .occupe(!actives.isEmpty())
+                            .sujetsPlaces(base)
+                            .effectifVivant(effectif)
+                            .projets(actives.stream().map(o -> com.diafarms.ml.DTO.BatimentPlanDTO.Occupant.builder()
+                                    .uniqueId(o.getProjet().getUniqueId())
+                                    .code(o.getProjet().getCode())
+                                    .titre(o.getProjet().getTitre())
+                                    .nbSujets(o.getNbSujetsDansBatiment())
+                                    .dateEntree(o.getDateEntree() != null ? o.getDateEntree().toString() : null)
+                                    .build()).toList())
+                            .build();
+                })
+                .toList();
+   }
+
+   private static java.util.Map<Long, Integer> versMap(List<Object[]> lignes) {
+        java.util.Map<Long, Integer> m = new java.util.HashMap<>();
+        for (Object[] l : lignes) {
+            if (l[0] != null && l[1] != null) m.put(((Number) l[0]).longValue(), ((Number) l[1]).intValue());
+        }
+        return m;
+   }
 
    @Override
    @Transactional(readOnly = true)

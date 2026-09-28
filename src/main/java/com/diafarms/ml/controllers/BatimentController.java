@@ -240,6 +240,18 @@ public class BatimentController {
             );
         }
     }
+    // Vue plan (page Poulaillers, « Vue plan ») : tous les poulaillers de la ferme avec
+    // capacité, effectif vivant et projet(s) présent(s).
+    @GetMapping("/plan")
+    public ResponseEntity<ApiResponse<List<com.diafarms.ml.DTO.BatimentPlanDTO>>> plan() {
+        try {
+            return ApiResponse.createResponse("Plan des poulaillers récupéré", HttpStatus.OK, services.plan(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null,
+                    List.of("Une erreur inattendue s'est produite"));
+        }
+    }
+
     // Tous les poulaillers actifs (occupés ou non), pour rattacher une dépense à un poulailler.
     @GetMapping("/tous")
     public ResponseEntity<ApiResponse<List<BatimentsDTO>>> tous() {

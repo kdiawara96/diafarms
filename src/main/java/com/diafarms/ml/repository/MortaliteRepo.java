@@ -42,4 +42,10 @@ public interface MortaliteRepo extends JpaRepository<Mortalite, Long> {
     // Voir CollecteOeufsRepo.findAllByProjetId — même usage pour RapportJournalierServiceImpl.
     @Query("SELECT m FROM Mortalite m WHERE m.projet.id = :projetId AND m.initialisation.removed = false")
     java.util.List<Mortalite> findAllByProjetId(@Param("projetId") Long projetId);
+
+    // Vue plan : mortalité cumulée PAR BÂTIMENT pour toute une ferme, en une requête
+    // (mêmes règles que sumMortsByBatimentId). Lignes [batimentId, total].
+    @Query("SELECT m.batiment.id, COALESCE(SUM(m.nombreMorts), 0) FROM Mortalite m " +
+        "WHERE m.batiment.farm.id = :farmId AND m.initialisation.removed = false GROUP BY m.batiment.id")
+    java.util.List<Object[]> sumMortsParBatimentDeLaFerme(@Param("farmId") Long farmId);
 }
