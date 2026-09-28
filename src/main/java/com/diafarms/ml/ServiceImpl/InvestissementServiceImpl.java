@@ -647,6 +647,9 @@ public class InvestissementServiceImpl implements InvestissementService {
         return entity.getBatiments().stream()
                 .filter(b -> b.getHistoriqueOccupations() != null)
                 .flatMap(b -> b.getHistoriqueOccupations().stream())
+                // Seulement les occupations en cours ou postérieures à l'achat.
+                .filter(o -> entity.getDateAchat() == null || o.getDateSortie() == null
+                        || !o.getDateSortie().isBefore(entity.getDateAchat()))
                 .map(o -> o.getProjet())
                 .filter(p -> p != null && (p.getInitialisation() == null || !Boolean.TRUE.equals(p.getInitialisation().getRemoved())))
                 .map(p -> p.getTitre() != null && !p.getTitre().isBlank() ? p.getTitre() : p.getCode())

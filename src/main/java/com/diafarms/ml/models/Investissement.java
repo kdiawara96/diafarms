@@ -102,7 +102,10 @@ public class Investissement {
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "investissement_batiments",
             joinColumns = @JoinColumn(name = "investissement_id"),
-            inverseJoinColumns = @JoinColumn(name = "batiment_id"))
+            inverseJoinColumns = @JoinColumn(name = "batiment_id"),
+            indexes = @jakarta.persistence.Index(name = "idx_investissement_batiments_batiment", columnList = "batiment_id"))
+    // Liste paginée : charge les poulaillers de plusieurs investissements par lot.
+    @org.hibernate.annotations.BatchSize(size = 50)
     private Set<Batiment> batiments = new HashSet<>();
 
     public Double getAmortissementMensuel() {

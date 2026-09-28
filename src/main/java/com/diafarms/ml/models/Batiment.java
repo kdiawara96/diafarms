@@ -68,6 +68,7 @@ public class Batiment {
     private Double longitude;
 
     @OneToMany(mappedBy = "batiment", fetch = FetchType.LAZY)
+    @org.hibernate.annotations.BatchSize(size = 50)
     private List<OccupationBatiment> historiqueOccupations = new ArrayList<>();
 
     // Enumération pour le statut du bâtiment

@@ -33,7 +33,7 @@ public interface InvestissementRepository extends JpaRepository<Investissement, 
     Double getValeurNetteGlobale(@Param("farmId") Long farmId);
 
     // Liens investissement -> poulailler (badge de la page Poulaillers).
-    @Query("SELECT b.id, i.nom FROM Investissement i JOIN i.batiments b WHERE b.id IN :ids ORDER BY i.dateAchat")
+    @Query("SELECT b.id, i.nom FROM Investissement i JOIN i.batiments b WHERE b.id IN :ids AND COALESCE(i.initialisation.removed, false) = false ORDER BY i.dateAchat")
     List<Object[]> nomsParBatiments(@Param("ids") Collection<Long> ids);
 
     // Suppression d'un poulailler : retire uniquement ses lignes de liaison.
