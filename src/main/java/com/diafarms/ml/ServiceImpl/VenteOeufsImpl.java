@@ -332,12 +332,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
                 .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
 
-        // Client visé par la modification (null = inchangé). Passer de « sans client » à
-        // « un client » (ou l'inverse) casserait le modèle d'argent : l'écart du vendeur
-        // resterait dans son solde, le montant rapporté ne deviendrait pas un paiement
-        // client, ou au contraire l'argent déjà reçu du client serait compté une deuxième
-        // fois comme espèces rapportées. Refusé : on supprime la vente et on la ressaisit.
-        // Changer de client (A -> B) reste permis.
+        // Client visé par la modification (null = inchangé, "" = retiré). Trois cas, l'argent
+        // déjà passé suit toujours (rien n'est perdu ni compté deux fois) :
+        // - client A -> client B : l'argent de A redevient une avance de A ;
+        // - ajout d'un client à une vente sans client : l'écart du vendeur est annulé et ce
+        //   qu'il a rapporté devient un paiement du client sur cette vente ;
+        // - retrait du client : ce que le client a payé sur cette vente redevient une
+        //   avance sur son compte ; la vente repasse au vendeur avec le montant rapporté
+        //   (obligatoire) et son écart.
         Client clientDemande = null;
         if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
             clientDemande = clientRepo.findByUniqueId(data.getClientUniqueId());
@@ -346,9 +348,37 @@ public class VenteOeufsImpl implements VenteOeufsService {
                 throw new IllegalArgumentException("Client introuvable : " + data.getClientUniqueId());
             }
         }
-        if (data.getClientUniqueId() != null
-                && (v.getClient() == null) != (clientDemande == null)) {
-            throw new IllegalArgumentException("Pour ajouter ou retirer le client d'une vente, supprimez-la et ressaisissez-la.");
+        boolean ajoutClient = v.getClient() == null && clientDemande != null;
+        boolean retraitClient = v.getClient() != null && data.getClientUniqueId() != null && clientDemande == null;
+        if (retraitClient && (data.getMontantRapporte() == null || data.getMontantRapporte() < 0)) {
+            throw new IllegalArgumentException("Sans client, la vente revient au vendeur : indiquez le montant qu'il a rapporté.");
+        }
+
+        // Type d'œufs (normaux / cassés) : ce ne sont pas les mêmes stocks du magasin.
+        TypeVenteOeufs ancienType = v.getTypeOeuf() != null ? v.getTypeOeuf() : TypeVenteOeufs.BON;
+        TypeVenteOeufs nouveauType = ancienType;
+        if (data.getTypeOeuf() != null && !data.getTypeOeuf().isBlank()) {
+            try {
+                nouveauType = TypeVenteOeufs.valueOf(data.getTypeOeuf().trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Type d'œufs invalide (attendu BON ou CASSE) : " + data.getTypeOeuf());
+            }
+        }
+        boolean typeChange = nouveauType != ancienType;
+        if (typeChange) {
+            if (v.getMagasin() == null) {
+                throw new IllegalArgumentException("Cette vente n'est rattachée à aucun magasin : le type d'œufs ne peut pas être changé.");
+            }
+            if (v.getCommande() != null) {
+                throw new IllegalArgumentException("Cette vente est une livraison de commande : le type d'œufs ne peut pas être changé.");
+            }
+            int quantiteVisee = data.getQuantiteOeufs() != null ? data.getQuantiteOeufs() : nz(v.getQuantiteOeufs());
+            int disponibleNouveauType = disponibleParProjetDansMagasin(v.getMagasin(), nouveauType).values().stream()
+                    .mapToInt(Integer::intValue).sum();
+            if (quantiteVisee > disponibleNouveauType) {
+                throw new IllegalArgumentException((nouveauType == TypeVenteOeufs.CASSE ? "Stock d'œufs cassés insuffisant" : "Stock d'œufs insuffisant")
+                        + " dans ce magasin (" + disponibleNouveauType + " œuf(s) restants).");
+            }
         }
         // Verrou des clients concernés AVANT de toucher aux imputations (voir
         // CompteClientService.verrouiller) : ancien et nouveau client en cas de changement.
@@ -365,7 +395,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
 
-        boolean redistribuer = data.getQuantiteOeufs() != null || data.getMontant() != null;
+        boolean redistribuer = data.getQuantiteOeufs() != null || data.getMontant() != null || typeChange;
 
         if (data.getQuantiteOeufs() != null) {
             if (data.getQuantiteOeufs() <= 0) {
@@ -374,9 +404,10 @@ public class VenteOeufsImpl implements VenteOeufsService {
             if (v.getMagasin() == null) {
                 throw new IllegalArgumentException("Cette vente n'est rattachée à aucun magasin (ancienne vente farm-wide) : quantité non modifiable.");
             }
-            Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin(), v.getTypeOeuf());
+            // Changement de type : stock déjà vérifié plus haut sur le nouveau type.
+            Map<Long, Integer> disponible = typeChange ? Map.of() : disponibleParProjetDansMagasin(v.getMagasin(), v.getTypeOeuf());
             int restantHorsCetteVente = disponible.values().stream().mapToInt(Integer::intValue).sum() + nz(v.getQuantiteOeufs());
-            if (data.getQuantiteOeufs() > restantHorsCetteVente) {
+            if (!typeChange && data.getQuantiteOeufs() > restantHorsCetteVente) {
                 throw new IllegalArgumentException(
                     "Stock d'œufs insuffisant dans ce magasin (" + restantHorsCetteVente + " œuf(s) restants)."
                 );
@@ -390,16 +421,19 @@ public class VenteOeufsImpl implements VenteOeufsService {
             v.setMontant(data.getMontant());
         }
 
-        // Client A -> client B seulement (ajout/retrait refusés plus haut).
+        v.setTypeOeuf(nouveauType);
         if (clientDemande != null) {
             v.setClient(clientDemande);
+        }
+        if (retraitClient) {
+            v.setClient(null);
         }
 
         // Vente à un client (avant OU après cette modification) : plus de montantRapporte
         // manuel — l'argent reçu passe par un paiement enregistré depuis la fiche client
         // (voir PaiementClientService), pas par ce formulaire de vente.
         boolean venteAUnClient = ancienClient != null || v.getClient() != null;
-        if (venteAUnClient && data.getMontantRapporte() != null) {
+        if (venteAUnClient && !retraitClient && data.getMontantRapporte() != null) {
             throw new IllegalArgumentException("Pour une vente à un client, enregistrez un paiement depuis la fiche client.");
         }
 
@@ -418,11 +452,23 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
         // Sert aussi plus bas (hors client) à rafraîchir le texte de traçabilité des
         // lignes de répartition existantes quand il n'y a pas eu de redistribution.
-        boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null;
+        boolean ecartChange = data.getMontantRapporte() != null || data.getMontant() != null || ajoutClient || retraitClient;
 
-        // Sans client (avant ET après) : comportement historique, écart théorique/rapporté
-        // au solde du vendeur qui a créé la vente (pas celui qui modifie).
-        if (!venteAUnClient) {
+        // Montant rapporté par le vendeur repris comme paiement du client (ajout d'un client).
+        Double rapporteARepris = null;
+        if (ajoutClient) {
+            if (ancienMontantRapporte != null) {
+                soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
+            }
+            rapporteARepris = ancienMontantRapporte;
+            v.setMontantRapporte(null);
+        } else if (retraitClient) {
+            compteClientService.annulerImputationsCible(CibleImputation.VENTE_OEUFS, uniqueId,
+                    "Client retiré de la vente : l'argent déjà payé redevient une avance");
+            soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());
+        } else if (!venteAUnClient) {
+            // Sans client (avant ET après) : comportement historique, écart théorique/rapporté
+            // au solde du vendeur qui a créé la vente (pas celui qui modifie).
             if (ecartChange) {
                 if (ancienMontantRapporte != null) {
                     soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), -(nz(ancienMontant) - ancienMontantRapporte));
@@ -448,7 +494,17 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         VenteOeufs saved = venteOeufsRepo.save(v);
 
-        if (venteAUnClient) {
+        if (ajoutClient) {
+            if (rapporteARepris != null && rapporteARepris > 0.005) {
+                paiementClientService.enregistrerInterne(saved.getClient(), rapporteARepris, ModePaiement.ESPECES,
+                        OriginePaiement.VENTE, saved.getCommande(), CibleImputation.VENTE_OEUFS, saved.getUniqueId(), null,
+                        "Montant rapporté par le vendeur, repris quand le client a été ajouté à la vente", saved.getDate());
+            } else {
+                compteClientService.imputer(saved.getClient());
+            }
+        } else if (retraitClient) {
+            compteClientService.imputer(ancienClient);
+        } else if (venteAUnClient) {
             if (clientChanged) {
                 if (ancienClient != null) compteClientService.imputer(ancienClient);
                 if (saved.getClient() != null) compteClientService.imputer(saved.getClient());

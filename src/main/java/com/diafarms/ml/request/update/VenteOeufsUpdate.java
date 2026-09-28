@@ -14,4 +14,7 @@ public class VenteOeufsUpdate {
     // client de la vente ; sinon = nouveau client — même convention que
     // CollecteOeufsUpdate.batimentUniqueId.
     private String clientUniqueId;
+    // null = inchangé ; "BON" (œufs normaux) ou "CASSE" (œufs cassés) : change le stock
+    // d'où sortent les œufs (vérifié et réparti de nouveau entre projets).
+    private String typeOeuf;
 }
