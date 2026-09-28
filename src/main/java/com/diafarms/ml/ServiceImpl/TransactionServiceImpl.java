@@ -645,6 +645,13 @@ public class TransactionServiceImpl implements TransactionService {
     // formulaire web peut renvoyer toute la transaction. Pour l'aliment et les soins, une
     // modification ultérieure de la saisie source réapplique son propre poulailler.
     private TransactionDTO updateRattachementSeul(Transaction t, TransactionUpdate data) {
+        // Un achat d'aliment appartient à son projet (site du projet) : pas de rattachement
+        // à corriger ici, tout se modifie sur l'achat.
+        if (t.getSourceType() == SourceTransaction.ALIMENTATION) {
+            throw new IllegalArgumentException("Cette transaction est générée automatiquement par "
+                    + TransactionDTO.saisieSourceGeneree(t.getSourceType())
+                    + " : modifiez l'achat (prix, quantité, projet), la dépense suit.");
+        }
         java.util.List<String> changes = new java.util.ArrayList<>();
         if (data.getType() != null && (t.getType() == null || !data.getType().equals(t.getType().name()))) changes.add("type");
         if (data.getDate() != null && !data.getDate().equals(t.getDate())) changes.add("date");

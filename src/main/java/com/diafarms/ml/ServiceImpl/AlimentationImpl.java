@@ -55,11 +55,11 @@ public class AlimentationImpl implements AlimentationService {
         if (currentUser == null || currentUser.getFarm() == null) return;
         String description = "Achat aliment : " + a.getNomAliment() + " (" + a.getQuantiteKg() + " kg), projet "
                 + (a.getProjet() != null ? a.getProjet().getTitre() : "?");
-        // L'achat connaît son poulailler (facultatif) et son projet : la dépense les reprend
-        // (poulailler de l'achat, site du projet) pour le suivi par poulailler / par site.
+        // L'achat appartient au projet : la dépense reprend le projet et son site (pas de
+        // poulailler, même pour un ancien achat qui en avait un).
         transactionService.syncSortie(a.getProjet(), currentUser.getFarm(), a.getCoutTotal(), "Aliment",
                 a.getDateDistribution(), description, SourceTransaction.ALIMENTATION, a.getUniqueId(), currentUser,
-                a.getBatiment(), a.getProjet() != null ? a.getProjet().getSite() : null, true);
+                null, a.getProjet() != null ? a.getProjet().getSite() : null, true);
     }
 
     // nomAliment reste obligatoire en base : vide, il est déduit du type ("Aliment ponte").
@@ -67,6 +67,10 @@ public class AlimentationImpl implements AlimentationService {
         if (nom != null && !nom.isBlank()) return nom.trim();
         if (type == null || type == TypeAliment.AUTRE) return "Aliment";
         return "Aliment " + type.getLabel().toLowerCase();
+    }
+
+    private static String kg(double v) {
+        return (v == Math.rint(v) ? String.valueOf((long) v) : String.format(java.util.Locale.FRANCE, "%.1f", v));
     }
 
     // --- Génération UID ---   
@@ -157,9 +161,7 @@ public class AlimentationImpl implements AlimentationService {
         alimentation.setObservations(data.getObservations());
         alimentation.setFournisseur(data.getFournisseur());
         alimentation.setProjet(projet);
-        if (data.getBatimentUniqueId() != null && !data.getBatimentUniqueId().isBlank()) {
-            alimentation.setBatiment(batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        // Pas de poulailler : l'achat est lié au projet (batimentUniqueId ignoré).
         alimentation.setFarm(farm);
         alimentation.setInitialisation(Initialisation.init());
 
@@ -211,21 +213,39 @@ public class AlimentationImpl implements AlimentationService {
         if (data.getSac() != null) {
             alimentation.setSac(data.getSac());
         }
-        if (data.getQuantiteKg() != null) {
-            if (data.getQuantiteKg() < ancienneQuantite) {
-                Long projetId = alimentation.getProjet().getId();
-                double totalAchete = alimentationRepo.sumAcheteByProjetId(projetId);
-                double totalConsomme = consommationAlimentRepo.sumConsommeByProjetId(projetId);
-                double nouveauTotalAchete = totalAchete - ancienneQuantite + data.getQuantiteKg();
-                if (nouveauTotalAchete < totalConsomme) {
-                    throw new IllegalArgumentException(
-                        "Impossible de réduire cet achat : le stock consommé (" + totalConsomme
-                            + " kg) dépasserait le stock acheté (" + nouveauTotalAchete + " kg) pour ce projet."
-                    );
-                }
-            }
-            alimentation.setQuantiteKg(data.getQuantiteKg());
+        // Quantité et projet : l'achat nourrit le stock de SON projet. Ce que ce projet a
+        // déjà consommé doit rester couvert par ses achats après la modification (sinon
+        // la consommation dépasserait l'achat). Même règle pour changer de projet : c'est
+        // l'ancien projet qui perd cet aliment.
+        Projets ancienProjet = alimentation.getProjet();
+        Projets nouveauProjet = ancienProjet;
+        if (data.getProjetUniqueId() != null && !data.getProjetUniqueId().isBlank()
+                && !data.getProjetUniqueId().equals(ancienProjet.getUniqueId())) {
+            nouveauProjet = projetsFerme.charger(data.getProjetUniqueId());
         }
+        double nouvelleQuantite = data.getQuantiteKg() != null ? data.getQuantiteKg() : ancienneQuantite;
+        if (nouvelleQuantite <= 0) {
+            throw new IllegalArgumentException("La quantité achetée (kg) doit être supérieure à 0.");
+        }
+        boolean changeDeProjet = !nouveauProjet.getId().equals(ancienProjet.getId());
+        if (changeDeProjet || nouvelleQuantite < ancienneQuantite) {
+            double acheteSansCetAchat = alimentationRepo.sumAcheteByProjetId(ancienProjet.getId()) - ancienneQuantite;
+            double consomme = consommationAlimentRepo.sumConsommeByProjetId(ancienProjet.getId());
+            double reste = acheteSansCetAchat + (changeDeProjet ? 0 : nouvelleQuantite);
+            if (reste + 1e-6 < consomme) {
+                double minimum = Math.max(0, consomme - acheteSansCetAchat);
+                if (changeDeProjet) {
+                    throw new IllegalArgumentException("Impossible de changer le projet de cet achat : le projet « "
+                            + ancienProjet.getTitre() + " » a déjà consommé " + kg(consomme) + " kg, il lui faut au moins "
+                            + kg(minimum) + " kg de cet achat.");
+                }
+                throw new IllegalArgumentException("Impossible de réduire cet achat à " + kg(nouvelleQuantite)
+                        + " kg : le projet a déjà consommé " + kg(consomme) + " kg, le minimum pour cet achat est "
+                        + kg(minimum) + " kg.");
+            }
+        }
+        alimentation.setQuantiteKg(nouvelleQuantite);
+        alimentation.setProjet(nouveauProjet);
         if (data.getCoutTotal() != null) {
             alimentation.setCoutTotal(data.getCoutTotal());
         }
@@ -240,9 +260,8 @@ public class AlimentationImpl implements AlimentationService {
         if (data.getHeure() != null) {
             alimentation.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         }
-        if (data.getBatimentUniqueId() != null) {
-            alimentation.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
-        }
+        // Un achat d'aliment appartient au projet, pas à un poulailler : batimentUniqueId
+        // (encore envoyé par d'anciennes versions) est ignoré.
         if (data.getFournisseur() != null) {
             alimentation.setFournisseur(data.getFournisseur());
         }
@@ -281,6 +300,15 @@ public class AlimentationImpl implements AlimentationService {
         // 2. Vérifier si déjà supprimée
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette alimentation est déjà supprimée.");
+        }
+
+        // Ce que le projet a déjà consommé doit rester couvert par ses autres achats.
+        double acheteSansCetAchat = alimentationRepo.sumAcheteByProjetId(alimentation.getProjet().getId()) - alimentation.getQuantiteKg();
+        double consomme = consommationAlimentRepo.sumConsommeByProjetId(alimentation.getProjet().getId());
+        if (acheteSansCetAchat + 1e-6 < consomme) {
+            throw new IllegalArgumentException("Impossible de supprimer cet achat : le projet a déjà consommé " + kg(consomme)
+                    + " kg et, sans cet achat, il n'en aurait acheté que " + kg(Math.max(0, acheteSansCetAchat))
+                    + " kg. Vous pouvez seulement réduire la quantité jusqu'à " + kg(consomme - acheteSansCetAchat) + " kg.");
         }
 
         // 3. Soft delete (le hard delete précédent effaçait définitivement la ligne,

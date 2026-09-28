@@ -256,6 +256,45 @@ api PUT "/transactions/deleteOrRecover/$T_MAT" '{"motif":"Test"}'
 for a in "$ALIM2" "$ALIM3" "$ALIM4"; do api DELETE "/alimentations/delete/$a"; done
 check_eq "achats de test supprimés : stock revenu à l'état initial" "$AVANT" "$(stock_kg)"
 
+echo "== 7b. Achat d'aliment : modifier prix/quantité/projet tant que la consommation reste couverte"
+stock_json() { api GET "/consommations-aliment/stock/$PROJET"; }
+api POST "/alimentations/create/$PROJET" "{\"typeAliment\":\"PONTE\",\"sac\":2,\"quantiteKg\":100,\"coutTotal\":35000,\"dateDistribution\":\"$AUJ\",\"batimentUniqueId\":\"$BATIMENT\"}"
+check "achat de 100 kg créé (poulailler envoyé : ignoré)" "code in (200, 201) and d['data']['batimentUniqueId'] is None"
+ACH="$(jval "d['data']['uniqueId']")"
+check_eq "dépense de l'achat : pas de poulailler, site du projet" "|$(psql_run "SELECT coalesce(s.unique_id,'') FROM projets p LEFT JOIN sites s ON s.id = p.site_id WHERE p.unique_id = '$PROJET'")" \
+  "$(psql_run "SELECT coalesce(b.unique_id,'') || '|' || coalesce(s.unique_id,'') FROM transactions t LEFT JOIN batiments b ON b.id = t.batiment_id LEFT JOIN sites s ON s.id = t.site_id WHERE t.source_unique_id = '$ACH'")"
+api GET "/transactions/list?page=0&size=200"
+check "dépense d'un achat : rattachement non modifiable depuis la Comptabilité" "code == 200 and any(x['sourceUniqueId'] == '$ACH' and x['rattachementModifiable'] is False for x in d['data']['data'])"
+T_ACH="$(tx_de_source "$ACH")"
+api PUT "/transactions/update/$T_ACH" "{\"batimentUniqueId\":\"$BATIMENT\"}"
+check "rattacher la dépense d'un achat à un poulailler : refusé" "code == 400 and \"modifiez l'achat\" in err"
+# Le projet consomme 60 kg de cet achat (consommation posée en base).
+read -r ACHETE CONSO < <(psql_run "SELECT (SELECT coalesce(sum(quantite_kg),0) FROM alimentations WHERE projet_id = $PROJET_ID AND NOT coalesce(removed,false)) || ' ' || (SELECT coalesce(sum(quantite_kg),0) FROM consommations_aliment WHERE projet_id = $PROJET_ID AND NOT coalesce(removed,false))")
+EN_PLUS="$(python3 -c "print(round($ACHETE - 100 - $CONSO + 60, 3))")"
+psql_run "INSERT INTO consommations_aliment (unique_id, date, quantite_kg, projet_id, farm_id, removed, archive, created_at)
+  VALUES ('conso-7b-$SUFFIXE', current_date, $EN_PLUS, $PROJET_ID, $FARM_ID, false, false, now())" >/dev/null
+api PUT "/alimentations/update/$ACH" '{"coutTotal":36000}'
+check "prix modifié (achat entamé)" "code == 200 and d['data']['coutTotal'] == 36000"
+check_eq "la dépense suit le nouveau prix" "36000" "$(psql_run "SELECT montant::bigint FROM transactions WHERE source_unique_id = '$ACH'")"
+api PUT "/alimentations/update/$ACH" '{"quantiteKg":50}'
+check "quantité réduite sous le déjà consommé (60 kg) : refusée, minimum indiqué" "code == 400 and 'minimum pour cet achat est 60 kg' in err"
+api PUT "/alimentations/update/$ACH" '{"quantiteKg":70,"sac":1.4}'
+check "quantité réduite à 70 kg (>= 60 consommés) : acceptée" "code == 200 and d['data']['quantiteKg'] == 70"
+AUTRE_P="$(psql_run "SELECT unique_id FROM projets WHERE farm_id = $FARM_ID AND unique_id <> '$PROJET' ORDER BY id LIMIT 1")"
+psql_run "UPDATE projets SET removed = false WHERE unique_id = '$AUTRE_P'" >/dev/null
+api PUT "/alimentations/update/$ACH" "{\"projetUniqueId\":\"$AUTRE_P\"}"
+check "changer de projet un achat entamé : refusé" "code == 400 and 'changer le projet' in err"
+api DELETE "/alimentations/delete/$ACH"
+check "supprimer un achat entamé : refusé" "code == 400 and 'Impossible de supprimer cet achat' in err"
+psql_run "UPDATE consommations_aliment SET removed = true WHERE unique_id = 'conso-7b-$SUFFIXE'" >/dev/null
+api PUT "/alimentations/update/$ACH" "{\"projetUniqueId\":\"$AUTRE_P\"}"
+check "achat non entamé : changement de projet accepté" "code == 200 and d['data']['projetUniqueId'] == '$AUTRE_P'"
+check_eq "la dépense suit le nouveau projet" "$AUTRE_P" "$(psql_run "SELECT p.unique_id FROM transactions t JOIN projets p ON p.id = t.projet_id WHERE t.source_unique_id = '$ACH'")"
+api DELETE "/alimentations/delete/$ACH"
+check "achat non entamé : suppression acceptée" "code == 200"
+psql_run "UPDATE projets SET removed = true WHERE unique_id = '$AUTRE_P'" >/dev/null
+psql_run "DELETE FROM consommations_aliment WHERE unique_id = 'conso-7b-$SUFFIXE'" >/dev/null
+
 # Nettoyage : les transactions posées en base n'ont pas de saisie source.
 psql_run "DELETE FROM transactions WHERE categorie = 'Test verrou' AND ref LIKE 'VR-%'" >/dev/null
 

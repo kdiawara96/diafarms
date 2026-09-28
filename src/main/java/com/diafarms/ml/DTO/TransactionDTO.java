@@ -129,7 +129,7 @@ public class TransactionDTO {
                 .lieeAUneVente(isSourceVente(t.getSourceType()))
                 .verrouillee(isSourceVerrouillee(t.getSourceType()))
                 .saisieSource(saisieSourceGeneree(t.getSourceType()))
-                .rattachementModifiable(!isSourceVerrouillee(t.getSourceType()))
+                .rattachementModifiable(!isSourceVerrouillee(t.getSourceType()) && t.getSourceType() != SourceTransaction.ALIMENTATION)
                 // Une vente diverse n'a qu'une transaction, pointant directement vers elle ;
                 // œufs/réforme passent par leur ligne de répartition (enrichMontantReel).
                 .venteUniqueId(t.getSourceType() == SourceTransaction.VENTE_DIVERSE ? t.getSourceUniqueId() : null)
@@ -155,7 +155,7 @@ public class TransactionDTO {
         return switch (source) {
             case SOINS -> "un soin (fiche du projet, section Santé / Vétérinaire)";
             case VACCINATION -> "une vaccination (fiche du projet, section Santé / Vétérinaire)";
-            case ALIMENTATION -> "un achat d'aliment (fiche du projet, section Alimentation)";
+            case ALIMENTATION -> "un achat d'aliment (bouton Modifier de la Comptabilité, ou fiche du projet, section Alimentation)";
             case INVESTISSEMENT -> "un investissement (page Investissements)";
             case SALAIRE -> "un paiement de salaire (page Salaires)";
             case PROJET_ACHAT_SUJETS -> "l'achat des sujets du projet (page Projets, modification du projet)";
