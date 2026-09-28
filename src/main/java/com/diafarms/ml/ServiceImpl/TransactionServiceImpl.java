@@ -588,18 +588,17 @@ public class TransactionServiceImpl implements TransactionService {
             return updateRattachementSeul(t, data);
         }
         ensurePasLieeAUneVente(t);
+        // Garder "Aliment" sur une ancienne sortie est permis ; y passer (par la catégorie
+        // OU par le type Entrée -> Sortie), non : état relevé avant toute modification.
+        boolean etaitSortieAliment = t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie());
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
         if (data.getDate() != null) t.setDate(data.getDate());
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(data.getMontant());
-        if (data.getCategorie() != null) {
-            // Garder "Aliment" sur une ancienne sortie est permis ; y passer, non.
-            if (t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(data.getCategorie())
-                    && !estCategorieAchatAliment(t.getCategorie())) {
-                throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
-            }
-            t.setCategorie(data.getCategorie());
+        if (data.getCategorie() != null) t.setCategorie(data.getCategorie());
+        if (!etaitSortieAliment && t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie())) {
+            throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
         }
         if (Boolean.TRUE.equals(data.getCommun())) {
             t.setProjet(null);

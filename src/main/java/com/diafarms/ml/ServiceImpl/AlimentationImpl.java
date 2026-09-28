@@ -118,8 +118,13 @@ public class AlimentationImpl implements AlimentationService {
         if (data.getCoutTotal() == null || data.getCoutTotal() <= 0) {
             throw new IllegalArgumentException("Le coût total de l'achat est obligatoire.");
         }
-        if (data.getSac() == null || data.getSac() < 0) {
-            throw new IllegalArgumentException("Le nombre de sacs est obligatoire.");
+        // Sacs facultatifs (APK 1.29/1.30 : « Nombre de sacs (optionnel) ») : il faut
+        // seulement de quoi connaître la quantité, les kg ou les sacs.
+        if (data.getSac() != null && data.getSac() < 0) {
+            throw new IllegalArgumentException("Le nombre de sacs ne peut pas être négatif.");
+        }
+        if (data.getSac() == null && (data.getQuantiteKg() == null || data.getQuantiteKg() <= 0)) {
+            throw new IllegalArgumentException("Indiquez la quantité achetée : le nombre de sacs ou le poids total (kg).");
         }
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
         TypeAliment type = TypeAliment.parse(data.getTypeAliment());
@@ -139,7 +144,8 @@ public class AlimentationImpl implements AlimentationService {
         alimentation.setUniqueId(generateUID());
         alimentation.setTypeAliment(type);
         alimentation.setNomAliment(nomOuDefaut(data.getNomAliment(), type));
-        alimentation.setSac(data.getSac());
+        // Colonne sac NOT NULL : sans sacs saisis, 0 (seuls les kg comptent pour le stock).
+        alimentation.setSac(data.getSac() != null ? data.getSac() : 0.0);
         alimentation.setQuantiteKg(quantiteKg);
         alimentation.setCoutTotal(data.getCoutTotal());
         alimentation.setDateDistribution(
@@ -198,6 +204,7 @@ public class AlimentationImpl implements AlimentationService {
         if (data.getNomAliment() != null && !data.getNomAliment().trim().isEmpty()) {
             alimentation.setNomAliment(data.getNomAliment());
         }
+        // null = inchangé ; "" = type retiré ("Non précisé") ; valeur = défini.
         if (data.getTypeAliment() != null) {
             alimentation.setTypeAliment(TypeAliment.parse(data.getTypeAliment()));
         }

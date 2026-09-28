@@ -212,11 +212,24 @@ api GET "/alimentations/list-by-projet/$PROJET"
 check "liste des achats : typeAliment renvoyé" "code == 200 and any(a['uniqueId'] == '$ALIM2' and a['typeAliment'] == 'PONTE' for a in d['data'])"
 api PUT "/alimentations/update/$ALIM2" '{"typeAliment":"CROISSANCE"}'
 check "modification du type d'aliment" "code == 200 and d['data']['typeAliment'] == 'CROISSANCE'"
+api PUT "/alimentations/update/$ALIM2" '{"observations":"sans type envoyé"}'
+check "typeAliment absent (null) : type inchangé" "code == 200 and d['data']['typeAliment'] == 'CROISSANCE'"
+api PUT "/alimentations/update/$ALIM2" '{"typeAliment":""}'
+check "typeAliment vide (Non précisé) : type retiré" "code == 200 and d['data']['typeAliment'] is None"
 api POST "/alimentations/create/$PROJET" "{\"typeAliment\":\"FINITION\",\"sac\":1,\"coutTotal\":1000,\"dateDistribution\":\"$AUJ\"}"
 check "type d'aliment inconnu : 400" "code == 400 and \"Type d'aliment inconnu\" in err"
 api POST "/alimentations/create/$PROJET" "{\"sac\":2,\"coutTotal\":30000,\"dateDistribution\":\"$AUJ\",\"nomAliment\":\"Maïs concassé\"}"
 check "sans type ni poids : 2 sacs x 50 kg par défaut, nom saisi gardé" "code in (200, 201) and d['data']['typeAliment'] is None and d['data']['quantiteKg'] == 100 and d['data']['nomAliment'] == 'Maïs concassé'"
 ALIM3="$(jval "d['data']['uniqueId']")"
+api POST "/alimentations/create/$PROJET" "{\"quantiteKg\":75,\"coutTotal\":9000,\"dateDistribution\":\"$AUJ\",\"nomAliment\":\"Sans sacs $SUFFIXE\"}"
+check "APK 1.29/1.30 : sans sacs mais avec kg, accepté (sac 0, 75 kg)" "code in (200, 201) and d['data']['quantiteKg'] == 75 and d['data']['sac'] == 0"
+ALIM4="$(jval "d['data']['uniqueId']")"
+api PUT "/alimentations/update/$ALIM4" '{"quantiteKg":80}'
+check "modification sans sacs : acceptée" "code == 200 and d['data']['quantiteKg'] == 80"
+api POST "/alimentations/create/$PROJET" "{\"coutTotal\":9000,\"dateDistribution\":\"$AUJ\",\"nomAliment\":\"Rien $SUFFIXE\"}"
+check "ni sacs ni kg : 400" "code == 400 and 'quantité achetée' in err"
+api POST "/alimentations/create/$PROJET" "{\"quantiteKg\":0,\"coutTotal\":9000,\"dateDistribution\":\"$AUJ\",\"nomAliment\":\"Zéro $SUFFIXE\"}"
+check "sans sacs et kg = 0 : 400" "code == 400"
 NB_TX="$(psql_run "SELECT count(*) FROM transactions WHERE farm_id = $FARM_ID")"
 for cat in "Aliment" "Achat d'aliment" "achat d’aliment" "ALIMENTS"; do
   api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Contournement $SUFFIXE\",\"montant\":5000,\"categorie\":\"$cat\"}"
@@ -227,6 +240,12 @@ api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$
 T_MAT="$(jval "d['data']['uniqueId']")"
 api PUT "/transactions/update/$T_MAT" '{"categorie":"Aliment"}'
 check "sortie manuelle : passage à la catégorie Aliment refusé" "code == 400 and 'Achat d' in err"
+api POST /transactions/create "{\"type\":\"ENTREE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Entrée aliment $SUFFIXE\",\"montant\":300,\"categorie\":\"Aliment\"}"
+T_ENT="$(jval "d['data']['uniqueId']")"
+api PUT "/transactions/update/$T_ENT" '{"type":"SORTIE"}'
+check "entrée « Aliment » passée en sortie (type seul) : refusée" "code == 400 and 'Achat d' in err"
+check_eq "entrée « Aliment » inchangée après le refus" "ENTREE" "$(psql_run "SELECT type FROM transactions WHERE unique_id = '$T_ENT'")"
+api PUT "/transactions/deleteOrRecover/$T_ENT" '{"motif":"Test"}'
 t="$(uuid)"
 psql_run "INSERT INTO transactions (unique_id, ref, type, date, montant, categorie, statut, source_type, farm_id, removed, archive, created_at)
   VALUES ('$t', 'VR-$(uuid | cut -c1-10)', 'SORTIE', current_date, 4000, 'Aliment', 'VALIDE', 'MANUEL', $FARM_ID, false, false, now())" >/dev/null
@@ -234,7 +253,7 @@ api PUT "/transactions/update/$t" '{"montant":4500,"categorie":"Aliment","descri
 check "ancienne sortie manuelle « Aliment » : reste modifiable (catégorie gardée)" "code == 200 and d['data']['montant'] == 4500"
 psql_run "DELETE FROM transactions WHERE unique_id = '$t'" >/dev/null
 api PUT "/transactions/deleteOrRecover/$T_MAT" '{"motif":"Test"}'
-for a in "$ALIM2" "$ALIM3"; do api DELETE "/alimentations/delete/$a"; done
+for a in "$ALIM2" "$ALIM3" "$ALIM4"; do api DELETE "/alimentations/delete/$a"; done
 check_eq "achats de test supprimés : stock revenu à l'état initial" "$AVANT" "$(stock_kg)"
 
 # Nettoyage : les transactions posées en base n'ont pas de saisie source.
