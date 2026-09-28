@@ -295,6 +295,8 @@ public class BatimentImpl implements BatimentServices {
                                     .titre(o.getProjet().getTitre())
                                     .nbSujets(o.getNbSujetsDansBatiment())
                                     .dateEntree(o.getDateEntree() != null ? o.getDateEntree().toString() : null)
+                                    .siteUniqueId(o.getProjet().getSite() != null ? o.getProjet().getSite().getUniqueId() : null)
+                                    .siteNom(o.getProjet().getSite() != null ? o.getProjet().getSite().getNom() : null)
                                     .build()).toList())
                             .build();
                 })

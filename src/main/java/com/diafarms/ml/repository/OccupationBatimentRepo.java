@@ -44,6 +44,7 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
         SELECT o FROM OccupationBatiment o
         JOIN FETCH o.projet p
         JOIN FETCH o.batiment b
+        LEFT JOIN FETCH p.site
         WHERE b.farm.id = :farmId
         AND b.initialisation.removed = false
         AND p.initialisation.removed = false

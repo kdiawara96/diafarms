@@ -40,5 +40,8 @@ public class BatimentPlanDTO {
         private String titre;
         private Integer nbSujets;
         private String dateEntree;
+        // Site du projet (facultatif) : sert à la Vue plan des Sites.
+        private String siteUniqueId;
+        private String siteNom;
     }
 }
