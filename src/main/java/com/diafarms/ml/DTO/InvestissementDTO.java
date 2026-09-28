@@ -26,4 +26,19 @@ public class InvestissementDTO {
     private Double amortissementMensuel; // Champ calculé
     private Double valeurNette;        // Champ calculé
     private List<InvestissementRepartitionDTO> repartitions;
+    // Poulaillers reliés (détails modifiables uniquement dans Poulaillers).
+    private List<PoulaillerLie> batiments;
+    // Projets ayant occupé ces poulaillers (lecture seule, déduit des occupations ;
+    // n'a aucun effet sur les répartitions).
+    private List<String> projetsUtilisateurs;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PoulaillerLie {
+        private String uniqueId;
+        private String nom;
+        private Integer capacite;
+        private Double superficieM2;
+    }
 }

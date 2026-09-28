@@ -31,6 +31,20 @@ public class BatimentImpl implements BatimentServices {
     private final BatimentRepo batimentRepo;
     private final LogsServices logs;
     private final OtherService OtherService;
+    private final com.diafarms.ml.repository.InvestissementRepository investissementRepo;
+
+    // Remplit BatimentsDTO.investissements (badge « Investissement : <nom> ») en une
+    // seule requête pour toute la liste.
+    private List<BatimentsDTO> avecInvestissements(List<BatimentsDTO> dtos) {
+        List<Long> ids = dtos.stream().map(BatimentsDTO::getId).filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) return dtos;
+        java.util.Map<Long, List<String>> parBatiment = new java.util.HashMap<>();
+        for (Object[] row : investissementRepo.nomsParBatiments(ids)) {
+            parBatiment.computeIfAbsent((Long) row[0], k -> new java.util.ArrayList<>()).add((String) row[1]);
+        }
+        dtos.forEach(d -> d.setInvestissements(parBatiment.getOrDefault(d.getId(), List.of())));
+        return dtos;
+    }
 
     private Utilisateurs currentUserOuNull() {
         try {
@@ -145,6 +159,7 @@ public class BatimentImpl implements BatimentServices {
     }
 
 
+    @Transactional
     @Override
     public String deleteOrRecover(String uniqueIdBatiment) {
         
@@ -176,6 +191,9 @@ public class BatimentImpl implements BatimentServices {
             // Suppression logique (Soft Delete)
             batiment.getInitialisation().setRemoved(true);
             batimentRepo.save(batiment);
+            // Retire seulement le lien avec les investissements (l'investissement reste
+            // intact) ; une récupération ultérieure repart sans lien, à relier au besoin.
+            investissementRepo.supprimerLiensBatiment(batiment.getId());
             
             if (currentUser != null) {
                 logs.addLogs(currentUser.getId(), batiment.getId(), "Batiment", 
@@ -200,9 +218,9 @@ public class BatimentImpl implements BatimentServices {
         if (currentUser != null && currentUser.getFarm() != null) {
             batiments = batimentRepo.findActiveByFarmId(currentUser.getFarm().getId()); // À créer dans le repo
         }
-        return batiments.stream()
+        return avecInvestissements(batiments.stream()
                         .map(BatimentsDTO::toDTO)
-                        .collect(Collectors.toList());
+                        .collect(Collectors.toList()));
     }
 
    @Override
@@ -225,9 +243,9 @@ public class BatimentImpl implements BatimentServices {
         if (currentUser != null && currentUser.getFarm() != null) {
             batiments = batimentRepo.searchBatimentsByFarm(currentUser.getFarm().getId(), search.trim());
         }
-        return batiments.stream()
+        return avecInvestissements(batiments.stream()
                         .map(BatimentsDTO::toDTO)
-                        .collect(Collectors.toList());
+                        .collect(Collectors.toList()));
     }
 
    @Override
@@ -283,9 +301,9 @@ public class BatimentImpl implements BatimentServices {
                     : batimentRepo.findActiveByFarmId(farmId, pageable);
         }
 
-        List<BatimentsDTO> dtoList = batimentPage.getContent().stream()
+        List<BatimentsDTO> dtoList = avecInvestissements(batimentPage.getContent().stream()
                 .map(BatimentsDTO::toDTO)
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()));
 
         return new PaginatedResponse<>(
                 dtoList,

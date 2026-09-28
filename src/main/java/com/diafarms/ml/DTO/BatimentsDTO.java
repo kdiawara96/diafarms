@@ -29,6 +29,8 @@ public class BatimentsDTO {
 	private Double superficieM2;
 	private Double latitude;
 	private Double longitude;
+	// Noms des investissements reliés (badge « Investissement : ... »), rempli par la liste.
+	private java.util.List<String> investissements;
 
 	public static BatimentsDTO toDTO(Batiment batiment) {
 		if (batiment == null) return null;

@@ -1,7 +1,9 @@
 package com.diafarms.ml.models;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.diafarms.ml.commons.Initialisation;
 
@@ -18,6 +20,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
@@ -88,6 +92,18 @@ public class Investissement {
     // La liaison vers la table pivot de ventilation
     @OneToMany(mappedBy = "investissement", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<InvestissementRepartition> repartitions;
+
+    // Poulaillers concernés par cet investissement (ex : construction d'un bâtiment),
+    // lien facultatif 0..N dans la table investissement_batiments (créée par
+    // ddl-auto, aucune donnée existante touchée). Pur lien de consultation : il ne
+    // change ni les répartitions ni l'amortissement des projets. Supprimer
+    // l'investissement ne retire que les lignes de liaison (jamais le poulailler) ;
+    // supprimer un poulailler retire aussi ses liens (BatimentImpl.deleteOrRecover).
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "investissement_batiments",
+            joinColumns = @JoinColumn(name = "investissement_id"),
+            inverseJoinColumns = @JoinColumn(name = "batiment_id"))
+    private Set<Batiment> batiments = new HashSet<>();
 
     public Double getAmortissementMensuel() {
         if (this.montant == null || this.dureeAmortissement == null || this.dureeAmortissement == 0) return 0.0;

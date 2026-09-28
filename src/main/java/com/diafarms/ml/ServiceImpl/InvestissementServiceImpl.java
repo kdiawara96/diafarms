@@ -46,6 +46,7 @@ public class InvestissementServiceImpl implements InvestissementService {
     private final TransactionService transactionService;
     private final OtherService otherService;
     private final LogsServices logs;
+    private final com.diafarms.ml.repository.BatimentRepo batimentRepo;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -69,6 +70,85 @@ public class InvestissementServiceImpl implements InvestissementService {
     private void ensureCanManage(Utilisateurs u) {
         if (!hasRole(u, "ADMIN") && !hasRole(u, "SUPER_ADMIN")) {
             throw new IllegalArgumentException("Vous n'avez pas les droits pour gérer les investissements.");
+        }
+    }
+
+    // Création d'un poulailler depuis un investissement : mêmes rôles que la page
+    // Poulaillers (réservée à ADMIN côté web, voir App.tsx /poulaillers blockRoles).
+    private void ensureCanCreateBatiment(Utilisateurs u) {
+        if (!hasRole(u, "ADMIN") && !hasRole(u, "SUPER_ADMIN")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour créer un poulailler.");
+        }
+        if (u.getFarm() == null) {
+            throw new IllegalArgumentException("Votre compte n'est rattaché à aucune ferme : impossible de créer un poulailler.");
+        }
+    }
+
+    // Relie les poulaillers existants (batimentIds, tous de la ferme de l'utilisateur)
+    // et crée les nouveaux (nouveauxPoulaillers) dans la transaction de l'appelant :
+    // la moindre erreur annule tout, investissement compris. remplacer = true
+    // (modification avec batimentIds fourni) : les liens absents de la liste sont
+    // retirés, jamais les poulaillers eux-mêmes. Aucun effet sur les répartitions.
+    private void appliquerPoulaillers(Investissement inv, List<String> batimentIds,
+            List<com.diafarms.ml.request.create.NouveauPoulaillerRequest> nouveaux,
+            Utilisateurs u, boolean remplacer) {
+        if (inv.getBatiments() == null) inv.setBatiments(new java.util.HashSet<>());
+
+        if (batimentIds != null) {
+            java.util.Set<com.diafarms.ml.models.Batiment> voulus = new java.util.LinkedHashSet<>();
+            for (String bid : batimentIds) {
+                if (bid == null || bid.isBlank()) continue;
+                com.diafarms.ml.models.Batiment b = batimentRepo.findByUniqueId(bid.trim());
+                if (b == null || (b.getInitialisation() != null && Boolean.TRUE.equals(b.getInitialisation().getRemoved()))
+                        || !com.diafarms.ml.commons.FermeScope.memeFerme(b.getFarm(), u)) {
+                    throw new IllegalArgumentException("Poulailler introuvable : " + bid);
+                }
+                voulus.add(b);
+            }
+            if (remplacer) {
+                inv.getBatiments().removeIf(b -> voulus.stream().noneMatch(v -> v.getId().equals(b.getId())));
+            }
+            for (com.diafarms.ml.models.Batiment v : voulus) {
+                if (inv.getBatiments().stream().noneMatch(b -> b.getId().equals(v.getId()))) {
+                    inv.getBatiments().add(v);
+                }
+            }
+        }
+
+        if (nouveaux == null || nouveaux.isEmpty()) return;
+        ensureCanCreateBatiment(u);
+        java.util.Set<String> nomsVus = new java.util.HashSet<>();
+        for (com.diafarms.ml.request.create.NouveauPoulaillerRequest np : nouveaux) {
+            String nom = np.getNom() != null ? np.getNom().trim() : "";
+            if (nom.isEmpty()) throw new IllegalArgumentException("Le nom du poulailler est obligatoire.");
+            if (nom.length() > 100) throw new IllegalArgumentException("Le nom du poulailler ne doit pas dépasser 100 caractères.");
+            if (np.getCapacite() == null || np.getCapacite() <= 0) {
+                throw new IllegalArgumentException("La capacité du poulailler « " + nom + " » doit être supérieure à 0.");
+            }
+            if (np.getSuperficieM2() != null && np.getSuperficieM2() <= 0) {
+                throw new IllegalArgumentException("La superficie du poulailler « " + nom + " » doit être supérieure à 0.");
+            }
+            String description = np.getDescription() != null && !np.getDescription().isBlank() ? np.getDescription().trim() : null;
+            if (description != null && description.length() > 500) {
+                throw new IllegalArgumentException("La description du poulailler « " + nom + " » ne doit pas dépasser 500 caractères.");
+            }
+            // Même règle que la création depuis Poulaillers (BatimentImpl.create).
+            if (!nomsVus.add(nom.toLowerCase()) || batimentRepo.existsByNomIgnoreCaseAndFarmId(nom, u.getFarm().getId())) {
+                throw new IllegalArgumentException("Un poulailler portant le nom « " + nom + " » existe déjà.");
+            }
+            com.diafarms.ml.models.Batiment b = new com.diafarms.ml.models.Batiment();
+            b.setUniqueId(UUID.randomUUID().toString());
+            b.setNom(nom);
+            b.setCapacite(np.getCapacite());
+            b.setSuperficieM2(np.getSuperficieM2());
+            b.setDescription(description);
+            b.setStatut(com.diafarms.ml.models.Batiment.StatutBatiment.DISPONIBLE);
+            b.setInitialisation(Initialisation.init());
+            b.setFarm(u.getFarm());
+            com.diafarms.ml.models.Batiment saved = batimentRepo.save(b);
+            logs.addLogs(u.getId(), saved.getId(), "Batiment",
+                    "Ajout d'un poulailler depuis l'investissement : " + inv.getNom());
+            inv.getBatiments().add(saved);
         }
     }
 
@@ -152,6 +232,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         }
 
     @Override
+    @Transactional(readOnly = true)
     public InvestissementDTO getInvestissementParUniqueId(String uniqueId) {
         Investissement inv = investissementRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Investissement introuvable avec l'ID: " + uniqueId));
@@ -223,6 +304,9 @@ public class InvestissementServiceImpl implements InvestissementService {
                 // Ajout bidirectionnel pour que CascadeType.ALL fasse son travail lors du .save()
                 investissement.getRepartitions().add(repartition);
         }
+
+    // Poulaillers concernés (liens + créations), même transaction : tout ou rien.
+    appliquerPoulaillers(investissement, dto.getBatimentIds(), dto.getNouveauxPoulaillers(), u, false);
 
     // 4. Une seule sauvegarde persistée en cascade (Investissement + Répartition)
     Investissement saved = investissementRepo.save(investissement);
@@ -299,6 +383,9 @@ public class InvestissementServiceImpl implements InvestissementService {
                         .filter(r -> r.getDateFin() == null)
                         .forEach(r -> r.setDateFin(LocalDate.now()));
         }
+
+        // Poulaillers concernés : liens (liste complète si fournie) + créations.
+        appliquerPoulaillers(inv, dto.getBatimentIds(), dto.getNouveauxPoulaillers(), currentUser, dto.getBatimentIds() != null);
 
         // 4. Métadonnées de mise à jour
         if (inv.getInitialisation() != null) {
@@ -545,6 +632,30 @@ public class InvestissementServiceImpl implements InvestissementService {
         return "Répartition supprimée avec succès.";
     }
    
+    private List<InvestissementDTO.PoulaillerLie> poulaillersLies(Investissement entity) {
+        if (entity.getBatiments() == null) return List.of();
+        return entity.getBatiments().stream()
+                .filter(b -> b.getInitialisation() == null || !Boolean.TRUE.equals(b.getInitialisation().getRemoved()))
+                .sorted(java.util.Comparator.comparing(com.diafarms.ml.models.Batiment::getNom, String.CASE_INSENSITIVE_ORDER))
+                .map(b -> new InvestissementDTO.PoulaillerLie(b.getUniqueId(), b.getNom(), b.getCapacite(), b.getSuperficieM2()))
+                .toList();
+    }
+
+    // Projets ayant occupé les poulaillers reliés (lecture seule, depuis les occupations).
+    private List<String> projetsUtilisateurs(Investissement entity) {
+        if (entity.getBatiments() == null) return List.of();
+        return entity.getBatiments().stream()
+                .filter(b -> b.getHistoriqueOccupations() != null)
+                .flatMap(b -> b.getHistoriqueOccupations().stream())
+                .map(o -> o.getProjet())
+                .filter(p -> p != null && (p.getInitialisation() == null || !Boolean.TRUE.equals(p.getInitialisation().getRemoved())))
+                .map(p -> p.getTitre() != null && !p.getTitre().isBlank() ? p.getTitre() : p.getCode())
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     private InvestissementDTO toDTO(Investissement entity) {
         if (entity == null) return null;
 
@@ -609,6 +720,8 @@ public class InvestissementServiceImpl implements InvestissementService {
                 .amortissementMensuel(amortissementMensuel)
                 .valeurNette(valeurNetteDynamique)
                 .repartitions(repartitionsDTO)
+                .batiments(poulaillersLies(entity))
+                .projetsUtilisateurs(projetsUtilisateurs(entity))
                 .build();
         }
 
