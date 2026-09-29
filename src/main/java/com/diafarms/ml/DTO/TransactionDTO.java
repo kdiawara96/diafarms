@@ -162,7 +162,7 @@ public class TransactionDTO {
         return switch (source) {
             case SOINS -> "un soin (fiche du projet, section Santé / Vétérinaire)";
             case VACCINATION -> "une vaccination (fiche du projet, section Santé / Vétérinaire)";
-            case ALIMENTATION -> "un achat d'aliment (bouton Modifier de la Comptabilité, ou fiche du projet, section Alimentation)";
+            case ALIMENTATION -> "un achat d'aliment (Comptabilité, crayon de la dépense de l'achat)";
             case INVESTISSEMENT -> "un investissement (page Investissements)";
             case SALAIRE -> "un paiement de salaire (page Salaires)";
             case PROJET_ACHAT_SUJETS -> "l'achat des sujets du projet (page Projets, modification du projet)";
