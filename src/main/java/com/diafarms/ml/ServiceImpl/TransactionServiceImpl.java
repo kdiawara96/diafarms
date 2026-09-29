@@ -303,6 +303,20 @@ public class TransactionServiceImpl implements TransactionService {
     static final String MESSAGE_ACHAT_ALIMENT_MANUEL =
             "Utilisez la catégorie Achat d'aliment du formulaire de sortie d'argent : elle enregistre aussi le stock";
 
+    // Un soin (Santé / Vétérinaire) concerne toujours UN projet (poulailler facultatif),
+    // jamais la ferme entière ni un site : refusé sans projet, quelle que soit la source
+    // (web, téléphone, ancienne version).
+    static final String MESSAGE_SANTE_SANS_PROJET =
+            "Une dépense Santé / Vétérinaire doit être liée à un projet (le poulailler est facultatif) : choisissez le projet soigné.";
+
+    static boolean estCategorieSante(String categorie) {
+        if (categorie == null) return false;
+        String c = java.text.Normalizer.normalize(categorie, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase().replaceAll("[^a-z]", "");
+        return c.equals("santeveterinaire") || c.equals("sante") || c.equals("veterinaire") || c.equals("soins")
+                || c.equals("soin") || c.equals("vaccin") || c.equals("vaccination") || c.equals("medicament");
+    }
+
     static boolean estCategorieAchatAliment(String categorie) {
         if (categorie == null) return false;
         String c = java.text.Normalizer.normalize(categorie, java.text.Normalizer.Form.NFD)
@@ -317,6 +331,20 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionDTO create(TransactionCreate data) {
         if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatAliment(data.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
+        }
+        boolean santeCreation = "SORTIE".equalsIgnoreCase(data.getType()) && estCategorieSante(data.getCategorie());
+        if (santeCreation) {
+            // « Commune » avec un seul projet concerné = ce projet.
+            if ((data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank())
+                    && data.getProjetsConcernesUniqueIds() != null && data.getProjetsConcernesUniqueIds().size() == 1) {
+                data.setProjetUniqueId(data.getProjetsConcernesUniqueIds().get(0));
+            }
+            if (data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank()) {
+                throw new IllegalArgumentException(MESSAGE_SANTE_SANS_PROJET);
+            }
+            data.setCommun(false);
+            data.setProjetsConcernesUniqueIds(null);
+            data.setSiteUniqueId(null); // lié au projet (son poulailler au besoin), pas à un site
         }
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -600,6 +628,7 @@ public class TransactionServiceImpl implements TransactionService {
         if (!etaitSortieAliment && t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
         }
+        boolean santeApres = t.getType() == TypeTransaction.SORTIE && estCategorieSante(t.getCategorie());
         if (Boolean.TRUE.equals(data.getCommun())) {
             t.setProjet(null);
             t.setProjetsConcernes(data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()
@@ -622,6 +651,16 @@ public class TransactionServiceImpl implements TransactionService {
         }
         if (data.getBatimentUniqueId() != null) {
             t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), utilisateurCourant));
+        }
+        if (santeApres) {
+            if (t.getProjet() == null && t.getProjetsConcernes() != null && t.getProjetsConcernes().size() == 1) {
+                t.setProjet(t.getProjetsConcernes().get(0));
+                t.setProjetsConcernes(new java.util.ArrayList<>());
+            }
+            if (t.getProjet() == null) {
+                throw new IllegalArgumentException(MESSAGE_SANTE_SANS_PROJET);
+            }
+            t.setSite(null);
         }
         if (t.getInitialisation() != null) {
             t.getInitialisation().setUpdatedAt(LocalDateTime.now());

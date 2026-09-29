@@ -295,6 +295,24 @@ check "achat non entamé : suppression acceptée" "code == 200"
 psql_run "UPDATE projets SET removed = true WHERE unique_id = '$AUTRE_P'" >/dev/null
 psql_run "DELETE FROM consommations_aliment WHERE unique_id = 'conso-7b-$SUFFIXE'" >/dev/null
 
+echo "== 8. Santé / Vétérinaire : toujours liée à un projet (poulailler facultatif)"
+api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Vaccin commun $SUFFIXE\",\"montant\":2000,\"categorie\":\"Santé / Vétérinaire\"}"
+check "soin sans projet (commune) : refusé" "code == 400 and 'doit être liée à un projet' in err"
+api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Vaccin un projet $SUFFIXE\",\"montant\":2000,\"categorie\":\"Santé / Vétérinaire\",\"projetsConcernesUniqueIds\":[\"$PROJET\"]}"
+check "soin « commune » avec un seul projet : enregistré pour ce projet" "code in (200, 201) and d['data'].get('projetUniqueId') == '$PROJET'"
+T_S1="$(jval "d['data']['uniqueId']")"
+SITE="$(psql_run "SELECT unique_id FROM sites WHERE farm_id = $FARM_ID AND coalesce(removed,false) = false LIMIT 1")"
+api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":false,\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"siteUniqueId\":\"$SITE\",\"date\":\"$AUJ\",\"description\":\"Vaccin poulailler $SUFFIXE\",\"montant\":1500,\"categorie\":\"Santé / Vétérinaire\"}"
+check "soin projet + poulailler : accepté, sans site" "code in (200, 201) and d['data'].get('projetUniqueId') == '$PROJET' and d['data'].get('batimentUniqueId') == '$BATIMENT' and d['data'].get('siteUniqueId') is None"
+T_S2="$(jval "d['data']['uniqueId']")"
+api PUT "/transactions/update/$T_S2" '{"commun":true}'
+check "soin passé en commun : refusé" "code == 400 and 'doit être liée à un projet' in err"
+api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Électricité $SUFFIXE\",\"montant\":800,\"categorie\":\"Électricité / Eau\"}"
+T_S3="$(jval "d['data']['uniqueId']")"
+api PUT "/transactions/update/$T_S3" '{"categorie":"Santé / Vétérinaire"}'
+check "dépense commune passée en Santé sans projet : refusée" "code == 400 and 'doit être liée à un projet' in err"
+for t in "$T_S1" "$T_S2" "$T_S3"; do psql_run "DELETE FROM transactions WHERE unique_id = '$t'" >/dev/null; done
+
 # Nettoyage : les transactions posées en base n'ont pas de saisie source.
 psql_run "DELETE FROM transactions WHERE categorie = 'Test verrou' AND ref LIKE 'VR-%'" >/dev/null
 
