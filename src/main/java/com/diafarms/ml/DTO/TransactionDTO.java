@@ -55,6 +55,8 @@ public class TransactionDTO {
     // le web l'affiche pour proposer "Confirmer/Refuser" à un admin/responsable.
     private String venteDemandeSuppressionParNom;
     private String categorie;
+    private Double quantite;
+    private Double prixUnitaire;
     private StatutTransaction statut;
     private String commentaireRejet;
     private String validateurNom;
@@ -108,6 +110,8 @@ public class TransactionDTO {
                         : List.of())
                 .description(t.getDescription())
                 .montant(t.getMontant())
+                .quantite(t.getQuantite())
+                .prixUnitaire(t.getPrixUnitaire())
                 .montantReel(t.getMontant()) // corrigé ensuite par enrichMontantReel si pertinent
                 .clientNom(t.getClient() != null ? t.getClient().getNom() : null) // idem si issue d'une vente
                 .categorie(t.getCategorie())

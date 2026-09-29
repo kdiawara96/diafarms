@@ -20,6 +20,8 @@ public class TransactionUpdate {
     private String description;
     private Double montant;
     private String categorie;
+    private Double quantite; // facultatif (Santé / Vétérinaire : obligatoire, > 0)
+    private Double prixUnitaire; // facultatif ; absent = montant / quantite
 
     // Rattachements facultatifs, même principe que `commun` (un `null` JSON est ambigu) :
     // absent (null) = inchangé ; chaîne VIDE = retirer le rattachement ; valeur = le définir.

@@ -345,6 +345,9 @@ public class TransactionServiceImpl implements TransactionService {
             data.setCommun(false);
             data.setProjetsConcernesUniqueIds(null);
             data.setSiteUniqueId(null); // lié au projet (son poulailler au besoin), pas à un site
+            if (data.getQuantite() == null || data.getQuantite() <= 0) {
+                throw new IllegalArgumentException("Indiquez la quantité (doses, flacons, sachets...) pour une dépense Santé / Vétérinaire.");
+            }
         }
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -356,6 +359,13 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(data.getDescription());
         t.setMontant(data.getMontant());
         t.setCategorie(data.getCategorie());
+        if (data.getQuantite() != null && data.getQuantite() > 0) {
+            t.setQuantite(data.getQuantite());
+            // Prix unitaire facultatif : absent, il se déduit du total payé.
+            t.setPrixUnitaire(data.getPrixUnitaire() != null && data.getPrixUnitaire() > 0
+                    ? data.getPrixUnitaire()
+                    : (data.getMontant() != null ? Math.round(data.getMontant() / data.getQuantite() * 100.0) / 100.0 : null));
+        }
         // Toute transaction est validée dès la création, quel que soit le créateur —
         // seul un rejet a posteriori (voir rejeter()) peut encore la faire basculer.
         // Avant : seul un ADMIN était auto-validé, les autres restaient EN_ATTENTE ;
@@ -625,6 +635,11 @@ public class TransactionServiceImpl implements TransactionService {
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(data.getMontant());
         if (data.getCategorie() != null) t.setCategorie(data.getCategorie());
+        if (data.getQuantite() != null) t.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
+        if (data.getPrixUnitaire() != null) t.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
+        if (t.getQuantite() != null && data.getPrixUnitaire() == null && (data.getMontant() != null || data.getQuantite() != null) && t.getMontant() != null) {
+            t.setPrixUnitaire(Math.round(t.getMontant() / t.getQuantite() * 100.0) / 100.0);
+        }
         if (!etaitSortieAliment && t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
         }

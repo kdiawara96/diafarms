@@ -93,6 +93,14 @@ public class Transaction {
     @Column(nullable = false)
     private String categorie;
 
+    // Facultatifs (colonnes nullables) : quantité achetée et prix unitaire, saisis pour une
+    // dépense Santé / Vétérinaire (doses, flacons...). montant reste le total payé.
+    @Column(name = "quantite")
+    private Double quantite;
+
+    @Column(name = "prix_unitaire")
+    private Double prixUnitaire;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private StatutTransaction statut = StatutTransaction.EN_ATTENTE;
