@@ -129,7 +129,7 @@ public class TransactionDTO {
                 .lieeAUneVente(isSourceVente(t.getSourceType()))
                 .verrouillee(isSourceVerrouillee(t.getSourceType()))
                 .saisieSource(saisieSourceGeneree(t.getSourceType()))
-                .rattachementModifiable(!isSourceVerrouillee(t.getSourceType()) && t.getSourceType() != SourceTransaction.ALIMENTATION)
+                .rattachementModifiable(!isSourceVerrouillee(t.getSourceType()) && !sansRattachement(t.getSourceType()))
                 // Une vente diverse n'a qu'une transaction, pointant directement vers elle ;
                 // œufs/réforme passent par leur ligne de répartition (enrichMontantReel).
                 .venteUniqueId(t.getSourceType() == SourceTransaction.VENTE_DIVERSE ? t.getSourceUniqueId() : null)
@@ -139,6 +139,13 @@ public class TransactionDTO {
     public static boolean isSourceVente(SourceTransaction s) {
         return s == SourceTransaction.VENTE_OEUFS || s == SourceTransaction.VENTE_REFORME
                 || s == SourceTransaction.VENTE_DIVERSE;
+    }
+
+    // Dépenses générées déjà réparties ailleurs (achat d'aliment : son projet ;
+    // investissement : amortissement par projet ; salaire : main-d'œuvre par projet) :
+    // pas de rattachement site/poulailler depuis la Comptabilité.
+    public static boolean sansRattachement(SourceTransaction s) {
+        return s == SourceTransaction.ALIMENTATION || s == SourceTransaction.INVESTISSEMENT || s == SourceTransaction.SALAIRE;
     }
 
     // Verrou comptable étendu : ventes + paiements/remboursements client — voir

@@ -652,6 +652,13 @@ public class TransactionServiceImpl implements TransactionService {
                     + TransactionDTO.saisieSourceGeneree(t.getSourceType())
                     + " : modifiez l'achat (prix, quantité, projet), la dépense suit.");
         }
+        // Investissement (amortissement par projet) et salaire (main-d'œuvre par projet) :
+        // déjà répartis, pas de site/poulailler à corriger ici.
+        if (TransactionDTO.sansRattachement(t.getSourceType())) {
+            throw new IllegalArgumentException("Cette transaction est générée automatiquement par "
+                    + TransactionDTO.saisieSourceGeneree(t.getSourceType())
+                    + " : elle est déjà répartie sur les projets, modifiez cette saisie à la place.");
+        }
         java.util.List<String> changes = new java.util.ArrayList<>();
         if (data.getType() != null && (t.getType() == null || !data.getType().equals(t.getType().name()))) changes.add("type");
         if (data.getDate() != null && !data.getDate().equals(t.getDate())) changes.add("date");

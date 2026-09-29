@@ -54,4 +54,9 @@ public interface ReformeRepo extends JpaRepository<Reforme, Long> {
     @Query("SELECT r.batiment.id, COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
         "WHERE r.batiment.farm.id = :farmId AND r.initialisation.removed = false GROUP BY r.batiment.id")
     java.util.List<Object[]> sumSujetsParBatimentDeLaFerme(@Param("farmId") Long farmId);
+
+    // Main-d'œuvre (MainOeuvreService) : sujets réformés par projet jusqu'à une date, pour une ferme.
+    @Query("SELECT r.projet.id, COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r WHERE r.projet.farm.id = :farmId "
+        + "AND r.initialisation.removed = false AND r.date <= :jusqua GROUP BY r.projet.id")
+    java.util.List<Object[]> sumSujetsParProjetJusqua(@Param("farmId") Long farmId, @Param("jusqua") java.time.LocalDate jusqua);
 }

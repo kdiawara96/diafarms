@@ -48,4 +48,9 @@ public interface MortaliteRepo extends JpaRepository<Mortalite, Long> {
     @Query("SELECT m.batiment.id, COALESCE(SUM(m.nombreMorts), 0) FROM Mortalite m " +
         "WHERE m.batiment.farm.id = :farmId AND m.initialisation.removed = false GROUP BY m.batiment.id")
     java.util.List<Object[]> sumMortsParBatimentDeLaFerme(@Param("farmId") Long farmId);
+
+    // Main-d'œuvre (MainOeuvreService) : morts cumulés par projet jusqu'à une date, pour une ferme.
+    @Query("SELECT m.projet.id, COALESCE(SUM(m.nombreMorts), 0) FROM Mortalite m WHERE m.projet.farm.id = :farmId "
+        + "AND m.initialisation.removed = false AND m.date <= :jusqua GROUP BY m.projet.id")
+    java.util.List<Object[]> sumMortsParProjetJusqua(@Param("farmId") Long farmId, @Param("jusqua") java.time.LocalDate jusqua);
 }

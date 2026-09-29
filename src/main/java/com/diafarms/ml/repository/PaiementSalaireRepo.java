@@ -24,4 +24,9 @@ public interface PaiementSalaireRepo extends JpaRepository<PaiementSalaire, Long
     // un conflit.
     @Query("SELECT p FROM PaiementSalaire p WHERE p.salaire.id = :salaireId AND p.initialisation.removed = false")
     Page<PaiementSalaire> findBySalaireId(@Param("salaireId") Long salaireId, Pageable pageable);
+
+    // Main-d'œuvre (MainOeuvreService) : tous les paiements vivants d'une ferme, employé chargé.
+    @Query("SELECT p FROM PaiementSalaire p JOIN FETCH p.salaire s JOIN FETCH s.employe "
+            + "WHERE s.farm.id = :farmId AND p.initialisation.removed = false")
+    java.util.List<PaiementSalaire> findActifsByFarmId(@Param("farmId") Long farmId);
 }
