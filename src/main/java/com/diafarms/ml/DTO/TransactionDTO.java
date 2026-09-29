@@ -149,7 +149,8 @@ public class TransactionDTO {
     // investissement : amortissement par projet ; salaire : main-d'œuvre par projet) :
     // pas de rattachement site/poulailler depuis la Comptabilité.
     public static boolean sansRattachement(SourceTransaction s) {
-        return s == SourceTransaction.ALIMENTATION || s == SourceTransaction.INVESTISSEMENT || s == SourceTransaction.SALAIRE;
+        return s == SourceTransaction.ALIMENTATION || s == SourceTransaction.MEDICAMENT
+                || s == SourceTransaction.INVESTISSEMENT || s == SourceTransaction.SALAIRE;
     }
 
     // Verrou comptable étendu : ventes + paiements/remboursements client — voir
@@ -167,6 +168,7 @@ public class TransactionDTO {
             case SOINS -> "un soin (fiche du projet, section Santé / Vétérinaire)";
             case VACCINATION -> "une vaccination (fiche du projet, section Santé / Vétérinaire)";
             case ALIMENTATION -> "un achat d'aliment (Comptabilité, crayon de la dépense de l'achat)";
+            case MEDICAMENT -> "un achat de médicament (Comptabilité, crayon de la dépense de l'achat)";
             case INVESTISSEMENT -> "un investissement (page Investissements)";
             case SALAIRE -> "un paiement de salaire (page Salaires)";
             case PROJET_ACHAT_SUJETS -> "l'achat des sujets du projet (page Projets, modification du projet)";

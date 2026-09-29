@@ -165,6 +165,7 @@ public class ProjetImpl implements ProjetServices {
     private final ConsommationAlimentRepo consommationAlimentRepo;
     private final TransactionRepo transactionRepo;
     private final SoinsRepo soinsRepo;
+    private final com.diafarms.ml.repository.AchatMedicamentRepo achatMedicamentRepo;
     private final OccupationBatimentRepo occupationBatimentRepo;
     private final BatimentRepo batimentRepo;
     private final InvestissementRepartitionRepository investissementRepartitionRepo;
@@ -215,6 +216,9 @@ public class ProjetImpl implements ProjetServices {
             if (removed || (a.getCoutTotal() != null && a.getCoutTotal() > 0)) {
                 transactionService.setRemovedBySource(a.getUniqueId(), removed);
             }
+        }
+        for (com.diafarms.ml.models.AchatMedicament am : achatMedicamentRepo.findActifsByProjetId(projet.getId())) {
+            transactionService.setRemovedBySource(am.getUniqueId(), removed);
         }
         for (Soins so : soinsRepo.findByProjetUniqueIdAndInitialisationRemovedFalse(uid)) {
             if (removed || (so.getCoutTotal() != null && so.getCoutTotal() > 0)) {

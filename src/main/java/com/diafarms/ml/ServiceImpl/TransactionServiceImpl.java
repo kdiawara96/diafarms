@@ -345,9 +345,9 @@ public class TransactionServiceImpl implements TransactionService {
             data.setCommun(false);
             data.setProjetsConcernesUniqueIds(null);
             data.setSiteUniqueId(null); // lié au projet (son poulailler au besoin), pas à un site
-            if (data.getQuantite() == null || data.getQuantite() <= 0) {
-                throw new IllegalArgumentException("Indiquez la quantité (doses, flacons, sachets...) pour une dépense Santé / Vétérinaire.");
-            }
+            // Saisie manuelle = service de santé (consultation, visite...) : quantité (nombre
+            // de jours) facultative. Un achat de médicament passe par /medicaments/create
+            // (dépense + stock).
         }
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -701,7 +701,7 @@ public class TransactionServiceImpl implements TransactionService {
     private TransactionDTO updateRattachementSeul(Transaction t, TransactionUpdate data) {
         // Un achat d'aliment appartient à son projet (site du projet) : pas de rattachement
         // à corriger ici, tout se modifie sur l'achat.
-        if (t.getSourceType() == SourceTransaction.ALIMENTATION) {
+        if (t.getSourceType() == SourceTransaction.ALIMENTATION || t.getSourceType() == SourceTransaction.MEDICAMENT) {
             throw new IllegalArgumentException("Cette transaction est générée automatiquement par "
                     + TransactionDTO.saisieSourceGeneree(t.getSourceType())
                     + " : modifiez l'achat (prix, quantité, projet), la dépense suit.");

@@ -80,6 +80,15 @@ public class Soins {
     @Column(length = 500)
     private String observations;
 
+    // Soin pris dans le stock de médicaments du projet (voir AchatMedicament) : produit et
+    // unite désignent le médicament acheté, quantite la quantité utilisée. null/false =
+    // produit noté librement (don, vaccin fourni gratuitement...), sans effet sur le stock.
+    @Column(name = "depuis_stock")
+    private Boolean depuisStock;
+
+    @Column(name = "unite", length = 30)
+    private String unite;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;

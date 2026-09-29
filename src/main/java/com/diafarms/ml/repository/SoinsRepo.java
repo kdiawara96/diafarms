@@ -34,4 +34,8 @@ public interface SoinsRepo extends JpaRepository<Soins, Long> {
 
     @Query("SELECT s FROM Soins s WHERE s.projet.uniqueId = :projetUniqueId AND s.initialisation.removed = false")
     List<Soins> findByProjetUniqueIdAndInitialisationRemovedFalse(@Param("projetUniqueId") String projetUniqueId);
+
+    // Stock de médicaments (MedicamentService) : soins pris dans le stock d'un projet.
+    @Query("SELECT s FROM Soins s WHERE s.projet.id = :projetId AND s.depuisStock = true AND s.initialisation.removed = false")
+    List<Soins> findDepuisStockByProjetId(@Param("projetId") Long projetId);
 }

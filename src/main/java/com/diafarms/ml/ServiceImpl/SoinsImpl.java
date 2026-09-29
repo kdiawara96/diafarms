@@ -42,6 +42,16 @@ public class SoinsImpl implements SoinsService {
     private final OtherService otherService;
     private final TransactionService transactionService;
     private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
+    private final com.diafarms.ml.commons.ProjetsFerme projetsFerme;
+    private final MedicamentService medicamentService;
+
+    // Soin d'une autre ferme : même réponse qu'introuvable.
+    private Soins soinDeLaFerme(String uniqueId) {
+        Soins s = soinsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Soins introuvable : " + uniqueId));
+        projetsFerme.verifier(s.getProjet(), "Soins introuvable : " + uniqueId);
+        return s;
+    }
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -90,10 +100,13 @@ public class SoinsImpl implements SoinsService {
     @Override
     @Transactional
     public SoinsDTO create(SoinsCreate data) {
-        Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
-                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
+        Projets projet = projetsFerme.charger(data.getProjetUniqueId());
 
         Utilisateurs currentUser = getCurrentUserSafe();
+        boolean depuisStock = Boolean.TRUE.equals(data.getDepuisStock());
+        if (depuisStock) {
+            medicamentService.verifierConsommation(projet, data.getProduit(), data.getUnite(), data.getQuantite(), null);
+        }
 
         Soins s = new Soins();
         s.setUniqueId(java.util.UUID.randomUUID().toString());
@@ -107,6 +120,8 @@ public class SoinsImpl implements SoinsService {
         s.setCoutTotal(data.getCoutTotal());
         s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         s.setObservations(data.getObservations());
+        s.setDepuisStock(depuisStock ? Boolean.TRUE : null);
+        s.setUnite(depuisStock ? data.getUnite().trim() : (data.getUnite() != null && !data.getUnite().isBlank() ? data.getUnite().trim() : null));
         s.setInitialisation(Initialisation.init());
 
         s.setBatiment(poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId()));
@@ -128,8 +143,7 @@ public class SoinsImpl implements SoinsService {
     @Override
     @Transactional
     public SoinsDTO update(String uniqueId, SoinsUpdate data) {
-        Soins s = soinsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Soins introuvable : " + uniqueId));
+        Soins s = soinDeLaFerme(uniqueId);
 
         if (data.getDate() != null) s.setDate(LocalDate.parse(data.getDate()));
         if (data.getHeure() != null) s.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
@@ -140,6 +154,12 @@ public class SoinsImpl implements SoinsService {
         if (data.getCoutTotal() != null) s.setCoutTotal(data.getCoutTotal());
         if (data.getModeAdministration() != null) s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         if (data.getObservations() != null) s.setObservations(data.getObservations());
+        if (data.getDepuisStock() != null) s.setDepuisStock(data.getDepuisStock() ? Boolean.TRUE : null);
+        if (data.getUnite() != null) s.setUnite(data.getUnite().isBlank() ? null : data.getUnite().trim());
+        if (Boolean.TRUE.equals(s.getDepuisStock())) {
+            // Sa propre consommation actuelle est rendue avant de vérifier la nouvelle.
+            medicamentService.verifierConsommation(s.getProjet(), s.getProduit(), s.getUnite(), s.getQuantite(), s.getUniqueId());
+        }
         s.setBatiment(poulaillerObligatoire.resoudrePourModification(s.getProjet(), s.getBatiment(), data.getBatimentUniqueId()));
         if (s.getInitialisation() != null) {
             s.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
@@ -159,9 +179,12 @@ public class SoinsImpl implements SoinsService {
     @Override
     @Transactional
     public String deleteOrRecover(String uniqueId) {
-        Soins s = soinsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Soins introuvable : " + uniqueId));
+        Soins s = soinDeLaFerme(uniqueId);
 
+        // Restaurer un soin pris dans le stock : il faut que le stock le permette encore.
+        if (Boolean.TRUE.equals(s.getInitialisation().getRemoved()) && Boolean.TRUE.equals(s.getDepuisStock())) {
+            medicamentService.verifierConsommation(s.getProjet(), s.getProduit(), s.getUnite(), s.getQuantite(), s.getUniqueId());
+        }
         s.getInitialisation().setRemoved(!s.getInitialisation().getRemoved());
         soinsRepo.save(s);
         boolean removed = s.getInitialisation().getRemoved();

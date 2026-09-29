@@ -306,14 +306,15 @@ api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":false,\"projetUni
 check "soin projet + poulailler : accepté, sans site" "code in (200, 201) and d['data'].get('projetUniqueId') == '$PROJET' and d['data'].get('batimentUniqueId') == '$BATIMENT' and d['data'].get('siteUniqueId') is None"
 T_S2="$(jval "d['data']['uniqueId']")"
 api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":false,\"projetUniqueId\":\"$PROJET\",\"date\":\"$AUJ\",\"description\":\"Vaccin sans quantité $SUFFIXE\",\"montant\":1500,\"categorie\":\"Santé / Vétérinaire\"}"
-check "soin sans quantité : refusé" "code == 400 and 'quantité' in err"
+check "service de santé sans nombre de jours : accepté (quantité facultative)" "code in (200, 201) and d['data'].get('quantite') is None"
+T_S4="$(jval "d['data']['uniqueId']")"
 api PUT "/transactions/update/$T_S2" '{"commun":true}'
 check "soin passé en commun : refusé" "code == 400 and 'doit être liée à un projet' in err"
 api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Électricité $SUFFIXE\",\"montant\":800,\"categorie\":\"Électricité / Eau\"}"
 T_S3="$(jval "d['data']['uniqueId']")"
 api PUT "/transactions/update/$T_S3" '{"categorie":"Santé / Vétérinaire"}'
 check "dépense commune passée en Santé sans projet : refusée" "code == 400 and 'doit être liée à un projet' in err"
-for t in "$T_S1" "$T_S2" "$T_S3"; do psql_run "DELETE FROM transactions WHERE unique_id = '$t'" >/dev/null; done
+for t in "$T_S1" "$T_S2" "$T_S3" "$T_S4"; do psql_run "DELETE FROM transactions WHERE unique_id = '$t'" >/dev/null; done
 
 # Nettoyage : les transactions posées en base n'ont pas de saisie source.
 psql_run "DELETE FROM transactions WHERE categorie = 'Test verrou' AND ref LIKE 'VR-%'" >/dev/null

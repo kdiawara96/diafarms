@@ -29,6 +29,8 @@ public class SoinsDTO {
     private Double coutTotal;
     private String modeAdministration; // renseigné seulement si type = VACCINATION
     private String observations;
+    private Boolean depuisStock;
+    private String unite;
     private String projetCode;
     private String projetUniqueId;
     private String batimentNom;
@@ -49,6 +51,8 @@ public class SoinsDTO {
                 .coutTotal(s.getCoutTotal())
                 .modeAdministration(s.getModeAdministration())
                 .observations(s.getObservations())
+                .depuisStock(s.getDepuisStock())
+                .unite(s.getUnite())
                 .projetCode(s.getProjet() != null ? s.getProjet().getCode() : null)
                 .projetUniqueId(s.getProjet() != null ? s.getProjet().getUniqueId() : null)
                 .batimentNom(s.getBatiment() != null ? s.getBatiment().getNom() : null)

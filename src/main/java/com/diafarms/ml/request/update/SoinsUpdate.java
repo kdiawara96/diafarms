@@ -16,4 +16,6 @@ public class SoinsUpdate {
     private Double coutTotal;
     private List<String> modeAdministration;
     private String observations;
+    private Boolean depuisStock; // true = pris dans le stock de médicaments du projet
+    private String unite; // unité du médicament en stock (flacon, ml, sachet...)
 }

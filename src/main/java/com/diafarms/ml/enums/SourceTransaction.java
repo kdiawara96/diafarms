@@ -17,5 +17,9 @@ public enum SourceTransaction {
     // Paiement d'un client (voir PaiementClient) — sourceUniqueId = uniqueId du paiement.
     PAIEMENT_CLIENT,
     // Remboursement au client (voir RemboursementClient) — 17 caractères, varchar(20).
-    REMBOURSEMENT_CLI
+    REMBOURSEMENT_CLI,
+    // Achat de médicament ou de vaccin (voir AchatMedicament) : dépense + entrée en stock
+    // du projet. Valeur ajoutée à la contrainte CHECK de transactions.source_type à la main
+    // (docs/sql/2026-09-29_source_type_medicament.sql).
+    MEDICAMENT
 }
