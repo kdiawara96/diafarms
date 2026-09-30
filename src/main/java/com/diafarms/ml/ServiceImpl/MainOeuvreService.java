@@ -118,7 +118,9 @@ public class MainOeuvreService {
 
     @Transactional(readOnly = true)
     public List<AffectationPersonnelDTO> affectations(String personnelUniqueId) {
-        Personnel p = personnel(personnelUniqueId, utilisateur());
+        Utilisateurs u = utilisateur();
+        ensureCanManage(u); // les affectations mènent aux salaires : même population
+        Personnel p = personnel(personnelUniqueId, u);
         return affectationRepo.findActivesByPersonnelId(p.getId()).stream().map(AffectationPersonnelDTO::fromEntity).toList();
     }
 
@@ -190,6 +192,20 @@ public class MainOeuvreService {
         return m;
     }
 
+    // Fin réelle d'un projet pour la répartition : un projet clôturé s'arrête à sa
+    // clôture (date de libération de ses poulaillers, posée à la clôture, voir
+    // ProjetImpl.libererOccupationsActives), à défaut à sa fin prévue ; un projet NON
+    // clôturé est toujours en cours, même au-delà de sa fin prévue (null = pas de fin).
+    private static LocalDate finEffective(Projets p) {
+        boolean cloture = p.getInitialisation() != null && Boolean.TRUE.equals(p.getInitialisation().getArchive());
+        if (!cloture) return null;
+        LocalDate liberation = p.getOccupations() == null ? null : p.getOccupations().stream()
+                .map(com.diafarms.ml.models.OccupationBatiment::getDateSortie)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDate::compareTo).orElse(null);
+        return liberation != null ? liberation : p.getFinPrevue();
+    }
+
     // Poids de chaque projet en cours sur le mois : ses sujets vivants à la fin du mois.
     private Map<Long, Double> poidsDuMois(Long farmId, List<Projets> projets, YearMonth ym) {
         LocalDate d1 = ym.atDay(1);
@@ -199,7 +215,8 @@ public class MainOeuvreService {
         Map<Long, Double> poids = new HashMap<>();
         for (Projets p : projets) {
             if (p.getDebut() == null || p.getDebut().isAfter(d2)) continue;
-            if (p.getFinPrevue() != null && p.getFinPrevue().isBefore(d1)) continue;
+            LocalDate fin = finEffective(p);
+            if (fin != null && fin.isBefore(d1)) continue;
             int vivants = (p.getNbSujets() == null ? 0 : p.getNbSujets()) - morts.getOrDefault(p.getId(), 0) - reformes.getOrDefault(p.getId(), 0);
             if (vivants > 0) poids.put(p.getId(), (double) vivants);
         }
@@ -208,6 +225,8 @@ public class MainOeuvreService {
 
     @Transactional(readOnly = true)
     public CoutMainOeuvreDTO coutProjet(String projetUniqueId) {
+        // Détail par employé et par mois des salaires payés : même population que les salaires.
+        ensureCanManage(utilisateur());
         Projets cible = projetsFerme.charger(projetUniqueId);
         Long farmId = cible.getFarm().getId();
         Map<Long, List<AffectationPersonnel>> affParEmploye = affectationRepo.findActivesByFarmId(farmId).stream()
