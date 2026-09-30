@@ -317,6 +317,23 @@ public class TransactionServiceImpl implements TransactionService {
                 || c.equals("soin") || c.equals("vaccin") || c.equals("vaccination") || c.equals("medicament");
     }
 
+    // Achat de médicament : il passe par « Santé / Vétérinaire » puis « Achat de médicament
+    // ou de vaccin » (MedicamentService), qui enregistre aussi le stock du projet. Une
+    // sortie manuelle « Médicament » payerait le produit sans l'ajouter au stock.
+    static final String MESSAGE_ACHAT_MEDICAMENT_MANUEL =
+            "Pour un achat de médicament, choisissez la catégorie Santé / Vétérinaire puis « Achat de médicament ou de vaccin » : "
+            + "il enregistre aussi le stock du projet";
+
+    static boolean estCategorieAchatMedicament(String categorie) {
+        if (categorie == null) return false;
+        String c = java.text.Normalizer.normalize(categorie, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toLowerCase().replaceAll("[^a-z]", "");
+        return c.equals("medicament") || c.equals("medicaments") || c.equals("medicamment") || c.equals("medicamments")
+                || c.equals("achatmedicament") || c.equals("achatmedicaments") || c.equals("achatdemedicament")
+                || c.equals("achatdemedicaments") || c.equals("medoc") || c.equals("medocs")
+                || c.equals("produitveterinaire") || c.equals("produitsveterinaires");
+    }
+
     static boolean estCategorieAchatAliment(String categorie) {
         if (categorie == null) return false;
         String c = java.text.Normalizer.normalize(categorie, java.text.Normalizer.Form.NFD)
@@ -329,8 +346,21 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionDTO create(TransactionCreate data) {
+        // Sans type, TypeTransaction.valueOf(null) levait une NullPointerException (500).
+        if (data.getType() == null || data.getType().isBlank()) {
+            throw new IllegalArgumentException("Type de transaction obligatoire (ENTREE ou SORTIE).");
+        }
+        try {
+            TypeTransaction.valueOf(data.getType().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Type de transaction inconnu : " + data.getType() + " (attendu ENTREE ou SORTIE).");
+        }
+        data.setType(data.getType().trim().toUpperCase());
         if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatAliment(data.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
+        }
+        if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatMedicament(data.getCategorie())) {
+            throw new IllegalArgumentException(MESSAGE_ACHAT_MEDICAMENT_MANUEL);
         }
         boolean santeCreation = "SORTIE".equalsIgnoreCase(data.getType()) && estCategorieSante(data.getCategorie());
         if (santeCreation) {
@@ -632,6 +662,7 @@ public class TransactionServiceImpl implements TransactionService {
         // Garder "Aliment" sur une ancienne sortie est permis ; y passer (par la catégorie
         // OU par le type Entrée -> Sortie), non : état relevé avant toute modification.
         boolean etaitSortieAliment = t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie());
+        boolean etaitSortieMedicament = t.getType() == TypeTransaction.SORTIE && estCategorieAchatMedicament(t.getCategorie());
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
         if (data.getDate() != null) t.setDate(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate()));
@@ -645,6 +676,9 @@ public class TransactionServiceImpl implements TransactionService {
         }
         if (!etaitSortieAliment && t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
+        }
+        if (!etaitSortieMedicament && t.getType() == TypeTransaction.SORTIE && estCategorieAchatMedicament(t.getCategorie())) {
+            throw new IllegalArgumentException(MESSAGE_ACHAT_MEDICAMENT_MANUEL);
         }
         boolean santeApres = t.getType() == TypeTransaction.SORTIE && estCategorieSante(t.getCategorie());
         if (Boolean.TRUE.equals(data.getCommun())) {
