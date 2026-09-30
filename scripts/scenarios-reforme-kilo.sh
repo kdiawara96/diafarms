@@ -285,7 +285,8 @@ check "poids nul : 400" "code == 400 and 'positif' in $(err)"
 # ---------------------------------------------------------------------------
 echo "== 5. Statistiques exactes sur une date propre à ce passage"
 for _ in 1 2 3 4 5; do
-  JOUR="$(python3 -c 'import random,datetime; print(datetime.date(1950,1,1)+datetime.timedelta(days=random.randint(0,36000)))')"
+  # Jour passé (une date dans le futur est refusée, voir DateSaisie).
+  JOUR="$(python3 -c 'import random,datetime; d0=datetime.date(1950,1,1); print(d0+datetime.timedelta(days=random.randint(0,(datetime.date.today()-d0).days-2)))')"
   api GET "/ventes-reforme/stats?dateDebut=$JOUR&dateFin=$JOUR" ""
   python3 -c "import json;import sys; sys.exit(0 if json.load(open('$TMP/body'))['data']['total']['nombreVentes'] == 0 else 1)" && break
 done

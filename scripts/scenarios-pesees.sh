@@ -267,9 +267,10 @@ check "statut=EN_COURS : contient S4, pas S1" \
 get "/pesees/sessions/list?projetUniqueId=$PROJET&page=0&size=100"
 check "sans statut : EN_COURS d'abord, puis TERMINEE" \
   "code == 200 and (lambda st: st == sorted(st, key=lambda x: 0 if x == 'EN_COURS' else 1))([s['statut'] for s in d['data']['data']]) and d['data']['data'][0]['statut'] == 'EN_COURS'"
-# Dates futures (devant les sessions du 25/09/2026 de ce passage).
+# Dates récentes, après les sessions du 25/09/2026 de ce passage (une date dans le futur
+# est refusée, voir DateSaisie).
 S5="$(uuid)"; S6="$(uuid)"
-D5="$(date -d '+10 years -1 day' +%Y-%m-%dT%H:%M:%S)"; D6="$(date -d '+10 years' +%Y-%m-%dT%H:%M:%S)"
+D5="$(date -d '-1 day -1 minute' +%Y-%m-%dT%H:%M:%S)"; D6="$(date -d '-1 minute' +%Y-%m-%dT%H:%M:%S)"
 post_sync "$(payload "$S5" "$PROJET" EN_COURS "" "" "$D5")"
 post_sync "$(payload "$S6" "$PROJET" EN_COURS "" "" "$D6")"
 get "/pesees/sessions/list?projetUniqueId=$PROJET&statut=EN_COURS&page=0&size=100"
@@ -421,8 +422,11 @@ post_sync "$(payload "$SM" "$PROJET" TERMINEE "2026-09-24T08:02:00" "$PESM" "$DJ
 check "terminer (téléphone) avec dateFin < derniereDatePesee : 400" "code == 400 and 'dernière pesée' in ' '.join(d.get('errors') or [])"
 LOIN="$(date -d '+3 days' +%Y-%m-%dT%H:%M:%S)"; DEMAIN_MOINS="$(date -d '+1 day' +%Y-%m-%d)"
 web POST "/pesees/sessions/$SM/terminer" "{\"dateFin\": \"$LOIN\"}"
-check "dateFin à +3 jours : 200, ramenée à maintenant (≤ +1 jour), version 7" \
-  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'][:10] <= '$DEMAIN_MOINS' and d['data']['dateFin'][:10] < '${LOIN:0:10}' and d['data']['version'] == 7"
+check "dateFin à +3 jours : 400 « La date ne peut pas être dans le futur »" \
+  "code == 400 and 'dans le futur' in ' '.join(d.get('errors') or [])"
+web POST "/pesees/sessions/$SM/terminer" "{\"dateFin\": \"$(date +%Y-%m-%dT%H:%M:%S)\"}"
+check "dateFin maintenant : 200, TERMINEE, version 7" \
+  "code == 200 and d['data']['statut'] == 'TERMINEE' and d['data']['dateFin'][:10] <= '$DEMAIN_MOINS' and d['data']['version'] == 7"
 SF="$(uuid)"; TOL="$(date -d '+12 hours' +%Y-%m-%dT%H:%M:%S)"
 post_sync "$(payload "$SF" "$PROJET" TERMINEE "$TOL" "$(uuid)|3|6.0|$T1|false")"
 check "téléphone : dateFin à +12 h (tolérance 1 jour) acceptée telle quelle" \

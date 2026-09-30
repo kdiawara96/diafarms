@@ -86,7 +86,8 @@ read -r PROJET BATIMENT < <(psql_run "SELECT p.unique_id || ' ' || b.unique_id F
   WHERE p.farm_id = $FARM_ID AND p.removed = false ORDER BY p.id LIMIT 1")
 SUFFIXE="$(uuid | cut -c1-8)"
 AUJ="$(date +%F)"
-DEMAIN="$(date -d tomorrow +%F)"
+# Après-demain : demain reste accepté (tolérance d'un jour, voir DateSaisie).
+DEMAIN="$(date -d '+2 days' +%F)"
 JOUR_LIVRAISON="$(date -d '6 days ago' +%F)"
 
 api POST /magasins/create "{\"nom\":\"Boutique 131 $SUFFIXE\",\"type\":\"VENTE\"}"
