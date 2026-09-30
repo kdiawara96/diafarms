@@ -50,7 +50,10 @@ public class TransactionControllers {
             // restreint à ses propres ventes.
             @RequestParam(required = false) String vendeurUniqueId,
             @RequestParam(required = false) String dateDebut,
-            @RequestParam(required = false) String dateFin) {
+            @RequestParam(required = false) String dateFin,
+            // "VENTE_CLIENT" = seulement les ventes à un client (valeur, pas d'argent) ;
+            // "HORS_VENTE_CLIENT" = tout sauf elles (avec type=ENTREE : l'argent reçu).
+            @RequestParam(required = false) String nature) {
         try {
             TypeTransaction typeEnum = (type != null && !type.isBlank() && !type.equalsIgnoreCase("tous"))
                     ? TypeTransaction.valueOf(type.toUpperCase()) : null;
@@ -60,7 +63,7 @@ public class TransactionControllers {
             LocalDate dateFinParam = (dateFin != null && !dateFin.isBlank()) ? LocalDate.parse(dateFin) : null;
 
             PaginatedResponse<TransactionDTO> response = service.list(page, size, search, typeEnum, statutEnum, projetUniqueId,
-                    financierUniqueId, vendeurUniqueId, dateDebutParam, dateFinParam);
+                    financierUniqueId, vendeurUniqueId, dateDebutParam, dateFinParam, nature);
             return ApiResponse.createResponse("Liste des transactions récupérée", HttpStatus.OK, response, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Paramètre type/statut invalide", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));

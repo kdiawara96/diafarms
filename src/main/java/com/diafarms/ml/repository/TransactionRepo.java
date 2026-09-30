@@ -19,6 +19,16 @@ import com.diafarms.ml.models.Transaction;
 @Repository
 public interface TransactionRepo extends JpaRepository<Transaction, Long> {
 
+    // Vente À UN CLIENT : transaction de vente (œufs, réforme) dont la vente a un client.
+    // Elle porte la VALEUR vendue, pas de l'argent : l'argent de ce client entre par ses
+    // paiements (transactions PAIEMENT_CLIENT). Filtre "nature" de la Comptabilité
+    // (voir TransactionServiceImpl.list) : venteClient = seulement ces lignes,
+    // horsVenteClient = tout sauf elles (les "Entrées" = argent reçu).
+    String VENTE_CLIENT = "(EXISTS (SELECT r1.id FROM VenteOeufsRepartition r1 WHERE r1.uniqueId = t.sourceUniqueId "
+            + "AND t.sourceType = com.diafarms.ml.enums.SourceTransaction.VENTE_OEUFS AND r1.venteOeufs.client IS NOT NULL) "
+            + "OR EXISTS (SELECT r2.id FROM VenteReformeRepartition r2 WHERE r2.uniqueId = t.sourceUniqueId "
+            + "AND t.sourceType = com.diafarms.ml.enums.SourceTransaction.VENTE_REFORME AND r2.venteReforme.client IS NOT NULL))";
+
     Optional<Transaction> findByUniqueId(String uniqueId);
 
     // Retrouve la transaction "recette" générée automatiquement par une vente
@@ -51,6 +61,8 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     @Query("SELECT DISTINCT t FROM Transaction t LEFT JOIN t.projet p LEFT JOIN t.projetsConcernes pc WHERE t.farm.id = :farmId " +
         "AND t.initialisation.removed = false " +
         "AND (:hasType = false OR t.type = :type) " +
+        "AND (:venteClient = false OR " + VENTE_CLIENT + ") " +
+        "AND (:horsVenteClient = false OR NOT (" + VENTE_CLIENT + ")) " +
         "AND (:hasStatut = false OR t.statut = :statut) " +
         "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId OR pc.uniqueId = :projetUniqueId) " +
         "AND t.date >= :dateDebut AND t.date <= :dateFin " +
@@ -64,6 +76,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
                               @Param("dateDebut") LocalDate dateDebut,
                               @Param("dateFin") LocalDate dateFin,
                               @Param("hasSearch") boolean hasSearch, @Param("search") String search,
+                              @Param("venteClient") boolean venteClient, @Param("horsVenteClient") boolean horsVenteClient,
                               Pageable pageable);
 
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.farm.id = :farmId AND t.initialisation.removed = false AND t.statut = :statut")
@@ -104,6 +117,8 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     @Query("SELECT DISTINCT t FROM Transaction t JOIN t.projet p WHERE p.id IN :projetIds " +
         "AND t.initialisation.removed = false " +
         "AND (:hasType = false OR t.type = :type) " +
+        "AND (:venteClient = false OR " + VENTE_CLIENT + ") " +
+        "AND (:horsVenteClient = false OR NOT (" + VENTE_CLIENT + ")) " +
         "AND (:hasStatut = false OR t.statut = :statut) " +
         "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId) " +
         "AND t.date >= :dateDebut AND t.date <= :dateFin " +
@@ -117,7 +132,8 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
                                     @Param("dateDebut") LocalDate dateDebut,
                                     @Param("dateFin") LocalDate dateFin,
                                     @Param("hasSearch") boolean hasSearch, @Param("search") String search,
-                                    Pageable pageable);
+                                    @Param("venteClient") boolean venteClient, @Param("horsVenteClient") boolean horsVenteClient,
+                              Pageable pageable);
 
     // dateDebut/dateFin ATTENDUS NON-NULS (voir TransactionServiceImpl.deb()/fin()) —
     // le pattern "(:dateX IS NULL OR ...)" utilisé ici avant faisait planter Postgres
@@ -178,6 +194,8 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     @Query("SELECT DISTINCT t FROM Transaction t WHERE t.farm.id = :farmId AND t.creePar.uniqueId = :creeParUniqueId " +
         "AND t.initialisation.removed = false " +
         "AND (:hasType = false OR t.type = :type) " +
+        "AND (:venteClient = false OR " + VENTE_CLIENT + ") " +
+        "AND (:horsVenteClient = false OR NOT (" + VENTE_CLIENT + ")) " +
         "AND (:hasStatut = false OR t.statut = :statut) " +
         "AND t.date >= :dateDebut AND t.date <= :dateFin " +
         "AND (:hasSearch = false OR LOWER(t.ref) LIKE :search " +
@@ -190,7 +208,8 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
                                        @Param("dateDebut") LocalDate dateDebut,
                                        @Param("dateFin") LocalDate dateFin,
                                        @Param("hasSearch") boolean hasSearch, @Param("search") String search,
-                                       Pageable pageable);
+                                       @Param("venteClient") boolean venteClient, @Param("horsVenteClient") boolean horsVenteClient,
+                              Pageable pageable);
 
     // Transactions rejetées créées par un utilisateur donné — sert à le notifier du
     // rejet (voir NotificationServiceImpl.addRejetNotification), pour qu'un

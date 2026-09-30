@@ -133,6 +133,12 @@ public interface TransactionService {
                                             String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
                                             LocalDate dateDebut, LocalDate dateFin);
 
+    /** Idem, avec le filtre "nature" : "VENTE_CLIENT" = seulement les ventes à un client
+     * (valeur vendue, pas d'argent), "HORS_VENTE_CLIENT" = tout sauf elles ; null = tout. */
+    PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,
+                                            String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
+                                            LocalDate dateDebut, LocalDate dateFin, String nature);
+
     TransactionStatsDTO getStats(String financierUniqueId, LocalDate dateDebut, LocalDate dateFin);
 
     /** Montant théorique/réel des ventes (œufs + réforme) PAR PROJET sur la période —

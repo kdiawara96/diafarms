@@ -81,6 +81,11 @@ public class TransactionDTO {
     // se modifie ni ne se supprime depuis la Comptabilité, seulement via sa vente (voir
     // TransactionServiceImpl.ensurePasLieeAUneVente), sinon vente et comptabilité divergent.
     private boolean lieeAUneVente;
+    // true = vente À UN CLIENT (œufs, réforme) : la ligne porte la VALEUR vendue (ce que le
+    // client doit), pas de l'argent reçu. L'argent entre par les lignes "Paiement client" :
+    // ces lignes ne comptent jamais dans les entrées d'argent (voir getStats, filtre
+    // nature de list). Renseigné par enrichMontantReel.
+    private boolean venteClient;
     // true = transaction verrouillée comptablement : générée par une vente OU par un
     // paiement/remboursement client — ne se modifie ni ne se supprime depuis la
     // Comptabilité, seulement via sa source (vente, paiement, remboursement).

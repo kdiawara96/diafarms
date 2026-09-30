@@ -945,6 +945,19 @@ public class TransactionServiceImpl implements TransactionService {
     public PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,
                                                    String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
                                                    LocalDate dateDebut, LocalDate dateFin) {
+        return list(page, size, search, type, statut, projetUniqueId, financierUniqueId, vendeurUniqueId, dateDebut, dateFin, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,
+                                                   String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
+                                                   LocalDate dateDebut, LocalDate dateFin, String nature) {
+        boolean venteClient = "VENTE_CLIENT".equalsIgnoreCase(nature);
+        boolean horsVenteClient = "HORS_VENTE_CLIENT".equalsIgnoreCase(nature);
+        if (nature != null && !nature.isBlank() && !venteClient && !horsVenteClient) {
+            throw new IllegalArgumentException("Filtre inconnu : " + nature + " (attendu VENTE_CLIENT ou HORS_VENTE_CLIENT).");
+        }
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
 
         Utilisateurs currentUser = getCurrentUserSafe();
@@ -972,15 +985,15 @@ public class TransactionServiceImpl implements TransactionService {
         Page<Transaction> transactionsPage;
         if (vendeurScope != null) {
             transactionsPage = transactionRepo.searchByCreePar(farmId, vendeurScope, hasType, typeParam, hasStatut, statutParam,
-                    dDeb, dFin, hasSearch, searchParam, pageable);
+                    dDeb, dFin, hasSearch, searchParam, venteClient, horsVenteClient, pageable);
         } else if (scopedProjetIds != null && scopedProjetIds.isEmpty()) {
             transactionsPage = Page.empty(pageable);
         } else if (scopedProjetIds != null) {
             transactionsPage = transactionRepo.searchScoped(scopedProjetIds, hasType, typeParam, hasStatut, statutParam,
-                    hasProjet, projetParam, dDeb, dFin, hasSearch, searchParam, pageable);
+                    hasProjet, projetParam, dDeb, dFin, hasSearch, searchParam, venteClient, horsVenteClient, pageable);
         } else {
             transactionsPage = transactionRepo.search(farmId, hasType, typeParam, hasStatut, statutParam,
-                    hasProjet, projetParam, dDeb, dFin, hasSearch, searchParam, pageable);
+                    hasProjet, projetParam, dDeb, dFin, hasSearch, searchParam, venteClient, horsVenteClient, pageable);
         }
 
         List<TransactionDTO> dtoList = transactionsPage.getContent().stream()
@@ -1055,6 +1068,9 @@ public class TransactionServiceImpl implements TransactionService {
                 d.setMontantReel(d.getMontant() * ratio(info));
             }
             d.setClientNom(info.getClientNom());
+            // Vente à un client : la ligne porte la valeur vendue, pas de l'argent reçu
+            // (l'argent entre par les paiements du client).
+            d.setVenteClient(info.getClientId() != null);
             d.setVenteUniqueId(info.getVenteUniqueId());
             d.setVenteDemandeSuppressionParNom(info.getVenteDemandeSuppressionParNom());
         }
