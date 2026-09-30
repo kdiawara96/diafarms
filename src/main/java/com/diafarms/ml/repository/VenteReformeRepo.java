@@ -68,10 +68,17 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     List<VenteReforme> findActivesByCommandeIds(@Param("ids") java.util.Collection<Long> ids);
 
     // Voir VenteOeufsRepo.sumRapporteSansClient (même raisonnement : une vente à
-    // client n'a plus de montantRapporte, payée via PaiementClient/sumEntreesHorsVentesStock).
-    @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteReforme v " +
-        "WHERE v.farm.id = :farmId AND v.client IS NULL AND v.initialisation.removed = false " +
-        "AND v.date >= :dateDebut AND v.date <= :dateFin")
+    // client n'a plus de montantRapporte, payée via PaiementClient/sumEntreesHorsVentesStock ;
+    // calcul depuis les transactions VALIDES de la vente, au prorata rapporté/théorique).
+    @Query("SELECT COALESCE(SUM(CASE WHEN v.montant IS NULL OR v.montant = 0 THEN t.montant " +
+        "ELSE t.montant * COALESCE(v.montantRapporte, v.montant) / v.montant END), 0) " +
+        "FROM Transaction t, VenteReformeRepartition r JOIN r.venteReforme v " +
+        "WHERE t.sourceUniqueId = r.uniqueId AND t.sourceType = com.diafarms.ml.enums.SourceTransaction.VENTE_REFORME " +
+        "AND t.farm.id = :farmId AND t.initialisation.removed = false " +
+        "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+        "AND t.type = com.diafarms.ml.enums.TypeTransaction.ENTREE " +
+        "AND v.client IS NULL AND v.initialisation.removed = false " +
+        "AND t.date >= :dateDebut AND t.date <= :dateFin")
     Double sumRapporteSansClient(@Param("farmId") Long farmId, @Param("dateDebut") java.time.LocalDate dateDebut,
                                  @Param("dateFin") java.time.LocalDate dateFin);
 

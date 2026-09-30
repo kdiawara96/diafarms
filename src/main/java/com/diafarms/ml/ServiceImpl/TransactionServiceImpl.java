@@ -1165,6 +1165,15 @@ public class TransactionServiceImpl implements TransactionService {
             totalAvancesClients = avancesClients;
         }
 
+        // Ferme entière : une vente à un client et le paiement de ce client sont deux lignes
+        // (la valeur vendue, puis l'argent reçu) ; les additionner comptait deux fois la
+        // même vente. Les entrées validées sont donc ici l'argent vraiment rentré
+        // (= encaisse : paiements clients, ventes sans client au montant rapporté, ventes
+        // diverses, autres entrées), avec les mêmes filtres (période, transactions VALIDES
+        // non supprimées). En vue par projet (pas de paiement client rattaché à un projet),
+        // elles restent la valeur des ventes du projet plus ses autres entrées.
+        if (!vueParProjet) totalEntrees = encaisse;
+
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)
                 .nbAttente(nbAttente)

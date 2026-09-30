@@ -15,6 +15,9 @@ public class TransactionStatsDTO {
     private long nbValide;
     private long nbAttente;
     private long nbRejete;
+    // Vue ferme entière : argent vraiment rentré (= totalEncaisse), une vente à un client
+    // n'étant comptée qu'une fois, par ses paiements. Vue par projet : valeur des ventes
+    // du projet (théorique) + ses autres entrées validées.
     private Double totalEntreesValidees;
     private Double totalSortiesValidees;
     private Double totalVenteOeufs;

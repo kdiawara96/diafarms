@@ -92,9 +92,21 @@ public interface VenteOeufsRepo extends JpaRepository<VenteOeufs, Long> {
     // ventes SANS client — une vente à client n'a plus de montantRapporte (payée via
     // PaiementClient + transaction ENTREE "Paiement client", voir sumEntreesHorsVentesStock),
     // donc seul le comptant sans client compte ici pour éviter un double-comptage.
-    @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteOeufs v " +
-        "WHERE v.farm.id = :farmId AND v.client IS NULL AND v.initialisation.removed = false " +
-        "AND v.date >= :dateDebut AND v.date <= :dateFin")
+    // Calculé depuis les transactions de la vente (une par projet contributeur), avec les
+    // MÊMES filtres que les entrées validées : transaction VALIDE et non supprimée, date de
+    // la transaction dans la période. Chaque part est ramenée au réel au prorata
+    // rapporté/théorique de la vente entière (même règle que enrichMontantReel). Avant, la
+    // vente était lue directement, sans statut : une vente dont la transaction était encore
+    // en attente (ancienne règle) ou rejetée comptait quand même dans l'encaissé.
+    @Query("SELECT COALESCE(SUM(CASE WHEN v.montant IS NULL OR v.montant = 0 THEN t.montant " +
+        "ELSE t.montant * COALESCE(v.montantRapporte, v.montant) / v.montant END), 0) " +
+        "FROM Transaction t, VenteOeufsRepartition r JOIN r.venteOeufs v " +
+        "WHERE t.sourceUniqueId = r.uniqueId AND t.sourceType = com.diafarms.ml.enums.SourceTransaction.VENTE_OEUFS " +
+        "AND t.farm.id = :farmId AND t.initialisation.removed = false " +
+        "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+        "AND t.type = com.diafarms.ml.enums.TypeTransaction.ENTREE " +
+        "AND v.client IS NULL AND v.initialisation.removed = false " +
+        "AND t.date >= :dateDebut AND t.date <= :dateFin")
     Double sumRapporteSansClient(@Param("farmId") Long farmId, @Param("dateDebut") java.time.LocalDate dateDebut,
                                  @Param("dateFin") java.time.LocalDate dateFin);
 
