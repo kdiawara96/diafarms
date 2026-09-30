@@ -265,11 +265,9 @@ public class AlimentationImpl implements AlimentationService {
         if (data.getCoutTotal() != null) {
             alimentation.setCoutTotal(data.getCoutTotal());
         }
-        if (data.getDateDistribution() != null) {
-            alimentation.setDateDistribution(
-                com.diafarms.ml.commons.DateSaisie.saisie(data.getDateDistribution(), null)
-            );
-        }
+        alimentation.setDateDistribution(
+            com.diafarms.ml.commons.DateSaisie.modifiee(data.getDateDistribution(), alimentation.getDateDistribution())
+        );
         if (data.getObservations() != null) {
             alimentation.setObservations(data.getObservations());
         }

@@ -183,7 +183,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
         if (Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette vente est supprimée.");
         }
-        if (data.getDate() != null && !data.getDate().isBlank()) v.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        v.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), v.getDate()));
         if (data.getQuantite() != null) v.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
         if (data.getMontant() != null) v.setMontant(data.getMontant());

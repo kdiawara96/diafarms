@@ -175,13 +175,10 @@ public class MedicamentService {
         } else if (creation || d.getQuantite() != null || d.getCoutTotal() != null) {
             a.setPrixUnitaire(Math.round(a.getCoutTotal() / a.getQuantite() * 100.0) / 100.0);
         }
-        if (creation || d.getDateAchat() != null) {
-            try {
-                a.setDateAchat(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(d.getDateAchat() == null || d.getDateAchat().isBlank() ? LocalDate.now() : LocalDate.parse(d.getDateAchat())));
-            } catch (Exception e) {
-                throw new IllegalArgumentException("Date invalide (attendu AAAA-MM-JJ) : " + d.getDateAchat());
-            }
-        }
+        // Création : vide = aujourd'hui ; modification : vide = inchangée, et le contrôle
+        // « pas dans le futur » seulement si la date change (voir DateSaisie.modifiee).
+        a.setDateAchat(creation ? com.diafarms.ml.commons.DateSaisie.saisie(d.getDateAchat(), LocalDate.now())
+                : com.diafarms.ml.commons.DateSaisie.modifiee(d.getDateAchat(), a.getDateAchat()));
         if (d.getFournisseur() != null) a.setFournisseur(d.getFournisseur().isBlank() ? null : d.getFournisseur().trim());
         if (d.getObservations() != null) a.setObservations(d.getObservations().isBlank() ? null : d.getObservations().trim());
         if (d.getBatimentUniqueId() != null) a.setBatiment(batiment(d.getBatimentUniqueId(), u));

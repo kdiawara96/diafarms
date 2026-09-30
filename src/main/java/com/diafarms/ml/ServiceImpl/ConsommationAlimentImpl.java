@@ -104,7 +104,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
         ConsommationAliment c = consommationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Consommation introuvable : " + uniqueId));
 
-        if (data.getDate() != null) c.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        c.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), c.getDate()));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getQuantiteKg() != null) {
             if (data.getQuantiteKg() <= 0) {

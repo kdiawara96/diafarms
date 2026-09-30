@@ -10,6 +10,7 @@
 # 4. Coût de main-d'œuvre d'un projet et affectations du personnel : refusés à un vendeur.
 # 5. Transaction sans type : 400 (et non 500) ; sortie « Médicament » : 400 vers l'achat
 #    de médicament.
+# 6. Modification : date vide = date gardée ; « pas dans le futur » seulement si la date change.
 #
 # Pré-requis : Postgres + backend démarrés, base seedée par scenarios-circuit-client.sh.
 # Variables : BASE, PGHOST, PGPORT (55432), PGUSER (postgres), PGDATABASE (diafarms_scen),
@@ -168,6 +169,30 @@ T_DIVERS="$(jval "d['data']['uniqueId']")"
 api PUT "/transactions/update/$T_DIVERS" '{"categorie":"medicament"}'
 check "modification en « medicament » refusée" "code == 400 and 'Achat de médicament' in err"
 api PUT "/transactions/deleteOrRecover/$T_DIVERS" '{"motif":"Test revue"}'
+
+echo "== 6. Modification : date vide gardée, contrôle du futur seulement si la date change"
+api POST /soins/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$HIER\",\"type\":\"MEDICAMENT\",\"produit\":\"Date vide $SUFFIXE\",\"quantite\":1}"
+check "soin daté d'hier" "code in (200, 201)"
+SOIN3="$(jval "d['data']['uniqueId']")"
+api PUT "/soins/update/$SOIN3" '{"date":"","observations":"sans date"}'
+check "modification avec date vide : acceptée" "code == 200"
+check_eq "date vide : date d'hier gardée" "$HIER" "$(psql_run "SELECT date FROM soins WHERE unique_id = '$SOIN3'")"
+FUTUR_ANCIEN="$(date -d '+5 days' +%F)"
+psql_run "UPDATE soins SET date = '$FUTUR_ANCIEN' WHERE unique_id = '$SOIN3'" >/dev/null
+api PUT "/soins/update/$SOIN3" "{\"date\":\"$FUTUR_ANCIEN\",\"observations\":\"ancien futur\"}"
+check "ancien enregistrement daté dans le futur, date renvoyée identique : modifiable" "code == 200"
+api PUT "/soins/update/$SOIN3" "{\"date\":\"$(date -d '+3 days' +%F)\"}"
+check "date changée vers le futur : refusée" "code == 400 and 'dans le futur' in err"
+api PUT "/soins/update/$SOIN3" "{\"date\":\"$AUJ\"}"
+check "date ramenée à aujourd'hui : acceptée" "code == 200"
+api PUT "/soins/deleteOrRecover/$SOIN3"
+api POST /transactions/create "{\"type\":\"SORTIE\",\"commun\":true,\"date\":\"$AUJ\",\"description\":\"Ancien futur $SUFFIXE\",\"montant\":100,\"categorie\":\"Divers\"}"
+T_F="$(jval "d['data']['uniqueId']")"
+psql_run "UPDATE transactions SET date = '$FUTUR_ANCIEN' WHERE unique_id = '$T_F'" >/dev/null
+api PUT "/transactions/update/$T_F" '{"description":"Retouche"}'
+check "transaction ancienne datée dans le futur : description modifiable" "code == 200"
+check_eq "sa date est gardée" "$FUTUR_ANCIEN" "$(psql_run "SELECT date FROM transactions WHERE unique_id = '$T_F'")"
+api PUT "/transactions/deleteOrRecover/$T_F" '{"motif":"Test revue"}'
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

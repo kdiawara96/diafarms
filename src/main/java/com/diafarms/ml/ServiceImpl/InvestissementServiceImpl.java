@@ -331,7 +331,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         inv.setNom(dto.getNom());
         inv.setCategorie(dto.getCategorie());
         inv.setMontant(dto.getMontant());
-        inv.setDateAchat(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(dto.getDateAchat()));
+        inv.setDateAchat(com.diafarms.ml.commons.DateSaisie.modifiee(dto.getDateAchat(), inv.getDateAchat()));
         inv.setFournisseur(dto.getFournisseur());
         inv.setDureeAmortissement(dto.getDureeAmortissement());
         inv.setCommentaire(dto.getCommentaire());

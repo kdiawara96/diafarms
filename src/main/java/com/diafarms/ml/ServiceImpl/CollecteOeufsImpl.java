@@ -203,7 +203,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
                 .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Collecte introuvable : " + uniqueId));
 
-        if (data.getDate() != null) c.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        c.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), c.getDate()));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         c.setBatiment(poulaillerObligatoire.resoudrePourModification(c.getProjet(), c.getBatiment(), data.getBatimentUniqueId()));
         if (data.getOeufsCollectes() != null) {

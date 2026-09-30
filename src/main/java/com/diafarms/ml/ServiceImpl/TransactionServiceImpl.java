@@ -665,7 +665,7 @@ public class TransactionServiceImpl implements TransactionService {
         boolean etaitSortieMedicament = t.getType() == TypeTransaction.SORTIE && estCategorieAchatMedicament(t.getCategorie());
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
-        if (data.getDate() != null) t.setDate(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate()));
+        t.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), t.getDate()));
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(data.getMontant());
         if (data.getCategorie() != null) t.setCategorie(data.getCategorie());

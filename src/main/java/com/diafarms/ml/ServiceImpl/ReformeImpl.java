@@ -144,7 +144,7 @@ public class ReformeImpl implements ReformeService {
             validerEffectifPoulailler(r.getProjet(), nouveauPoulailler, nouveauNombre, memePoulailler ? r.getNombreSujets() : 0);
         }
 
-        if (data.getDate() != null) r.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        r.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), r.getDate()));
         if (data.getHeure() != null) r.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreSujets() != null) {
             if (data.getNombreSujets() <= 0) {

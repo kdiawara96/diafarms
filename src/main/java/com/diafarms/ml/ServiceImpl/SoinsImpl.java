@@ -147,7 +147,7 @@ public class SoinsImpl implements SoinsService {
     public SoinsDTO update(String uniqueId, SoinsUpdate data) {
         Soins s = soinDeLaFerme(uniqueId);
 
-        if (data.getDate() != null) s.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        s.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), s.getDate()));
         if (data.getHeure() != null) s.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getType() != null) s.setType(parseType(data.getType()));
         if (data.getProduit() != null) s.setProduit(data.getProduit());

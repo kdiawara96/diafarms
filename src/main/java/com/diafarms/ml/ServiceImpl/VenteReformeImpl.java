@@ -387,7 +387,7 @@ public class VenteReformeImpl implements VenteReformeService {
         Double ancienMontantRapporte = v.getMontantRapporte();
         Client ancienClient = v.getClient();
 
-        if (data.getDate() != null) v.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        v.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), v.getDate()));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
 

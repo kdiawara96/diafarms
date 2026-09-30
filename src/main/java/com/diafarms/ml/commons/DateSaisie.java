@@ -37,6 +37,18 @@ public final class DateSaisie {
         return pasDansLeFutur(parse(brute, defaut));
     }
 
+    /** Modification d'une saisie : vide ou absente = la date actuelle est gardée ; le
+     * contrôle « pas dans le futur » ne s'applique que si la date CHANGE (un ancien
+     * enregistrement daté dans le futur reste modifiable sur ses autres champs). */
+    public static LocalDate modifiee(String brute, LocalDate actuelle) {
+        return modifiee(parse(brute, actuelle), actuelle);
+    }
+
+    public static LocalDate modifiee(LocalDate nouvelle, LocalDate actuelle) {
+        if (nouvelle == null || nouvelle.equals(actuelle)) return actuelle;
+        return pasDansLeFutur(nouvelle);
+    }
+
     /** Vide ou null -> defaut ; sinon AAAA-MM-JJ, ou IllegalArgumentException. */
     public static LocalDate parse(String brute, LocalDate defaut) {
         if (brute == null || brute.isBlank()) return defaut;

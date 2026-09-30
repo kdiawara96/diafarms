@@ -112,7 +112,7 @@ public class MortaliteImpl implements MortaliteService {
 
         int ancienNombre = m.getNombreMorts() != null ? m.getNombreMorts() : 0;
         Long ancienBatimentId = m.getBatiment() != null ? m.getBatiment().getId() : null;
-        if (data.getDate() != null) m.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
+        m.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), m.getDate()));
         if (data.getHeure() != null) m.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreMorts() != null) m.setNombreMorts(data.getNombreMorts());
         if (data.getCause() != null) m.setCause(data.getCause());
