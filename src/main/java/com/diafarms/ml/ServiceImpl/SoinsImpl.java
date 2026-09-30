@@ -117,7 +117,9 @@ public class SoinsImpl implements SoinsService {
         s.setProduit(data.getProduit());
         s.setQuantite(data.getQuantite());
         s.setPrixUnitaire(data.getPrixUnitaire());
-        s.setCoutTotal(data.getCoutTotal());
+        // Pris dans le stock : le médicament a déjà été payé à son achat (dépense
+        // MEDICAMENT), le soin ne crée donc aucune dépense SOINS/VACCINATION.
+        s.setCoutTotal(depuisStock ? null : data.getCoutTotal());
         s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         s.setObservations(data.getObservations());
         s.setDepuisStock(depuisStock ? Boolean.TRUE : null);
@@ -157,6 +159,9 @@ public class SoinsImpl implements SoinsService {
         if (data.getDepuisStock() != null) s.setDepuisStock(data.getDepuisStock() ? Boolean.TRUE : null);
         if (data.getUnite() != null) s.setUnite(data.getUnite().isBlank() ? null : data.getUnite().trim());
         if (Boolean.TRUE.equals(s.getDepuisStock())) {
+            // Pris dans le stock : pas de coût propre (voir create), une dépense existante
+            // est retirée par syncTransaction.
+            s.setCoutTotal(null);
             // Sa propre consommation actuelle est rendue avant de vérifier la nouvelle.
             medicamentService.verifierConsommation(s.getProjet(), s.getProduit(), s.getUnite(), s.getQuantite(), s.getUniqueId());
         }
@@ -188,7 +193,12 @@ public class SoinsImpl implements SoinsService {
         s.getInitialisation().setRemoved(!s.getInitialisation().getRemoved());
         soinsRepo.save(s);
         boolean removed = s.getInitialisation().getRemoved();
-        transactionService.setRemovedBySource(s.getUniqueId(), removed);
+        // Restauration : la dépense ne revient que si le soin a un coût propre (pas pris
+        // dans le stock), même règle que ProjetImpl.basculerTransactionsGenerees.
+        boolean aUnCout = !Boolean.TRUE.equals(s.getDepuisStock()) && s.getCoutTotal() != null && s.getCoutTotal() > 0;
+        if (removed || aUnCout) {
+            transactionService.setRemovedBySource(s.getUniqueId(), removed);
+        }
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {

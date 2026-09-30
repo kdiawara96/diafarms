@@ -62,6 +62,22 @@ public class AlimentationImpl implements AlimentationService {
                 null, a.getProjet() != null ? a.getProjet().getSite() : null, true);
     }
 
+    // Entrée de stock créée par ProjetImpl.transfererStock (clôture d'un projet) : ce n'est
+    // pas un achat (l'argent a été dépensé par le projet d'origine, aucune dépense n'y est
+    // liée) et une consommation du projet d'origine la compense. La modifier créerait une
+    // dépense en double (syncTransaction), la supprimer casserait la compensation.
+    static final String PREFIXE_TRANSFERT = "Transfert depuis ";
+    static final String OBSERVATION_TRANSFERT = "Stock restant transféré lors de la clôture";
+
+    private static void refuserSiTransfert(Alimentation a) {
+        boolean transfert = a.getNomAliment() != null && a.getNomAliment().startsWith(PREFIXE_TRANSFERT)
+                && a.getObservations() != null && a.getObservations().startsWith(OBSERVATION_TRANSFERT);
+        if (transfert) {
+            throw new IllegalArgumentException("Ce stock vient d'un transfert de fin de projet, ce n'est pas un achat : "
+                    + "il ne se modifie pas et ne se supprime pas.");
+        }
+    }
+
     // nomAliment reste obligatoire en base : vide, il est déduit du type ("Aliment ponte").
     private static String nomOuDefaut(String nom, TypeAliment type) {
         if (nom != null && !nom.isBlank()) return nom.trim();
@@ -194,6 +210,7 @@ public class AlimentationImpl implements AlimentationService {
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette alimentation a été supprimée et ne peut pas être modifiée.");
         }
+        refuserSiTransfert(alimentation);
 
         // 3. Sauvegarder anciennes valeurs pour le log
         String ancienNom = alimentation.getNomAliment();
@@ -221,6 +238,7 @@ public class AlimentationImpl implements AlimentationService {
                 && !data.getProjetUniqueId().equals(ancienProjet.getUniqueId())) {
             nouveauProjet = projetsFerme.charger(data.getProjetUniqueId());
         }
+        projetsFerme.verrouiller(ancienProjet, nouveauProjet);
         double nouvelleQuantite = data.getQuantiteKg() != null ? data.getQuantiteKg() : ancienneQuantite;
         if (nouvelleQuantite <= 0) {
             throw new IllegalArgumentException("La quantité achetée (kg) doit être supérieure à 0.");
@@ -299,8 +317,10 @@ public class AlimentationImpl implements AlimentationService {
         if (Boolean.TRUE.equals(alimentation.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette alimentation est déjà supprimée.");
         }
+        refuserSiTransfert(alimentation);
 
         // Ce que le projet a déjà consommé doit rester couvert par ses autres achats.
+        projetsFerme.verrouiller(alimentation.getProjet());
         double acheteSansCetAchat = alimentationRepo.sumAcheteByProjetId(alimentation.getProjet().getId()) - alimentation.getQuantiteKg();
         double consomme = consommationAlimentRepo.sumConsommeByProjetId(alimentation.getProjet().getId());
         if (acheteSansCetAchat + 1e-6 < consomme) {

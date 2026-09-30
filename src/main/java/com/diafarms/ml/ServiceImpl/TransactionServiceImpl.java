@@ -544,6 +544,9 @@ public class TransactionServiceImpl implements TransactionService {
             t.setMontant(montant);
             t.setDescription(description);
             t.setProjet(projet);
+            // La dépense suit la date de sa saisie (achat d'aliment, soin, investissement...) :
+            // sans ça, changer la date de l'achat laissait la dépense à l'ancienne date.
+            if (date != null) t.setDate(date);
             if (appliquerRattachement) {
                 t.setBatiment(batiment);
                 t.setSite(site);

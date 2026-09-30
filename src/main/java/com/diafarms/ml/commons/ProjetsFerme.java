@@ -35,6 +35,18 @@ public class ProjetsFerme {
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
     }
 
+    /** Verrouille les projets (PESSIMISTIC_WRITE, SELECT ... FOR UPDATE) avant un contrôle
+     * de stock suivi d'une écriture, dans l'ordre des id pour ne jamais s'interbloquer
+     * (même principe que CompteClientService.verrouiller). Les null sont ignorés. À appeler
+     * dans une transaction. */
+    public void verrouiller(Projets... projets) {
+        java.util.TreeSet<Long> ids = new java.util.TreeSet<>();
+        for (Projets p : projets) if (p != null && p.getId() != null) ids.add(p.getId());
+        for (Long id : ids) {
+            projetsRepo.findByIdForUpdate(id).orElseThrow(() -> new IllegalArgumentException("Projet introuvable."));
+        }
+    }
+
     public void verifier(Projets projet, String messageIntrouvable) {
         FermeScope.verifier(projet != null ? projet.getFarm() : null, utilisateurCourant(), messageIntrouvable);
     }

@@ -15,6 +15,14 @@ import org.springframework.data.domain.Pageable;
 
 @Repository
 public interface ProjetsRepo extends JpaRepository<Projets, Long> {
+
+    // Sérialise les contrôles de stock d'un même projet (aliment acheté / consommé,
+    // médicaments achetés / utilisés) : deux saisies simultanées ne doivent pas passer
+    // chacune le contrôle sur le même reste. Voir ProjetsFerme.verrouiller.
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Projets p WHERE p.id = :id")
+    Optional<Projets> findByIdForUpdate(@Param("id") Long id);
+
     
    Optional<Projets> findByUniqueId(String uniqueId);
 

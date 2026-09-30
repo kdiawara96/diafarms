@@ -124,6 +124,7 @@ public class MedicamentService {
         if (quantite == null || quantite <= 0) {
             throw new IllegalArgumentException("Indiquez la quantité utilisée.");
         }
+        projetsFerme.verrouiller(projet);
         double[] s = soldes(projet, null, soinExclu).getOrDefault(cle(produit, unite), new double[2]);
         double restant = s[0] - s[1];
         if (s[0] <= 0) {
@@ -136,11 +137,12 @@ public class MedicamentService {
     }
 
     private void syncTransaction(AchatMedicament a, Utilisateurs u) {
-        if (u == null || u.getFarm() == null) return;
+        if (a.getProjet() == null || a.getProjet().getFarm() == null) return;
         String description = "Achat médicament : " + a.getNom() + " (" + q(a.getQuantite()) + " " + a.getUnite() + "), projet "
                 + a.getProjet().getTitre();
         // Santé : liée au projet (et au poulailler s'il est précisé), jamais à un site.
-        transactionService.syncSortie(a.getProjet(), u.getFarm(), a.getCoutTotal(), CATEGORIE, a.getDateAchat(), description,
+        // Ferme du projet (celle de l'achat), pas celle de l'utilisateur courant.
+        transactionService.syncSortie(a.getProjet(), a.getProjet().getFarm(), a.getCoutTotal(), CATEGORIE, a.getDateAchat(), description,
                 SourceTransaction.MEDICAMENT, a.getUniqueId(), u, a.getBatiment(), null, true);
         transactionService.updateDateBySource(a.getUniqueId(), a.getDateAchat());
         transactionRepo.findBySourceUniqueId(a.getUniqueId()).ifPresent(t -> {
@@ -213,6 +215,7 @@ public class MedicamentService {
         Projets nouveauProjet = d.getProjetUniqueId() != null && !d.getProjetUniqueId().isBlank()
                 && !d.getProjetUniqueId().equals(ancienProjet.getUniqueId())
                 ? projetsFerme.charger(d.getProjetUniqueId()) : ancienProjet;
+        projetsFerme.verrouiller(ancienProjet, nouveauProjet);
         remplir(a, d, false, u);
         a.setProjet(nouveauProjet);
         a.setFarm(nouveauProjet.getFarm());
@@ -240,6 +243,7 @@ public class MedicamentService {
         Utilisateurs u = utilisateur();
         ensureFinance(u);
         AchatMedicament a = achat(uniqueId);
+        projetsFerme.verrouiller(a.getProjet());
         double[] s = soldes(a.getProjet(), a.getUniqueId(), null).getOrDefault(cle(a.getNom(), a.getUnite()), new double[2]);
         if (s[0] + 1e-9 < s[1]) {
             throw new IllegalArgumentException("Impossible de supprimer cet achat : les soins du projet en ont déjà utilisé " + q(s[1]) + " "

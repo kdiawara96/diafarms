@@ -63,6 +63,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
 
         // Date contrôlée avant le stock : une date dans le futur est l'erreur à signaler.
         LocalDate dateSaisie = com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now());
+        projetsFerme.verrouiller(projet); // voir ProjetsFerme.verrouiller
         double totalAchete = alimentationRepo.sumAcheteByProjetId(projet.getId());
         double totalConsomme = consommationRepo.sumConsommeByProjetId(projet.getId());
         double restant = totalAchete - totalConsomme;
@@ -110,6 +111,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
                 throw new IllegalArgumentException("La quantité consommée doit être positive.");
             }
             Long projetId = c.getProjet().getId();
+            projetsFerme.verrouiller(c.getProjet());
             double totalAchete = alimentationRepo.sumAcheteByProjetId(projetId);
             double totalConsomme = consommationRepo.sumConsommeByProjetId(projetId);
             double nouveauTotalConsomme = totalConsomme - c.getQuantiteKg() + data.getQuantiteKg();
