@@ -59,6 +59,7 @@ public class VenteListeImpl {
     private final ProjetsRepo projetsRepo;
     private final OtherService otherService;
     private final CompteClientService compteClientService;
+    private final PaiementClientService paiementClientService;
 
     private boolean isAdmin(Utilisateurs u) {
         return u != null && u.getRoles() != null && u.getRoles().stream()
@@ -246,6 +247,7 @@ public class VenteListeImpl {
         d.setStatutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"));
         d.setMontantReel(paye);
         d.setMontantRapporte(null);
+        d.setPayeALaVente(paiementClientService.payeALaVente(type, venteUniqueId));
     }
 
     private static void suppression(VenteLigneDTO d, Utilisateurs par, java.time.LocalDateTime date, String motif) {

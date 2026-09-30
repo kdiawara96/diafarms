@@ -723,28 +723,29 @@ message_contient() {
 }
 
 scenario14() {
-  echo "== Scénario 14 : ajouter ou retirer le client d'une vente est refusé =="
+  echo "== Scénario 14 : ajouter ou retirer le client d'une vente, l'argent suit =="
   local client vsans vavec
   nouveau_client "Scenario 14"
   client="$CLIENT_UID"
-  # Vente directe (sans client), montant rapporté complet.
+  # Vente directe (sans client), montant rapporté complet : l'ajout du client reprend
+  # ce montant comme paiement du client sur la vente.
   call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"quantiteOeufs\":2,\"prixUnitaire\":1000,\"montant\":2000,\"montantRapporte\":2000}"
   vsans=$(jpath "$BODY" "data.uniqueId")
   verifier "S14 vente sans client HTTP" "201" "$HTTP_STATUS"
   call PUT "/ventes-oeufs/update/$vsans" "{\"clientUniqueId\":\"$client\"}"
-  verifier "S14 ajout d'un client HTTP" "400" "$HTTP_STATUS"
-  message_contient "S14 message ajout" "supprimez-la et ressaisissez-la"
+  verifier "S14 ajout d'un client HTTP" "200" "$HTTP_STATUS"
 
-  # Vente au client, puis tentative de retrait du client ("" = retirer).
+  # Vente au client non payée : rien reçu à la vente, le retrait exige le montant rapporté.
   call POST /ventes-oeufs/create "{\"date\":\"$(date +%F)\",\"magasinUniqueId\":\"$BOUTIQUE_UID\",\"clientUniqueId\":\"$client\",\"quantiteOeufs\":3,\"prixUnitaire\":1000,\"montant\":3000}"
   vavec=$(jpath "$BODY" "data.uniqueId")
   verifier "S14 vente avec client HTTP" "201" "$HTTP_STATUS"
   call PUT "/ventes-oeufs/update/$vavec" '{"clientUniqueId":""}'
-  verifier "S14 retrait du client HTTP" "400" "$HTTP_STATUS"
-  message_contient "S14 message retrait" "supprimez-la et ressaisissez-la"
+  verifier "S14 retrait sans montant rapporté HTTP" "400" "$HTTP_STATUS"
+  message_contient "S14 message retrait" "montant qu'il a rapporté"
 
   compte "$client"
-  verifier "S14 totalVendu (seule la vente au client)" "3000" "$(champ "$COMPTE" totalVendu)"
+  verifier "S14 totalVendu (les deux ventes)" "5000" "$(champ "$COMPTE" totalVendu)"
+  verifier "S14 totalPaye (montant rapporté repris)" "2000" "$(champ "$COMPTE" totalPaye)"
   verifier "S14 resteAPayer" "3000" "$(champ "$COMPTE" resteAPayer)"
   invariants "$COMPTE" "S14"
 }

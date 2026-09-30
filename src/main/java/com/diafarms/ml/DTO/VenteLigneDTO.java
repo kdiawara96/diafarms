@@ -39,6 +39,10 @@ public class VenteLigneDTO {
     // et pour les ventes diverses (jamais de client).
     private Double paye;
     private Double resteAPayer;
+    // Part de "paye" reçue À LA VENTE (paiements d'origine VENTE sur cette vente) : si le
+    // client est retiré, c'est ce montant qui repasse en montant rapporté par le vendeur
+    // (valeur proposée par défaut, voir VenteOeufsImpl.update).
+    private Double payeALaVente;
     // "PAYEE" | "PARTIELLE" | "NON_PAYEE" (vente à un client, voir ClientVenteLigneDTO) ou
     // "COMPTANT" (vente sans client, encaissée directement — diverses comprises).
     private String statutPaiement;

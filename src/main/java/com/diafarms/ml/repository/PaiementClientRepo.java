@@ -10,6 +10,15 @@ import com.diafarms.ml.models.PaiementClient;
 public interface PaiementClientRepo extends JpaRepository<PaiementClient, Long> {
     Optional<PaiementClient> findByUniqueId(String uniqueId);
 
+    // Argent reçu À LA VENTE (origine VENTE) et visant cette vente : payé à la création
+    // de la vente à un client, ou montant rapporté repris quand un client a été ajouté à
+    // une vente directe (voir VenteOeufsImpl). Sert au retrait du client de la vente.
+    @Query("SELECT p FROM PaiementClient p WHERE p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.origine = com.diafarms.ml.enums.OriginePaiement.VENTE " +
+           "AND p.venteCibleType = :type AND p.venteCibleUniqueId = :uid ORDER BY p.id ASC")
+    List<PaiementClient> findActifsALaVente(@Param("type") com.diafarms.ml.enums.CibleImputation type,
+                                            @Param("uid") String uid);
+
     @Query("SELECT p FROM PaiementClient p LEFT JOIN FETCH p.commande WHERE p.client.id = :clientId " +
            "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF ORDER BY p.date ASC, p.id ASC")
     List<PaiementClient> findActifsByClientId(@Param("clientId") Long clientId);

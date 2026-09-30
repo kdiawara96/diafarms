@@ -28,6 +28,7 @@ import com.diafarms.ml.enums.TypeVenteOeufs;
 import com.diafarms.ml.models.Client;
 import com.diafarms.ml.models.Farm;
 import com.diafarms.ml.models.Magasin;
+import com.diafarms.ml.models.PaiementClient;
 import com.diafarms.ml.models.Projets;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.models.VenteOeufs;
@@ -35,6 +36,7 @@ import com.diafarms.ml.models.VenteOeufsRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ClientRepo;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
+import com.diafarms.ml.repository.FactureLigneRepo;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
 import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
@@ -73,6 +75,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
     private final PaiementClientService paiementClientService;
     private final CompteClientService compteClientService;
     private final LivraisonCommandeService livraisonCommandeService;
+    private final FactureLigneRepo factureLigneRepo;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -331,15 +334,20 @@ public class VenteOeufsImpl implements VenteOeufsService {
         VenteOeufs v = venteOeufsRepo.findByUniqueId(uniqueId)
                 .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente d'œufs introuvable : " + uniqueId));
+        if (v.getInitialisation() != null && Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
+            throw new IllegalArgumentException("Cette vente est supprimée : restaurez-la avant de la modifier.");
+        }
 
         // Client visé par la modification (null = inchangé, "" = retiré). Trois cas, l'argent
         // déjà passé suit toujours (rien n'est perdu ni compté deux fois) :
         // - client A -> client B : l'argent de A redevient une avance de A ;
         // - ajout d'un client à une vente sans client : l'écart du vendeur est annulé et ce
-        //   qu'il a rapporté devient un paiement du client sur cette vente ;
-        // - retrait du client : ce que le client a payé sur cette vente redevient une
-        //   avance sur son compte ; la vente repasse au vendeur avec le montant rapporté
-        //   (obligatoire) et son écart.
+        //   qu'il a rapporté devient un paiement du client sur cette vente (origine VENTE) ;
+        // - retrait du client : l'argent reçu À LA VENTE (paiements d'origine VENTE sur
+        //   cette vente) est annulé et redevient le montant rapporté par le vendeur (valeur
+        //   par défaut si aucun montant rapporté n'est envoyé) ; les autres paiements du
+        //   client sur cette vente redeviennent une avance sur son compte. La vente repasse
+        //   au vendeur avec le montant rapporté et son écart.
         Client clientDemande = null;
         if (data.getClientUniqueId() != null && !data.getClientUniqueId().isBlank()) {
             clientDemande = clientRepo.findByUniqueId(data.getClientUniqueId());
@@ -350,9 +358,6 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
         boolean ajoutClient = v.getClient() == null && clientDemande != null;
         boolean retraitClient = v.getClient() != null && data.getClientUniqueId() != null && clientDemande == null;
-        if (retraitClient && (data.getMontantRapporte() == null || data.getMontantRapporte() < 0)) {
-            throw new IllegalArgumentException("Sans client, la vente revient au vendeur : indiquez le montant qu'il a rapporté.");
-        }
 
         // Type d'œufs (normaux / cassés) : ce ne sont pas les mêmes stocks du magasin.
         TypeVenteOeufs ancienType = v.getTypeOeuf() != null ? v.getTypeOeuf() : TypeVenteOeufs.BON;
@@ -365,6 +370,22 @@ public class VenteOeufsImpl implements VenteOeufsService {
             }
         }
         boolean typeChange = nouveauType != ancienType;
+
+        // Vente sur une facture active : son client, son montant, sa quantité et son type
+        // sont ceux de la facture ; les changer rendrait la facture fausse.
+        String clientActuelUid = v.getClient() != null ? v.getClient().getUniqueId() : null;
+        String clientVisUid = clientDemande != null ? clientDemande.getUniqueId() : null;
+        boolean clientModifie = data.getClientUniqueId() != null && !java.util.Objects.equals(clientActuelUid, clientVisUid);
+        boolean montantModifie = data.getMontant() != null && (v.getMontant() == null || Math.abs(data.getMontant() - v.getMontant()) > 0.005);
+        boolean quantiteModifiee = data.getQuantiteOeufs() != null && !data.getQuantiteOeufs().equals(v.getQuantiteOeufs());
+        if (clientModifie || montantModifie || quantiteModifiee || typeChange) {
+            List<String> factures = factureLigneRepo.numeroFactureActive(CibleImputation.VENTE_OEUFS, uniqueId);
+            if (!factures.isEmpty()) {
+                throw new IllegalArgumentException("Cette vente est sur la facture " + factures.get(0)
+                        + " : annulez d'abord la facture.");
+            }
+        }
+
         if (typeChange) {
             if (v.getMagasin() == null) {
                 throw new IllegalArgumentException("Cette vente n'est rattachée à aucun magasin : le type d'œufs ne peut pas être changé.");
@@ -383,6 +404,21 @@ public class VenteOeufsImpl implements VenteOeufsService {
         // Verrou des clients concernés AVANT de toucher aux imputations (voir
         // CompteClientService.verrouiller) : ancien et nouveau client en cas de changement.
         compteClientService.verrouiller(v.getClient(), clientDemande);
+
+        // Retrait du client : argent reçu à la vente, vérifié client verrouillé et avant
+        // toute mutation (refus si une partie a été remboursée ou règle une autre vente).
+        List<PaiementClient> paiementsALaVente = List.of();
+        if (retraitClient) {
+            paiementsALaVente = paiementClientService.paiementsALaVente(CibleImputation.VENTE_OEUFS, uniqueId);
+            paiementClientService.verifierReprisePaiementsALaVente(paiementsALaVente, CibleImputation.VENTE_OEUFS, uniqueId);
+            if (data.getMontantRapporte() == null) {
+                double recuALaVente = paiementClientService.payeALaVente(CibleImputation.VENTE_OEUFS, uniqueId);
+                if (recuALaVente > 0) data.setMontantRapporte(recuALaVente);
+            }
+            if (data.getMontantRapporte() == null || data.getMontantRapporte() < 0) {
+                throw new IllegalArgumentException("Sans client, la vente revient au vendeur : indiquez le montant qu'il a rapporté.");
+            }
+        }
 
         // Capturé AVANT toute mutation : sert à annuler l'ancien écart du solde
         // (vendeur OU client selon qui portait l'écart à l'époque) plus bas, avant
@@ -463,6 +499,10 @@ public class VenteOeufsImpl implements VenteOeufsService {
             rapporteARepris = ancienMontantRapporte;
             v.setMontantRapporte(null);
         } else if (retraitClient) {
+            // D'abord l'argent reçu à la vente (il repasse en montant rapporté), puis les
+            // autres paiements imputés sur la vente (ils redeviennent une avance).
+            paiementClientService.annulerPaiementsALaVente(paiementsALaVente,
+                    "Client retiré de la vente : l'argent reçu à la vente repasse en montant rapporté par le vendeur");
             compteClientService.annulerImputationsCible(CibleImputation.VENTE_OEUFS, uniqueId,
                     "Client retiré de la vente : l'argent déjà payé redevient une avance");
             soldeVendeurService.ajusterSolde(v.getCreePar(), v.getFarm(), nz(v.getMontant()) - v.getMontantRapporte());

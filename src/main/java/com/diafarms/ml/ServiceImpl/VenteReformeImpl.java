@@ -35,6 +35,7 @@ import com.diafarms.ml.models.VenteReforme;
 import com.diafarms.ml.models.VenteReformeRepartition;
 import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.ClientRepo;
+import com.diafarms.ml.repository.FactureLigneRepo;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
 import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.ProjetsRepo;
@@ -71,6 +72,7 @@ public class VenteReformeImpl implements VenteReformeService {
     private final PaiementClientService paiementClientService;
     private final CompteClientService compteClientService;
     private final LivraisonCommandeService livraisonCommandeService;
+    private final FactureLigneRepo factureLigneRepo;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -317,6 +319,9 @@ public class VenteReformeImpl implements VenteReformeService {
         VenteReforme v = venteReformeRepo.findByUniqueId(uniqueId)
                 .filter(x -> FermeScope.memeFerme(x.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Vente réforme introuvable : " + uniqueId));
+        if (v.getInitialisation() != null && Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
+            throw new IllegalArgumentException("Cette vente est supprimée : restaurez-la avant de la modifier.");
+        }
 
         // Livraison d'une commande : sujets, tarification, poids et prix viennent de la
         // commande (reste à livrer, poids livré, prix/kg) ; les changer ici les
@@ -352,6 +357,27 @@ public class VenteReformeImpl implements VenteReformeService {
         if (data.getClientUniqueId() != null
                 && (v.getClient() == null) != (clientDemande == null)) {
             throw new IllegalArgumentException("Pour ajouter ou retirer le client d'une vente, supprimez-la et ressaisissez-la.");
+        }
+        // Vente sur une facture active : client, montant, sujets et tarification sont ceux
+        // de la facture (même règle que VenteOeufsImpl.update).
+        {
+            TypeVenteReforme typeActuel = v.getTypeVente() != null ? v.getTypeVente() : TypeVenteReforme.TETE;
+            boolean clientModifie = clientDemande != null && v.getClient() != null
+                    && !clientDemande.getUniqueId().equals(v.getClient().getUniqueId());
+            boolean change = clientModifie
+                    || (data.getMontant() != null && !memeValeur(data.getMontant(), v.getMontant()))
+                    || (data.getNombreSujets() != null && !data.getNombreSujets().equals(v.getNombreSujets()))
+                    || (data.getTypeVente() != null && parseTypeVente(data.getTypeVente()) != typeActuel)
+                    || (data.getPoidsTotalKg() != null && !memeValeur(data.getPoidsTotalKg(), v.getPoidsTotalKg()))
+                    || (typeActuel == TypeVenteReforme.KILO && data.getPrixUnitaire() != null
+                            && !memeValeur(data.getPrixUnitaire(), v.getPrixUnitaire()));
+            if (change) {
+                List<String> factures = factureLigneRepo.numeroFactureActive(CibleImputation.VENTE_REFORME, uniqueId);
+                if (!factures.isEmpty()) {
+                    throw new IllegalArgumentException("Cette vente est sur la facture " + factures.get(0)
+                            + " : annulez d'abord la facture.");
+                }
+            }
         }
         // Verrou des clients concernés AVANT de toucher aux imputations (voir
         // CompteClientService.verrouiller) : ancien et nouveau client en cas de changement.

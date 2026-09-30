@@ -187,7 +187,16 @@ public class PaiementClientService {
         List<ImputationPaiement> imps = imputationRepo.findActivesByPaiementId(p.getId());
         if (imps.stream().anyMatch(i -> i.getCibleType() == CibleImputation.REMBOURSEMENT))
             throw new IllegalArgumentException("Une partie de ce paiement a été remboursée au client : annulez d'abord le remboursement.");
-        for (ImputationPaiement i : imps) {
+        annulerInterne(p, motif, u);
+        compteClientService.imputer(p.getClient()); // les autres paiements recouvrent si possible
+        return PaiementClientDTO.fromEntity(p, 0);
+    }
+
+    /** Annulation sans contrôle de rôle ni ré-imputation (l'appelant s'en charge) : le
+     * client doit déjà être verrouillé et aucun argent de ce paiement ne doit avoir été
+     * remboursé. Imputations, paiement et transaction comptable sont retirés ensemble. */
+    private void annulerInterne(PaiementClient p, String motif, Utilisateurs u) {
+        for (ImputationPaiement i : imputationRepo.findActivesByPaiementId(p.getId())) {
             i.setStatut(StatutMouvement.ANNULE);
             i.setMotifAnnulation("Paiement annulé : " + motif);
             i.setDateAnnulation(LocalDateTime.now());
@@ -199,9 +208,45 @@ public class PaiementClientService {
         p.setDateAnnulation(LocalDateTime.now());
         paiementRepo.save(p);
         transactionService.setRemovedBySource(p.getUniqueId(), true);
-        compteClientService.imputer(p.getClient()); // les autres paiements recouvrent si possible
         if (u != null) logs.addLogs(u.getId(), p.getId(), "PaiementClient", "Paiement annulé, motif : " + motif);
-        return PaiementClientDTO.fromEntity(p, 0);
+    }
+
+    /** Argent reçu à la vente (origine VENTE) sur cette vente, paiements actifs. */
+    public List<PaiementClient> paiementsALaVente(CibleImputation type, String venteUid) {
+        return paiementRepo.findActifsALaVente(type, venteUid);
+    }
+
+    /** Total reçu à la vente sur cette vente (0 si aucun). */
+    public double payeALaVente(CibleImputation type, String venteUid) {
+        return CalculImputation.arrondi(paiementRepo.findActifsALaVente(type, venteUid).stream()
+                .mapToDouble(p -> p.getMontant() != null ? p.getMontant() : 0.0).sum());
+    }
+
+    /** Retrait du client d'une vente : l'argent reçu À LA VENTE redevient le montant
+     * rapporté par le vendeur, ses paiements sont donc annulés. Refusé si une partie a
+     * été remboursée au client ou règle une autre vente (on ne peut plus la reprendre sans
+     * défaire ce qui a suivi). À appeler client verrouillé, AVANT toute mutation. */
+    public void verifierReprisePaiementsALaVente(List<PaiementClient> paiements, CibleImputation type, String venteUid) {
+        for (PaiementClient p : paiements) {
+            for (ImputationPaiement i : imputationRepo.findActivesByPaiementId(p.getId())) {
+                if (i.getCibleType() == CibleImputation.REMBOURSEMENT) {
+                    throw new IllegalArgumentException("Une partie de l'argent reçu à la vente a été remboursée au client : "
+                            + "annulez d'abord le remboursement avant de retirer le client.");
+                }
+                if (i.getCibleType() != type || !venteUid.equals(i.getCibleUniqueId())) {
+                    throw new IllegalArgumentException("Une partie de l'argent reçu à la vente règle une autre vente de ce client : "
+                            + "le client ne peut pas être retiré de cette vente.");
+                }
+            }
+        }
+    }
+
+    /** Annule les paiements reçus à la vente (voir verifierReprisePaiementsALaVente,
+     * appelée avant). Motif tracé sur chaque paiement et imputation. */
+    @Transactional
+    public void annulerPaiementsALaVente(List<PaiementClient> paiements, String motif) {
+        Utilisateurs u = user();
+        for (PaiementClient p : paiements) annulerInterne(p, motif, u);
     }
 
     @Transactional
