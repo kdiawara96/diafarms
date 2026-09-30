@@ -175,7 +175,7 @@ public class MedicamentService {
         }
         if (creation || d.getDateAchat() != null) {
             try {
-                a.setDateAchat(d.getDateAchat() == null || d.getDateAchat().isBlank() ? LocalDate.now() : LocalDate.parse(d.getDateAchat()));
+                a.setDateAchat(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(d.getDateAchat() == null || d.getDateAchat().isBlank() ? LocalDate.now() : LocalDate.parse(d.getDateAchat())));
             } catch (Exception e) {
                 throw new IllegalArgumentException("Date invalide (attendu AAAA-MM-JJ) : " + d.getDateAchat());
             }

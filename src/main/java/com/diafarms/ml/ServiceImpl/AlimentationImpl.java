@@ -153,9 +153,7 @@ public class AlimentationImpl implements AlimentationService {
         alimentation.setQuantiteKg(quantiteKg);
         alimentation.setCoutTotal(data.getCoutTotal());
         alimentation.setDateDistribution(
-            data.getDateDistribution() != null
-                ? LocalDate.parse(data.getDateDistribution())
-                : LocalDate.now()
+            com.diafarms.ml.commons.DateSaisie.saisie(data.getDateDistribution(), LocalDate.now())
         );
         alimentation.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         alimentation.setObservations(data.getObservations());
@@ -251,7 +249,7 @@ public class AlimentationImpl implements AlimentationService {
         }
         if (data.getDateDistribution() != null) {
             alimentation.setDateDistribution(
-                LocalDate.parse(data.getDateDistribution())
+                com.diafarms.ml.commons.DateSaisie.saisie(data.getDateDistribution(), null)
             );
         }
         if (data.getObservations() != null) {

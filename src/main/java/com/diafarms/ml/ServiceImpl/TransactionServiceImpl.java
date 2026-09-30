@@ -355,7 +355,7 @@ public class TransactionServiceImpl implements TransactionService {
         t.setUniqueId(java.util.UUID.randomUUID().toString());
         t.setRef(generateRef());
         t.setType(TypeTransaction.valueOf(data.getType()));
-        t.setDate(data.getDate() != null ? data.getDate() : java.time.LocalDate.now());
+        t.setDate(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate() != null ? data.getDate() : java.time.LocalDate.now()));
         t.setDescription(data.getDescription());
         t.setMontant(data.getMontant());
         t.setCategorie(data.getCategorie());
@@ -631,7 +631,7 @@ public class TransactionServiceImpl implements TransactionService {
         boolean etaitSortieAliment = t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie());
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
-        if (data.getDate() != null) t.setDate(data.getDate());
+        if (data.getDate() != null) t.setDate(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate()));
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(data.getMontant());
         if (data.getCategorie() != null) t.setCategorie(data.getCategorie());

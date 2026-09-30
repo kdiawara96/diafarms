@@ -111,7 +111,7 @@ public class SoinsImpl implements SoinsService {
         Soins s = new Soins();
         s.setUniqueId(java.util.UUID.randomUUID().toString());
         s.setProjet(projet);
-        s.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
+        s.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now()));
         s.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         s.setType(parseType(data.getType()));
         s.setProduit(data.getProduit());
@@ -145,7 +145,7 @@ public class SoinsImpl implements SoinsService {
     public SoinsDTO update(String uniqueId, SoinsUpdate data) {
         Soins s = soinDeLaFerme(uniqueId);
 
-        if (data.getDate() != null) s.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null) s.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getHeure() != null) s.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getType() != null) s.setType(parseType(data.getType()));
         if (data.getProduit() != null) s.setProduit(data.getProduit());

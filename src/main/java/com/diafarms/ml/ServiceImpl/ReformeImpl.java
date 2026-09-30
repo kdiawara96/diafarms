@@ -106,7 +106,7 @@ public class ReformeImpl implements ReformeService {
         Reforme r = new Reforme();
         r.setUniqueId(java.util.UUID.randomUUID().toString());
         r.setProjet(projet);
-        r.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
+        r.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now()));
         r.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         r.setNombreSujets(data.getNombreSujets());
         r.setCause(data.getCause());
@@ -144,7 +144,7 @@ public class ReformeImpl implements ReformeService {
             validerEffectifPoulailler(r.getProjet(), nouveauPoulailler, nouveauNombre, memePoulailler ? r.getNombreSujets() : 0);
         }
 
-        if (data.getDate() != null) r.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null) r.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getHeure() != null) r.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreSujets() != null) {
             if (data.getNombreSujets() <= 0) {

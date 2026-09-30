@@ -255,7 +255,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         investissement.setCategorie(dto.getCategorie());
         investissement.setNom(dto.getNom());
         investissement.setMontant(dto.getMontant());
-        investissement.setDateAchat(dto.getDateAchat());
+        investissement.setDateAchat(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(dto.getDateAchat()));
         investissement.setFournisseur(dto.getFournisseur());
         investissement.setDureeAmortissement(dto.getDureeAmortissement());
         investissement.setCommentaire(dto.getCommentaire());
@@ -331,7 +331,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         inv.setNom(dto.getNom());
         inv.setCategorie(dto.getCategorie());
         inv.setMontant(dto.getMontant());
-        inv.setDateAchat(dto.getDateAchat());
+        inv.setDateAchat(com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(dto.getDateAchat()));
         inv.setFournisseur(dto.getFournisseur());
         inv.setDureeAmortissement(dto.getDureeAmortissement());
         inv.setCommentaire(dto.getCommentaire());

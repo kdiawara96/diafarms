@@ -117,10 +117,10 @@ public class SessionPeseeImpl implements SessionPeseeService {
         if (brut == null || brut.isBlank()) return null;
         String s = brut.trim();
         try {
-            return LocalDateTime.parse(s);
+            return com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(LocalDateTime.parse(s));
         } catch (DateTimeParseException e) {
             try {
-                return OffsetDateTime.parse(s).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
+                return com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(OffsetDateTime.parse(s).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime());
             } catch (DateTimeParseException e2) {
                 throw new IllegalArgumentException("Date invalide pour " + champ + " : " + brut);
             }

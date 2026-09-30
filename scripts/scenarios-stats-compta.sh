@@ -71,6 +71,10 @@ stats() {
 d = json.load(open(sys.argv[1]))["data"]
 print(d["totalEntreesValidees"], d["totalEncaisse"], d["totalVendu"], d["totalMontantRecuVentes"], d["vueParProjet"])' "$TMP/body"
 }
+check_futur() { # libellé : 400 ET message « dans le futur » (pas un autre refus)
+  if [ "$(cat "$TMP/code")" = "400" ] && grep -q "dans le futur" "$TMP/body"; then echo "OK     $1"; PASS=$((PASS+1))
+  else echo "ECHEC  $1 (HTTP $(cat "$TMP/code") : $(head -c 300 "$TMP/body"))"; FAIL=$((FAIL+1)); fi
+}
 delta() { python3 -c 'import sys; print(round(float(sys.argv[2]) - float(sys.argv[1]), 2))' "$1" "$2"; }
 
 # ---------------------------------------------------------------------------
@@ -176,6 +180,67 @@ check_code "vente directe supprimée" "200"
 read -r E5 C5 V5 R5 P5 < <(stats "$AUJ" "$AUJ")
 check_num "après suppression : entrées validées +12 000" "12000" "$(delta "$E0" "$E5")"
 check_num "après suppression : vendu +10 000" "10000" "$(delta "$V0" "$V5")"
+
+echo "== 6. Cas Zankè : commande 5 000, acompte 2 000, deux livraisons de 2 500, paiements 500 et 2 500"
+read -r E6 C6 V6 R6 P6 < <(stats "$AUJ" "$AUJ")
+api POST /clients/create "{\"nom\":\"Zanke $SUFFIXE\",\"telephone\":\"$((TEL + 1))\"}"
+check_code "client Zankè créé" "200 201"
+ZANKE="$(jval "d['data']['uniqueId']")"
+api POST /commandes/create "{\"clientUniqueId\":\"$ZANKE\",\"magasinUniqueId\":\"$BOUTIQUE\",\"type\":\"OEUFS\",\"quantite\":60,\"prixUnitaireEstime\":83.3333333333,\"montantEstime\":5000,\"montantAcompte\":2000}"
+check_code "commande 5 000 avec acompte 2 000" "200 201"
+CMD="$(jval "d['data']['uniqueId']")"
+api POST "/commandes/$CMD/livrer?quantite=30&montantRecu=0"
+check_code "livraison 1 (30 œufs)" "200"
+api POST "/commandes/$CMD/paiement" '{"montant":500,"mode":"ESPECES"}'
+check_code "paiement 500" "200 201"
+api POST "/commandes/$CMD/livrer?quantite=30&montantRecu=0"
+check_code "livraison 2 (30 œufs)" "200"
+api POST "/commandes/$CMD/paiement" '{"montant":2500,"mode":"ESPECES"}'
+check_code "paiement 2 500" "200 201"
+read -r E7 C7 V7 R7 P7 < <(stats "$AUJ" "$AUJ")
+check_num "Zankè : entrées d'argent +5 000 (pas 10 000)" "5000" "$(delta "$E6" "$E7")"
+check_num "Zankè : vendu +5 000" "5000" "$(delta "$V6" "$V7")"
+# Liste de la Comptabilité, filtres par nature.
+liste() { api GET "/transactions/list?page=0&size=500&dateDebut=$AUJ&dateFin=$AUJ$1"; python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))["data"]["data"]
+lignes = [x for x in d if sys.argv[2] in (x.get("clientNom") or "")]
+print(len(lignes), round(sum(x["montant"] for x in lignes), 2), sum(1 for x in lignes if x.get("venteClient")))' "$TMP/body" "Zanke $SUFFIXE"; }
+read -r N_TOUS M_TOUS NV_TOUS < <(liste "")
+check_num "liste : 5 lignes pour Zankè (2 ventes, 3 paiements)" "5" "$N_TOUS"
+check_num "liste : 2 lignes marquées venteClient" "2" "$NV_TOUS"
+read -r N_VC M_VC NV_VC < <(liste "&nature=VENTE_CLIENT")
+check_num "filtre Ventes à des clients : 2 lignes" "2" "$N_VC"
+check_num "filtre Ventes à des clients : 5 000 de valeur" "5000" "$M_VC"
+read -r N_EA M_EA NV_EA < <(liste "&type=ENTREE&nature=HORS_VENTE_CLIENT")
+check_num "filtre Entrées : 3 paiements" "3" "$N_EA"
+check_num "filtre Entrées : 5 000 d'argent" "5000" "$M_EA"
+check_num "filtre Entrées : aucune vente à un client" "0" "$NV_EA"
+api GET "/transactions/list?page=0&size=5&nature=AUTRE"
+check_code "filtre nature inconnu refusé" "400"
+
+echo "== 7. Dates dans le futur refusées (1 jour de tolérance)"
+DEMAIN="$(date -d tomorrow +%F)"
+APRES_DEMAIN="$(date -d '+2 days' +%F)"
+api POST /transactions/create "{\"type\":\"ENTREE\",\"commun\":true,\"date\":\"$DEMAIN\",\"description\":\"Demain $SUFFIXE\",\"montant\":1,\"categorie\":\"Divers\"}"
+check_code "transaction datée de demain acceptée (tolérance)" "200 201"
+api POST /transactions/create "{\"type\":\"ENTREE\",\"commun\":true,\"date\":\"$APRES_DEMAIN\",\"description\":\"Futur $SUFFIXE\",\"montant\":1,\"categorie\":\"Divers\"}"
+check_futur "transaction dans 2 jours refusée"
+grep -q "La date ne peut pas être dans le futur" "$TMP/body" && { echo "OK     message « La date ne peut pas être dans le futur »"; PASS=$((PASS+1)); } || { echo "ECHEC  message futur : $(cat "$TMP/body")"; FAIL=$((FAIL+1)); }
+api POST /ventes-oeufs/create "{\"date\":\"$APRES_DEMAIN\",\"magasinUniqueId\":\"$BOUTIQUE\",\"quantiteOeufs\":1,\"prixUnitaire\":100,\"montant\":100,\"montantRapporte\":100}"
+check_futur "vente dans 2 jours refusée"
+api POST /paiements-client/create "{\"clientUniqueId\":\"$CLIENT\",\"montant\":100,\"mode\":\"ESPECES\",\"date\":\"$APRES_DEMAIN\"}"
+check_futur "paiement dans 2 jours refusé"
+api POST "/commandes/$CMD/paiement" "{\"montant\":100,\"mode\":\"ESPECES\",\"date\":\"$APRES_DEMAIN\"}"
+check_futur "paiement de commande dans 2 jours refusé"
+read -r PROJET_UID BATIMENT_UID < <(psql_run "SELECT p.unique_id || ' ' || b.unique_id FROM projets p
+  JOIN occupations_batiments o ON o.projet_id = p.id JOIN batiments b ON b.id = o.batiment_id
+  WHERE p.farm_id = $FARM_ID AND coalesce(p.removed,false) = false ORDER BY p.id LIMIT 1")
+api POST /mortalites/create "{\"projetUniqueId\":\"$PROJET_UID\",\"batimentUniqueId\":\"$BATIMENT_UID\",\"date\":\"$APRES_DEMAIN\",\"nombreMorts\":1,\"cause\":\"Test\"}"
+check_futur "mortalité dans 2 jours refusée"
+api POST /consommations-aliment/create "{\"projetUniqueId\":\"$PROJET_UID\",\"date\":\"$APRES_DEMAIN\",\"quantiteKg\":1}"
+check_futur "consommation dans 2 jours refusée"
+api POST /alimentations/create/$PROJET_UID "{\"nomAliment\":\"Futur\",\"sac\":1,\"quantiteKg\":1,\"coutTotal\":100,\"dateDistribution\":\"$APRES_DEMAIN\"}"
+check_futur "achat d'aliment dans 2 jours refusé"
 
 echo
 echo "Résultat : $PASS OK, $FAIL échec(s)."

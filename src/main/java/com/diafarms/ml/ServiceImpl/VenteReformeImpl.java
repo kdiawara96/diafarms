@@ -271,7 +271,7 @@ public class VenteReformeImpl implements VenteReformeService {
         v.setMagasin(magasin);
         v.setClient(client);
         v.setCreePar(currentUser);
-        v.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
+        v.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now()));
         v.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         v.setNombreSujets(data.getNombreSujets());
         v.setPrixUnitaire(data.getPrixUnitaire());
@@ -387,7 +387,7 @@ public class VenteReformeImpl implements VenteReformeService {
         Double ancienMontantRapporte = v.getMontantRapporte();
         Client ancienClient = v.getClient();
 
-        if (data.getDate() != null) v.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null) v.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getHeure() != null) v.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire());
 

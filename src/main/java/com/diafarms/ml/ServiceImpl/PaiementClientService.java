@@ -134,6 +134,7 @@ public class PaiementClientService {
             String observations, LocalDate date) {
         if (montant == null || CalculImputation.arrondi(montant) <= 0)
             throw new IllegalArgumentException("Le montant payé doit être positif.");
+        DateSaisie.pasDansLeFutur(date); // toutes les entrées d'argent client passent ici
         Utilisateurs u = user();
         PaiementClient p = new PaiementClient();
         p.setUniqueId(UUID.randomUUID().toString());

@@ -157,7 +157,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
     @Transactional
     public VenteDiverseDTO create(VenteDiverseCreate data) {
         VenteDiverse saved = creer(parseProduit(data.getProduit()),
-                data.getDate() != null && !data.getDate().isBlank() ? LocalDate.parse(data.getDate()) : null,
+                com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null),
                 data.getQuantite(), data.getPrixUnitaire(), data.getMontant(), data.getDescription(), null);
         return VenteDiverseDTO.fromEntity(saved);
     }
@@ -183,7 +183,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
         if (Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette vente est supprimée.");
         }
-        if (data.getDate() != null && !data.getDate().isBlank()) v.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null && !data.getDate().isBlank()) v.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getQuantite() != null) v.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
         if (data.getMontant() != null) v.setMontant(data.getMontant());

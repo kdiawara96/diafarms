@@ -127,7 +127,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
 
         Batiment batiment = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         int oeufsCollectes = data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0;
-        LocalDate date = data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now();
+        LocalDate date = com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now());
         validerPlafondJournalier(projet, batiment, date, oeufsCollectes, null);
         validerCassesEtNonUtilisables(oeufsCollectes,
                 data.getOeufsCasses() != null ? data.getOeufsCasses() : 0,
@@ -203,7 +203,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
                 .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Collecte introuvable : " + uniqueId));
 
-        if (data.getDate() != null) c.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null) c.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         c.setBatiment(poulaillerObligatoire.resoudrePourModification(c.getProjet(), c.getBatiment(), data.getBatimentUniqueId()));
         if (data.getOeufsCollectes() != null) {

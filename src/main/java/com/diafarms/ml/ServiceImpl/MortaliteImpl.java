@@ -82,7 +82,7 @@ public class MortaliteImpl implements MortaliteService {
         Mortalite m = new Mortalite();
         m.setUniqueId(java.util.UUID.randomUUID().toString());
         m.setProjet(projet);
-        m.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
+        m.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now()));
         m.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         m.setNombreMorts(data.getNombreMorts() != null ? data.getNombreMorts() : 0);
         m.setCause(data.getCause());
@@ -112,7 +112,7 @@ public class MortaliteImpl implements MortaliteService {
 
         int ancienNombre = m.getNombreMorts() != null ? m.getNombreMorts() : 0;
         Long ancienBatimentId = m.getBatiment() != null ? m.getBatiment().getId() : null;
-        if (data.getDate() != null) m.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null) m.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getHeure() != null) m.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getNombreMorts() != null) m.setNombreMorts(data.getNombreMorts());
         if (data.getCause() != null) m.setCause(data.getCause());

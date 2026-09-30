@@ -176,7 +176,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             throw new IllegalArgumentException("Type de stock invalide (attendu OEUFS, OEUFS_CASSES ou REFORME) : " + data.getType());
         }
 
-        LocalDate date = data.getDate() != null && !data.getDate().isBlank() ? LocalDate.parse(data.getDate()) : LocalDate.now();
+        LocalDate date = com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now());
 
         if (type == TypeStockMagasin.REFORME) {
             // Réforme : pas de magasin de stockage, le projet source reste choisi

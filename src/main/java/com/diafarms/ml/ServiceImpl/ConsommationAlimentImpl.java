@@ -61,6 +61,8 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
             throw new IllegalArgumentException("La quantité consommée doit être positive.");
         }
 
+        // Date contrôlée avant le stock : une date dans le futur est l'erreur à signaler.
+        LocalDate dateSaisie = com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now());
         double totalAchete = alimentationRepo.sumAcheteByProjetId(projet.getId());
         double totalConsomme = consommationRepo.sumConsommeByProjetId(projet.getId());
         double restant = totalAchete - totalConsomme;
@@ -75,7 +77,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
         ConsommationAliment c = new ConsommationAliment();
         c.setUniqueId(java.util.UUID.randomUUID().toString());
         c.setProjet(projet);
-        c.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
+        c.setDate(dateSaisie);
         c.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
         c.setQuantiteKg(data.getQuantiteKg());
         c.setInitialisation(Initialisation.init());
@@ -101,7 +103,7 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
         ConsommationAliment c = consommationRepo.findByUniqueId(uniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Consommation introuvable : " + uniqueId));
 
-        if (data.getDate() != null) c.setDate(LocalDate.parse(data.getDate()));
+        if (data.getDate() != null) c.setDate(com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getQuantiteKg() != null) {
             if (data.getQuantiteKg() <= 0) {

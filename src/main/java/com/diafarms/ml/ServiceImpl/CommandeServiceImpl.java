@@ -591,9 +591,7 @@ public class CommandeServiceImpl implements CommandeService {
     public CommandeDTO livrer(String uniqueId, Integer quantiteDemandee, Double montantRecu, String modeBrut,
                               Double poidsTotalKg, Double prixKg, String dateBrute, String heureBrute) {
         LocalDate dateLivraison = DateSaisie.parse(dateBrute, LocalDate.now());
-        if (dateLivraison.isAfter(LocalDate.now())) {
-            throw new IllegalArgumentException("La date de livraison ne peut pas être dans le futur.");
-        }
+        DateSaisie.pasDansLeFutur(dateLivraison); // même règle (et tolérance) que toute saisie
         String heureLivraison = null;
         if (heureBrute != null && !heureBrute.isBlank()) {
             try {
