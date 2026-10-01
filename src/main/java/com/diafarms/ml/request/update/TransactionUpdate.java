@@ -20,6 +20,11 @@ public class TransactionUpdate {
     private String description;
     private Double montant;
     private String categorie;
+    // Catégorie « Autre » : précision libre (ex. « Gardiennage »). Si categorie vaut
+    // « Autre » et que la précision est remplie, c'est la précision qui est enregistrée
+    // comme catégorie (même résultat que le champ « Préciser la catégorie » du web).
+    // Absente (APK <= 1.35) : la catégorie reste « Autre », la description dit le reste.
+    private String categoriePrecision;
     private Double quantite; // facultatif (Santé / Vétérinaire : obligatoire, > 0)
     private Double prixUnitaire; // facultatif ; absent = montant / quantite
 

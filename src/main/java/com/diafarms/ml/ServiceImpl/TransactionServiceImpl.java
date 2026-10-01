@@ -346,6 +346,24 @@ public class TransactionServiceImpl implements TransactionService {
                 || c.equals("achatdealiment") || c.equals("alimentation");
     }
 
+    /** « Autre » + précision -> la précision devient la catégorie (voir TransactionCreate). */
+    static String categorieEffective(String categorie, String precision) {
+        String c = categorie == null || categorie.isBlank() ? null : categorie.trim();
+        String p = precision == null || precision.isBlank() ? null : precision.trim();
+        if (p != null && (c == null || "autre".equalsIgnoreCase(c))) return p;
+        return c;
+    }
+
+    /** Règles communes de toute entrée/sortie d'argent saisie à la main (web ou mobile). */
+    static void validerSaisie(Double montant, String categorie, String description) {
+        if (montant == null || montant <= 0) {
+            throw new IllegalArgumentException("Le montant doit être supérieur à 0.");
+        }
+        if ((categorie == null || categorie.isBlank()) && (description == null || description.isBlank())) {
+            throw new IllegalArgumentException("Indiquez une catégorie ou une description.");
+        }
+    }
+
     @Override
     @Transactional
     public TransactionDTO create(TransactionCreate data) {
@@ -359,6 +377,15 @@ public class TransactionServiceImpl implements TransactionService {
             throw new IllegalArgumentException("Type de transaction inconnu : " + data.getType() + " (attendu ENTREE ou SORTIE).");
         }
         data.setType(data.getType().trim().toUpperCase());
+        data.setCategorie(categorieEffective(data.getCategorie(), data.getCategoriePrecision()));
+        // Montant au franc (voir Franc) ; sans montant mais avec quantité x prix unitaire
+        // (Santé), le serveur le calcule lui-même.
+        if ((data.getMontant() == null || data.getMontant() <= 0) && data.getQuantite() != null && data.getQuantite() > 0
+                && data.getPrixUnitaire() != null && data.getPrixUnitaire() > 0) {
+            data.setMontant(data.getQuantite() * data.getPrixUnitaire());
+        }
+        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        validerSaisie(data.getMontant(), data.getCategorie(), data.getDescription());
         if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatAliment(data.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
         }
@@ -670,8 +697,17 @@ public class TransactionServiceImpl implements TransactionService {
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
         t.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), t.getDate()));
         if (data.getDescription() != null) t.setDescription(data.getDescription());
-        if (data.getMontant() != null) t.setMontant(data.getMontant());
-        if (data.getCategorie() != null) t.setCategorie(data.getCategorie());
+        if (data.getMontant() != null) t.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        if (data.getCategorie() != null || data.getCategoriePrecision() != null) {
+            t.setCategorie(categorieEffective(data.getCategorie() != null ? data.getCategorie() : t.getCategorie(),
+                    data.getCategoriePrecision()));
+        }
+        // Mêmes règles qu'à la création, sur les seuls champs modifiés (une ancienne
+        // transaction hors règle reste modifiable sur ses autres champs).
+        if (data.getMontant() != null || data.getCategorie() != null || data.getCategoriePrecision() != null
+                || data.getDescription() != null) {
+            validerSaisie(data.getMontant() != null ? t.getMontant() : 1.0, t.getCategorie(), t.getDescription());
+        }
         if (data.getQuantite() != null) t.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
         if (data.getPrixUnitaire() != null) t.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
         if (t.getQuantite() != null && data.getPrixUnitaire() == null && (data.getMontant() != null || data.getQuantite() != null) && t.getMontant() != null) {

@@ -71,9 +71,13 @@ public class MortaliteImpl implements MortaliteService {
     @Transactional
     public MortaliteDTO create(MortaliteCreate data) {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
         int nombreMorts = data.getNombreMorts() != null ? data.getNombreMorts() : 0;
+        if (nombreMorts <= 0) {
+            throw new IllegalArgumentException("Le nombre de sujets morts doit être supérieur à 0.");
+        }
         com.diafarms.ml.models.Batiment batimentSaisi = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         validerPlafondMortalite(projet, batimentSaisi, nombreMorts, 0);
 
@@ -114,7 +118,12 @@ public class MortaliteImpl implements MortaliteService {
         Long ancienBatimentId = m.getBatiment() != null ? m.getBatiment().getId() : null;
         m.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), m.getDate()));
         if (data.getHeure() != null) m.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
-        if (data.getNombreMorts() != null) m.setNombreMorts(data.getNombreMorts());
+        if (data.getNombreMorts() != null) {
+            if (data.getNombreMorts() <= 0) {
+                throw new IllegalArgumentException("Le nombre de sujets morts doit être supérieur à 0.");
+            }
+            m.setNombreMorts(data.getNombreMorts());
+        }
         if (data.getCause() != null) m.setCause(data.getCause());
         m.setBatiment(poulaillerObligatoire.resoudrePourModification(m.getProjet(), m.getBatiment(), data.getBatimentUniqueId()));
         // Ce que cette même saisie comptait AVANT modification est déjà dans la somme

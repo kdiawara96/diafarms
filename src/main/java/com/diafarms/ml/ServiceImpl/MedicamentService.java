@@ -168,7 +168,7 @@ public class MedicamentService {
         }
         if (creation || d.getCoutTotal() != null) {
             if (d.getCoutTotal() == null || d.getCoutTotal() <= 0) throw new IllegalArgumentException("Le montant payé est obligatoire.");
-            a.setCoutTotal(d.getCoutTotal());
+            a.setCoutTotal(com.diafarms.ml.commons.Franc.arrondi(d.getCoutTotal()));
         }
         if (d.getPrixUnitaire() != null && d.getPrixUnitaire() > 0) {
             a.setPrixUnitaire(d.getPrixUnitaire());

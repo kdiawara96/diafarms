@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.DTO.EntretienDTO;
+import com.diafarms.ml.commons.DateSaisie;
+import com.diafarms.ml.commons.FermeScope;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.NiveauEntretien;
 import com.diafarms.ml.enums.TypeEntretien;
@@ -80,16 +82,44 @@ public class EntretienImpl implements EntretienService {
         }
     }
 
+    // Poulailler de la ferme de l'utilisateur seulement : celui d'une autre ferme est
+    // traité comme inexistant (voir FermeScope).
+    private Batiment poulaillerDeLaFerme(String uniqueId, Utilisateurs u) {
+        Batiment b = batimentRepo.findByUniqueId(uniqueId);
+        if (b == null || !FermeScope.memeFerme(b.getFarm(), u)) {
+            throw new IllegalArgumentException("Poulailler introuvable : " + uniqueId);
+        }
+        return b;
+    }
+
+    private Entretien entretienDeLaFerme(String uniqueId, Utilisateurs u) {
+        return entretienRepo.findByUniqueId(uniqueId)
+                .filter(x -> FermeScope.memeFerme(x.getFarm(), u))
+                .orElseThrow(() -> new IllegalArgumentException("Entretien introuvable : " + uniqueId));
+    }
+
+    private static LocalTime heure(String brute) {
+        if (brute == null || brute.isBlank()) return null;
+        try {
+            return LocalTime.parse(brute.trim());
+        } catch (java.time.format.DateTimeParseException ex) {
+            throw new IllegalArgumentException("Heure invalide : " + brute + " (format attendu HH:mm).");
+        }
+    }
+
     @Override
     @Transactional
     public EntretienDTO create(EntretienCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
         NiveauEntretien niveau = parseNiveau(data.getNiveau());
+        if (data.getDescription() == null || data.getDescription().isBlank()) {
+            throw new IllegalArgumentException("La description est obligatoire.");
+        }
 
         Entretien e = new Entretien();
         e.setUniqueId(java.util.UUID.randomUUID().toString());
-        e.setDate(data.getDate() != null ? LocalDate.parse(data.getDate()) : LocalDate.now());
-        e.setHeure(data.getHeure() != null && !data.getHeure().isBlank() ? LocalTime.parse(data.getHeure()) : null);
+        e.setDate(DateSaisie.saisie(data.getDate(), LocalDate.now()));
+        e.setHeure(heure(data.getHeure()));
         e.setNiveau(niveau);
         e.setType(niveau == NiveauEntretien.SITE ? TypeEntretien.AUTRE : parseType(data.getType()));
         e.setDescription(data.getDescription());
@@ -100,11 +130,7 @@ public class EntretienImpl implements EntretienService {
             if (data.getBatimentUniqueId() == null || data.getBatimentUniqueId().isBlank()) {
                 throw new IllegalArgumentException("Le poulailler est requis pour une action de niveau Poulailler.");
             }
-            Batiment batiment = batimentRepo.findByUniqueId(data.getBatimentUniqueId());
-            if (batiment == null) {
-                throw new IllegalArgumentException("Poulailler introuvable : " + data.getBatimentUniqueId());
-            }
-            e.setBatiment(batiment);
+            e.setBatiment(poulaillerDeLaFerme(data.getBatimentUniqueId(), currentUser));
         }
         if (currentUser != null) {
             e.setFarm(currentUser.getFarm());
@@ -127,11 +153,14 @@ public class EntretienImpl implements EntretienService {
     @Override
     @Transactional
     public EntretienDTO update(String uniqueId, EntretienUpdate data) {
-        Entretien e = entretienRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Entretien introuvable : " + uniqueId));
+        Utilisateurs utilisateur = getCurrentUserSafe();
+        Entretien e = entretienDeLaFerme(uniqueId, utilisateur);
 
-        if (data.getDate() != null) e.setDate(LocalDate.parse(data.getDate()));
-        if (data.getHeure() != null) e.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
+        e.setDate(DateSaisie.modifiee(data.getDate(), e.getDate()));
+        if (data.getHeure() != null) e.setHeure(heure(data.getHeure()));
+        if (data.getDescription() != null && data.getDescription().isBlank()) {
+            throw new IllegalArgumentException("La description est obligatoire.");
+        }
         if (data.getNiveau() != null) e.setNiveau(parseNiveau(data.getNiveau()));
         if (data.getType() != null) e.setType(e.getNiveau() == NiveauEntretien.SITE ? TypeEntretien.AUTRE : parseType(data.getType()));
         if (data.getDescription() != null) e.setDescription(data.getDescription());
@@ -141,7 +170,7 @@ public class EntretienImpl implements EntretienService {
             e.setBatiment(null);
             e.setType(TypeEntretien.AUTRE);
         } else if (data.getBatimentUniqueId() != null) {
-            e.setBatiment(data.getBatimentUniqueId().isBlank() ? null : batimentRepo.findByUniqueId(data.getBatimentUniqueId()));
+            e.setBatiment(data.getBatimentUniqueId().isBlank() ? null : poulaillerDeLaFerme(data.getBatimentUniqueId(), utilisateur));
         }
         if (e.getInitialisation() != null) {
             e.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
@@ -164,8 +193,7 @@ public class EntretienImpl implements EntretienService {
     @Override
     @Transactional
     public String deleteOrRecover(String uniqueId) {
-        Entretien e = entretienRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Entretien introuvable : " + uniqueId));
+        Entretien e = entretienDeLaFerme(uniqueId, getCurrentUserSafe());
 
         e.getInitialisation().setRemoved(!e.getInitialisation().getRemoved());
         entretienRepo.save(e);

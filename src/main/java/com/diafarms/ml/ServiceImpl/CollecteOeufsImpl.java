@@ -94,7 +94,7 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         int plafond = plafondEffectif(projet, batiment);
         int dejaCollectes = effectifVivantHelper.oeufsDejaCollectes(projet, batiment, date, excludeId);
         if (dejaCollectes + oeufsCollectes > plafond) {
-            String perimetre = batiment != null ? "ce bâtiment" : "le projet";
+            String perimetre = batiment != null ? "ce poulailler" : "le projet";
             throw new IllegalArgumentException(
                 "Le cumul des œufs collectés aujourd'hui pour " + perimetre + " (" + dejaCollectes + " + " + oeufsCollectes
                         + ") dépasserait l'effectif vivant (" + plafond + " poule(s))."
@@ -127,6 +127,9 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
 
         Batiment batiment = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         int oeufsCollectes = data.getOeufsCollectes() != null ? data.getOeufsCollectes() : 0;
+        if (oeufsCollectes <= 0) {
+            throw new IllegalArgumentException("Le nombre d'œufs collectés doit être supérieur à 0.");
+        }
         LocalDate date = com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now());
         validerPlafondJournalier(projet, batiment, date, oeufsCollectes, null);
         validerCassesEtNonUtilisables(oeufsCollectes,
@@ -207,6 +210,9 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         c.setBatiment(poulaillerObligatoire.resoudrePourModification(c.getProjet(), c.getBatiment(), data.getBatimentUniqueId()));
         if (data.getOeufsCollectes() != null) {
+            if (data.getOeufsCollectes() <= 0) {
+                throw new IllegalArgumentException("Le nombre d'œufs collectés doit être supérieur à 0.");
+            }
             // Validé avec la date/le bâtiment déjà à jour ci-dessus (au cas où l'un des
             // deux change en même temps que la quantité) — voir validerPlafondJournalier.
             validerPlafondJournalier(c.getProjet(), c.getBatiment(), c.getDate(), data.getOeufsCollectes(), c.getId());

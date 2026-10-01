@@ -104,6 +104,9 @@ public class SoinsImpl implements SoinsService {
 
         Utilisateurs currentUser = getCurrentUserSafe();
         boolean depuisStock = Boolean.TRUE.equals(data.getDepuisStock());
+        if (data.getProduit() == null || data.getProduit().isBlank()) {
+            throw new IllegalArgumentException("Le produit (nom du vaccin ou du médicament) est obligatoire.");
+        }
         if (depuisStock) {
             medicamentService.verifierConsommation(projet, data.getProduit(), data.getUnite(), data.getQuantite(), null);
         }
@@ -119,7 +122,7 @@ public class SoinsImpl implements SoinsService {
         s.setPrixUnitaire(data.getPrixUnitaire());
         // Pris dans le stock : le médicament a déjà été payé à son achat (dépense
         // MEDICAMENT), le soin ne crée donc aucune dépense SOINS/VACCINATION.
-        s.setCoutTotal(depuisStock ? null : data.getCoutTotal());
+        s.setCoutTotal(depuisStock ? null : com.diafarms.ml.commons.Franc.arrondi(data.getCoutTotal()));
         s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         s.setObservations(data.getObservations());
         s.setDepuisStock(depuisStock ? Boolean.TRUE : null);
@@ -150,10 +153,15 @@ public class SoinsImpl implements SoinsService {
         s.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), s.getDate()));
         if (data.getHeure() != null) s.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         if (data.getType() != null) s.setType(parseType(data.getType()));
-        if (data.getProduit() != null) s.setProduit(data.getProduit());
+        if (data.getProduit() != null) {
+            if (data.getProduit().isBlank()) {
+                throw new IllegalArgumentException("Le produit (nom du vaccin ou du médicament) est obligatoire.");
+            }
+            s.setProduit(data.getProduit());
+        }
         if (data.getQuantite() != null) s.setQuantite(data.getQuantite());
         if (data.getPrixUnitaire() != null) s.setPrixUnitaire(data.getPrixUnitaire());
-        if (data.getCoutTotal() != null) s.setCoutTotal(data.getCoutTotal());
+        if (data.getCoutTotal() != null) s.setCoutTotal(com.diafarms.ml.commons.Franc.arrondi(data.getCoutTotal()));
         if (data.getModeAdministration() != null) s.setModeAdministration(joinModeAdministration(data.getModeAdministration()));
         if (data.getObservations() != null) s.setObservations(data.getObservations());
         if (data.getDepuisStock() != null) s.setDepuisStock(data.getDepuisStock() ? Boolean.TRUE : null);

@@ -211,7 +211,7 @@ public class CommandeServiceImpl implements CommandeService {
             throw new IllegalArgumentException("Le prix au kilo est obligatoire pour une commande au kilo.");
         }
         if (c.getPoidsEstimeKg() != null) {
-            c.setMontantEstime(CalculImputation.arrondi(c.getPoidsEstimeKg() * c.getPrixKgEstime()));
+            c.setMontantEstime(com.diafarms.ml.commons.Franc.arrondi(c.getPoidsEstimeKg() * c.getPrixKgEstime()));
         } else if (c.getMontantEstime() == null || c.getMontantEstime() <= 0) {
             throw new IllegalArgumentException("Indiquez le poids estimé (kg) ou le montant estimé de la commande.");
         }
@@ -419,10 +419,12 @@ public class CommandeServiceImpl implements CommandeService {
         c.setType(type);
         c.setQuantite(data.getQuantite());
         c.setPrixUnitaireEstime(data.getPrixUnitaireEstime());
-        c.setMontantEstime(data.getMontantEstime());
-        c.setMontantAcompte(data.getMontantAcompte());
+        c.setMontantEstime(com.diafarms.ml.commons.Franc.arrondi(data.getMontantEstime()));
+        c.setMontantAcompte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantAcompte()));
         appliquerTarification(c, data, true);
-        c.setDateCommande(DateSaisie.parse(data.getDateCommande(), LocalDate.now()));
+        // Date de commande : passé permis, futur refusé (DateSaisie) ; la date de
+        // livraison PRÉVUE, elle, peut être dans le futur.
+        c.setDateCommande(DateSaisie.saisie(data.getDateCommande(), LocalDate.now()));
         c.setDateLivraisonPrevue(DateSaisie.parse(data.getDateLivraisonPrevue(), null));
         c.setStatut(StatutCommande.EN_ATTENTE);
         c.setCreePar(currentUser);
@@ -471,7 +473,7 @@ public class CommandeServiceImpl implements CommandeService {
         if (data.getPrixUnitaireEstime() != null) c.setPrixUnitaireEstime(data.getPrixUnitaireEstime());
         if (data.getMontantEstime() != null) {
             if (data.getMontantEstime() <= 0) throw new IllegalArgumentException("Le montant estimé doit être positif.");
-            c.setMontantEstime(data.getMontantEstime());
+            c.setMontantEstime(com.diafarms.ml.commons.Franc.arrondi(data.getMontantEstime()));
         }
         // Commande au kilo (ou qui le devient) : toujours repasser par appliquerTarification,
         // pour qu'un montantEstime envoyé seul ne contredise pas poids estimé x prix/kg.
@@ -485,7 +487,7 @@ public class CommandeServiceImpl implements CommandeService {
         // des paiements. montantAcompte reste donc figé après la création : c'est
         // l'historique du tout premier acompte, rien d'autre.
         if (data.getMontantAcompte() != null
-                && CalculImputation.arrondi(data.getMontantAcompte()) != CalculImputation.arrondi(nz(c.getMontantAcompte()))) {
+                && Math.round(data.getMontantAcompte()) != Math.round(nz(c.getMontantAcompte()))) {
             throw new IllegalArgumentException(
                     "Un acompte supplémentaire s'enregistre comme un paiement sur la commande.");
         }
@@ -647,14 +649,14 @@ public class CommandeServiceImpl implements CommandeService {
                 throw new IllegalArgumentException("Commande au kilo : le prix au kilo doit être positif.");
             }
             prixUnitaire = prix;
-            montantLivraison = CalculImputation.arrondi(poidsTotalKg * prix);
+            montantLivraison = com.diafarms.ml.commons.Franc.arrondi(poidsTotalKg * prix);
         } else {
             if (poidsTotalKg != null || prixKg != null) {
                 throw new IllegalArgumentException("Cette commande est tarifée par sujet : le poids et le prix au kilo ne s'appliquent pas.");
             }
             prixUnitaire = c.getPrixUnitaireEstime() != null ? c.getPrixUnitaireEstime()
                     : c.getMontantEstime() / c.getQuantite();
-            montantLivraison = prixUnitaire * quantite;
+            montantLivraison = com.diafarms.ml.commons.Franc.arrondi(prixUnitaire * quantite);
         }
 
         // montantRapporte/modePaiement laissés vides à la création de la vente : cette

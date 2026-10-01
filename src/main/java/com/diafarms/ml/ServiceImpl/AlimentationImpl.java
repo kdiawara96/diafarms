@@ -167,7 +167,7 @@ public class AlimentationImpl implements AlimentationService {
         // Colonne sac NOT NULL : sans sacs saisis, 0 (seuls les kg comptent pour le stock).
         alimentation.setSac(data.getSac() != null ? data.getSac() : 0.0);
         alimentation.setQuantiteKg(quantiteKg);
-        alimentation.setCoutTotal(data.getCoutTotal());
+        alimentation.setCoutTotal(com.diafarms.ml.commons.Franc.arrondi(data.getCoutTotal()));
         alimentation.setDateDistribution(
             com.diafarms.ml.commons.DateSaisie.saisie(data.getDateDistribution(), LocalDate.now())
         );
@@ -263,7 +263,7 @@ public class AlimentationImpl implements AlimentationService {
         alimentation.setQuantiteKg(nouvelleQuantite);
         alimentation.setProjet(nouveauProjet);
         if (data.getCoutTotal() != null) {
-            alimentation.setCoutTotal(data.getCoutTotal());
+            alimentation.setCoutTotal(com.diafarms.ml.commons.Franc.arrondi(data.getCoutTotal()));
         }
         alimentation.setDateDistribution(
             com.diafarms.ml.commons.DateSaisie.modifiee(data.getDateDistribution(), alimentation.getDateDistribution())

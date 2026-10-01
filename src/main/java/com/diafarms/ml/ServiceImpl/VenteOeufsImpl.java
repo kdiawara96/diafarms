@@ -220,6 +220,9 @@ public class VenteOeufsImpl implements VenteOeufsService {
     @Override
     @Transactional
     public VenteOeufsDTO create(VenteOeufsCreate data) {
+        // Montants au franc (voir Franc) : même chiffre quel que soit le client.
+        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        data.setMontantRapporte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantRapporte()));
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
@@ -327,6 +330,8 @@ public class VenteOeufsImpl implements VenteOeufsService {
     @Override
     @Transactional
     public VenteOeufsDTO update(String uniqueId, VenteOeufsUpdate data) {
+        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        data.setMontantRapporte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantRapporte()));
         Utilisateurs currentUser = getCurrentUserSafe();
         // Modifier une vente touche au solde (montant rapporté) : même population que pour
         // en demander la suppression, jamais le vendeur (il effacerait son propre manquant).

@@ -125,7 +125,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
         v.setDate(date != null ? date : LocalDate.now());
         v.setQuantite(quantite);
         v.setPrixUnitaire(prixUnitaire);
-        v.setMontant(montant);
+        v.setMontant(com.diafarms.ml.commons.Franc.arrondi(montant));
         v.setDescription(nettoyer(description));
         v.setFarm(currentUser.getFarm());
         v.setCreePar(currentUser);
@@ -156,6 +156,11 @@ public class VenteDiverseImpl implements VenteDiverseService {
     @Override
     @Transactional
     public VenteDiverseDTO create(VenteDiverseCreate data) {
+        // Sans montant mais avec sacs x prix d'un sac : le serveur calcule (au franc).
+        if ((data.getMontant() == null || data.getMontant() <= 0) && data.getQuantite() != null && data.getQuantite() > 0
+                && data.getPrixUnitaire() != null && data.getPrixUnitaire() > 0) {
+            data.setMontant(data.getQuantite() * data.getPrixUnitaire());
+        }
         VenteDiverse saved = creer(parseProduit(data.getProduit()),
                 com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null),
                 data.getQuantite(), data.getPrixUnitaire(), data.getMontant(), data.getDescription(), null);
@@ -169,7 +174,8 @@ public class VenteDiverseImpl implements VenteDiverseService {
                 ? ProduitVenteDiverse.FIENTES : ProduitVenteDiverse.AUTRE;
         // L'ancien formulaire mettait déjà "N sac(s) de fientes, ..." dans la description :
         // on la garde telle quelle, sans la reconstruire (pas de quantité séparée connue).
-        VenteDiverse saved = creer(produit, data.getDate(), null, null, data.getMontant(), data.getDescription(),
+        VenteDiverse saved = creer(produit, com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate()), null, null,
+                data.getMontant(), data.getDescription(),
                 nettoyer(data.getDescription()) != null ? data.getDescription().trim() : null);
         return transactionService.findDtoBySource(saved.getUniqueId());
     }
@@ -186,7 +192,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
         v.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), v.getDate()));
         if (data.getQuantite() != null) v.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
-        if (data.getMontant() != null) v.setMontant(data.getMontant());
+        if (data.getMontant() != null) v.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
         if (data.getDescription() != null) v.setDescription(nettoyer(data.getDescription()));
         valider(v);
         Initialisation.updateDate(v.getInitialisation());

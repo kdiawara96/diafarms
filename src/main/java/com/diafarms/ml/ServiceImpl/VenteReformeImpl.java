@@ -209,6 +209,9 @@ public class VenteReformeImpl implements VenteReformeService {
     @Override
     @Transactional
     public VenteReformeDTO create(VenteReformeCreate data) {
+        // Montants au franc (voir Franc) : même chiffre quel que soit le client.
+        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        data.setMontantRapporte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantRapporte()));
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
@@ -312,6 +315,8 @@ public class VenteReformeImpl implements VenteReformeService {
     @Override
     @Transactional
     public VenteReformeDTO update(String uniqueId, VenteReformeUpdate data) {
+        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        data.setMontantRapporte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantRapporte()));
         Utilisateurs currentUser = getCurrentUserSafe();
         // Modifier une vente touche au solde (montant rapporté) : même population que pour
         // en demander la suppression, jamais le vendeur (il effacerait son propre manquant).
@@ -411,7 +416,7 @@ public class VenteReformeImpl implements VenteReformeService {
         boolean tarifChange = data.getPoidsTotalKg() != null || data.getPrixUnitaire() != null || data.getTypeVente() != null;
         if (tarifChange && data.getMontant() == null && v.getTypeVente() == TypeVenteReforme.KILO
                 && v.getPoidsTotalKg() != null && v.getPrixUnitaire() != null) {
-            double recalcule = arr2(v.getPoidsTotalKg() * v.getPrixUnitaire());
+            double recalcule = com.diafarms.ml.commons.Franc.arrondi(v.getPoidsTotalKg() * v.getPrixUnitaire());
             if (!memeValeur(recalcule, v.getMontant())) data.setMontant(recalcule);
         }
 

@@ -132,7 +132,7 @@ public class PaiementClientService {
     public PaiementClient enregistrerInterne(Client c, Double montant, ModePaiement mode, OriginePaiement origine,
             Commande commande, CibleImputation venteCibleType, String venteCibleUid, Facture facture,
             String observations, LocalDate date) {
-        if (montant == null || CalculImputation.arrondi(montant) <= 0)
+        if (montant == null || com.diafarms.ml.commons.Franc.arrondi(montant) <= 0)
             throw new IllegalArgumentException("Le montant payé doit être positif.");
         DateSaisie.pasDansLeFutur(date); // toutes les entrées d'argent client passent ici
         Utilisateurs u = user();
@@ -141,7 +141,7 @@ public class PaiementClientService {
         p.setFarm(c.getFarm());
         p.setClient(c);
         p.setDate(date != null ? date : LocalDate.now());
-        p.setMontant(CalculImputation.arrondi(montant));
+        p.setMontant(com.diafarms.ml.commons.Franc.arrondi(montant));
         p.setMode(mode != null ? mode : ModePaiement.ESPECES);
         p.setOrigine(origine);
         p.setCommande(commande);
@@ -256,7 +256,7 @@ public class PaiementClientService {
         ensureCanRembourser(u);
         Client c = client(d.getClientUniqueId(), u);
         Commande commande = commandeDuClient(d.getCommandeUniqueId(), c);
-        return RemboursementClientDTO.fromEntity(rembourserInterne(c, d.getMontant(), mode(d.getMode()),
+        return RemboursementClientDTO.fromEntity(rembourserInterne(c, com.diafarms.ml.commons.Franc.arrondi(d.getMontant()), mode(d.getMode()),
                 MotifSuppressionRequest.exiger(d.getMotif()), commande));
     }
 

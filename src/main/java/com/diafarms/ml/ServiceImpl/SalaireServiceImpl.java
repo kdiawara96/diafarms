@@ -226,24 +226,37 @@ public class SalaireServiceImpl implements SalaireService {
         TauxSalaireDTO tauxPeriode = resolveTauxPourPeriode(s, data.getPeriode());
         ModePaiement modePeriode = ModePaiement.valueOf(tauxPeriode.getModePaiement());
 
+        // Le serveur est seul juge du montant : taux de la PÉRIODE × quantité (ou taux
+        // mensuel). Le champ historique `montant` (envoyé par les APK <= 1.35 avec le
+        // taux de la dernière synchro, donc parfois faux après un changement de grille)
+        // est ignoré ; seul `montantForce` permet une prime ou une retenue.
         Double quantite = null;
-        double montant;
-        if (data.getMontant() != null && data.getMontant() > 0) {
-            // Montant forcé explicitement — prioritaire sur le calcul automatique, quel
-            // que soit le mode (permet une prime/retenue ponctuelle sans changer la grille).
-            montant = data.getMontant();
-            if (modePeriode != ModePaiement.MENSUEL) quantite = data.getQuantite();
-        } else if (modePeriode == ModePaiement.MENSUEL) {
-            montant = tauxPeriode.getTauxBase();
-        } else {
+        if (modePeriode != ModePaiement.MENSUEL) {
             if (data.getQuantite() == null || data.getQuantite() <= 0) {
-                throw new IllegalArgumentException(modePeriode == ModePaiement.HORAIRE
-                        ? "Veuillez indiquer le nombre d'heures travaillées."
-                        : "Veuillez indiquer le nombre de jours travaillés.");
+                if (data.getMontantForce() == null) {
+                    throw new IllegalArgumentException(modePeriode == ModePaiement.HORAIRE
+                            ? "Veuillez indiquer le nombre d'heures travaillées."
+                            : "Veuillez indiquer le nombre de jours travaillés.");
+                }
+            } else {
+                quantite = data.getQuantite();
             }
-            quantite = data.getQuantite();
-            montant = tauxPeriode.getTauxBase() * quantite;
         }
+        double montant;
+        if (data.getMontantForce() != null) {
+            if (data.getMontantForce() <= 0) {
+                throw new IllegalArgumentException("Le montant forcé doit être positif.");
+            }
+            montant = Math.round(data.getMontantForce());
+        } else if (modePeriode == ModePaiement.MENSUEL) {
+            montant = Math.round(tauxPeriode.getTauxBase());
+        } else {
+            montant = Math.round(tauxPeriode.getTauxBase() * quantite);
+        }
+        if (montant <= 0) {
+            throw new IllegalArgumentException("Le montant calculé est nul : vérifiez la grille salariale.");
+        }
+        LocalDate datePaiement = com.diafarms.ml.commons.DateSaisie.saisie(data.getDatePaiement(), LocalDate.now());
 
         PaiementSalaire p = new PaiementSalaire();
         p.setUniqueId(java.util.UUID.randomUUID().toString());
@@ -253,7 +266,7 @@ public class SalaireServiceImpl implements SalaireService {
         p.setQuantite(quantite);
         p.setModePaiementApplique(modePeriode);
         p.setTauxApplique(tauxPeriode.getTauxBase());
-        p.setDatePaiement(LocalDate.now());
+        p.setDatePaiement(datePaiement);
         p.setCreePar(currentUser);
         p.setInitialisation(Initialisation.init());
         PaiementSalaire saved = paiementSalaireRepo.save(p);
@@ -261,7 +274,7 @@ public class SalaireServiceImpl implements SalaireService {
         String description = (data.getDescription() != null && !data.getDescription().isBlank())
                 ? data.getDescription()
                 : "Salaire " + data.getPeriode() + ", " + s.getEmploye().getNom();
-        transactionService.createSortieCommune(currentUser.getFarm(), montant, "Salaires", LocalDate.now(),
+        transactionService.createSortieCommune(currentUser.getFarm(), montant, "Salaires", datePaiement,
                 description, SourceTransaction.SALAIRE, saved.getUniqueId(), currentUser);
 
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementSalaire",
@@ -315,7 +328,7 @@ public class SalaireServiceImpl implements SalaireService {
             throw new IllegalArgumentException("Le montant corrigé doit être positif.");
         }
 
-        p.setMontantPaye(data.getMontant());
+        p.setMontantPaye((double) Math.round(data.getMontant()));
         if (p.getInitialisation() != null) {
             p.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
@@ -323,7 +336,7 @@ public class SalaireServiceImpl implements SalaireService {
 
         // Répercute la correction sur la Transaction déjà créée pour ce paiement —
         // voir payer() : sourceUniqueId = uniqueId du paiement.
-        transactionService.updateMontantBySource(saved.getUniqueId(), data.getMontant());
+        transactionService.updateMontantBySource(saved.getUniqueId(), saved.getMontantPaye());
 
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementSalaire",
                 "Correction du montant payé à " + saved.getSalaire().getEmploye().getNom()
