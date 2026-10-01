@@ -350,6 +350,10 @@ public class TransactionServiceImpl implements TransactionService {
     static String categorieEffective(String categorie, String precision) {
         String c = categorie == null || categorie.isBlank() ? null : categorie.trim();
         String p = precision == null || precision.isBlank() ? null : precision.trim();
+        // Colonne categorie : varchar(255).
+        if ((p != null && p.length() > 255) || (c != null && c.length() > 255)) {
+            throw new IllegalArgumentException("La catégorie ne doit pas dépasser 255 caractères.");
+        }
         if (p != null && (c == null || "autre".equalsIgnoreCase(c))) return p;
         return c;
     }
@@ -386,6 +390,8 @@ public class TransactionServiceImpl implements TransactionService {
         }
         data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
         validerSaisie(data.getMontant(), data.getCategorie(), data.getDescription());
+        // Colonne categorie NOT NULL : sans catégorie (description seule), « Autre ».
+        if (data.getCategorie() == null) data.setCategorie("Autre");
         if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatAliment(data.getCategorie())) {
             throw new IllegalArgumentException(MESSAGE_ACHAT_ALIMENT_MANUEL);
         }
@@ -699,8 +705,9 @@ public class TransactionServiceImpl implements TransactionService {
         if (data.getDescription() != null) t.setDescription(data.getDescription());
         if (data.getMontant() != null) t.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
         if (data.getCategorie() != null || data.getCategoriePrecision() != null) {
-            t.setCategorie(categorieEffective(data.getCategorie() != null ? data.getCategorie() : t.getCategorie(),
-                    data.getCategoriePrecision()));
+            String categorie = categorieEffective(data.getCategorie() != null ? data.getCategorie() : t.getCategorie(),
+                    data.getCategoriePrecision());
+            t.setCategorie(categorie != null ? categorie : "Autre"); // colonne NOT NULL
         }
         // Mêmes règles qu'à la création, sur les seuls champs modifiés (une ancienne
         // transaction hors règle reste modifiable sur ses autres champs).

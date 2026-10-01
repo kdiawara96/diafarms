@@ -192,7 +192,9 @@ public class VenteDiverseImpl implements VenteDiverseService {
         v.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), v.getDate()));
         if (data.getQuantite() != null) v.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
         if (data.getPrixUnitaire() != null) v.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
-        if (data.getMontant() != null) v.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
+        // Égal au franc près au montant actuel = inchangé (ancienne vente à centimes).
+        Double montant = com.diafarms.ml.commons.Franc.modifie(data.getMontant(), v.getMontant());
+        if (montant != null) v.setMontant(montant);
         if (data.getDescription() != null) v.setDescription(nettoyer(data.getDescription()));
         valider(v);
         Initialisation.updateDate(v.getInitialisation());

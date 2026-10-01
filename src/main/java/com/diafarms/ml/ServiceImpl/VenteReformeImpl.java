@@ -315,8 +315,6 @@ public class VenteReformeImpl implements VenteReformeService {
     @Override
     @Transactional
     public VenteReformeDTO update(String uniqueId, VenteReformeUpdate data) {
-        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
-        data.setMontantRapporte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantRapporte()));
         Utilisateurs currentUser = getCurrentUserSafe();
         // Modifier une vente touche au solde (montant rapporté) : même population que pour
         // en demander la suppression, jamais le vendeur (il effacerait son propre manquant).
@@ -327,6 +325,10 @@ public class VenteReformeImpl implements VenteReformeService {
         if (v.getInitialisation() != null && Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette vente est supprimée : restaurez-la avant de la modifier.");
         }
+        // Montants au franc (voir Franc) ; égal au franc près au montant actuel = inchangé
+        // (ancienne vente à centimes modifiée sur sa date seulement, par exemple).
+        data.setMontant(com.diafarms.ml.commons.Franc.modifie(data.getMontant(), v.getMontant()));
+        data.setMontantRapporte(com.diafarms.ml.commons.Franc.modifie(data.getMontantRapporte(), v.getMontantRapporte()));
 
         // Livraison d'une commande : sujets, tarification, poids et prix viennent de la
         // commande (reste à livrer, poids livré, prix/kg) ; les changer ici les
@@ -417,7 +419,7 @@ public class VenteReformeImpl implements VenteReformeService {
         if (tarifChange && data.getMontant() == null && v.getTypeVente() == TypeVenteReforme.KILO
                 && v.getPoidsTotalKg() != null && v.getPrixUnitaire() != null) {
             double recalcule = com.diafarms.ml.commons.Franc.arrondi(v.getPoidsTotalKg() * v.getPrixUnitaire());
-            if (!memeValeur(recalcule, v.getMontant())) data.setMontant(recalcule);
+            if (v.getMontant() == null || Math.round(recalcule) != Math.round(v.getMontant())) data.setMontant(recalcule);
         }
 
         boolean redistribuer = data.getNombreSujets() != null || data.getMontant() != null;

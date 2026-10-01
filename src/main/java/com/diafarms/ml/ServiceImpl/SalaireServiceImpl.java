@@ -196,6 +196,30 @@ public class SalaireServiceImpl implements SalaireService {
         return resolveTauxPourPeriode(s, periode);
     }
 
+    /** Montant forcé effectif. Le champ historique `montant` (APK <= 1.35, toujours
+     * envoyé, calculé avec la grille de la DERNIÈRE SYNCHRO) n'est pris comme montant
+     * forcé que s'il a visiblement été changé à la main : différent à la fois de ce que
+     * le téléphone aurait proposé (grille actuelle) et du montant de la période. Si la
+     * période est au jour/à l'heure mais qu'aucune quantité n'est envoyée (téléphone
+     * resté sur une grille mensuelle), le montant envoyé est gardé plutôt que refusé. */
+    private static Double montantForceEffectif(SalairePayerRequest data, Salaire s, TauxSalaireDTO tauxPeriode,
+                                               ModePaiement modePeriode) {
+        if (data.getMontantForce() != null) return data.getMontantForce();
+        if (data.getMontant() == null || data.getMontant() <= 0) return null;
+        long envoye = Math.round(data.getMontant());
+        Double q = data.getQuantite() != null && data.getQuantite() > 0 ? data.getQuantite() : null;
+        if (modePeriode != ModePaiement.MENSUEL && q == null) return data.getMontant();
+        long periode = modePeriode == ModePaiement.MENSUEL
+                ? Math.round(tauxPeriode.getTauxBase()) : Math.round(tauxPeriode.getTauxBase() * q);
+        Long telephone = null;
+        if (s.getTauxBase() != null) {
+            if (s.getModePaiement() == null || s.getModePaiement() == ModePaiement.MENSUEL) telephone = Math.round(s.getTauxBase());
+            else if (q != null) telephone = Math.round(s.getTauxBase() * q);
+        }
+        boolean auto = envoye == periode || (telephone != null && envoye == telephone);
+        return auto ? null : data.getMontant();
+    }
+
     @Override
     @Transactional
     public PaiementSalaireDTO payer(SalairePayerRequest data) {
@@ -227,13 +251,12 @@ public class SalaireServiceImpl implements SalaireService {
         ModePaiement modePeriode = ModePaiement.valueOf(tauxPeriode.getModePaiement());
 
         // Le serveur est seul juge du montant : taux de la PÉRIODE × quantité (ou taux
-        // mensuel). Le champ historique `montant` (envoyé par les APK <= 1.35 avec le
-        // taux de la dernière synchro, donc parfois faux après un changement de grille)
-        // est ignoré ; seul `montantForce` permet une prime ou une retenue.
+        // mensuel). `montantForce` permet une prime ou une retenue.
+        Double montantForce = montantForceEffectif(data, s, tauxPeriode, modePeriode);
         Double quantite = null;
         if (modePeriode != ModePaiement.MENSUEL) {
             if (data.getQuantite() == null || data.getQuantite() <= 0) {
-                if (data.getMontantForce() == null) {
+                if (montantForce == null) {
                     throw new IllegalArgumentException(modePeriode == ModePaiement.HORAIRE
                             ? "Veuillez indiquer le nombre d'heures travaillées."
                             : "Veuillez indiquer le nombre de jours travaillés.");
@@ -243,11 +266,11 @@ public class SalaireServiceImpl implements SalaireService {
             }
         }
         double montant;
-        if (data.getMontantForce() != null) {
-            if (data.getMontantForce() <= 0) {
+        if (montantForce != null) {
+            if (montantForce <= 0) {
                 throw new IllegalArgumentException("Le montant forcé doit être positif.");
             }
-            montant = Math.round(data.getMontantForce());
+            montant = Math.round(montantForce);
         } else if (modePeriode == ModePaiement.MENSUEL) {
             montant = Math.round(tauxPeriode.getTauxBase());
         } else {

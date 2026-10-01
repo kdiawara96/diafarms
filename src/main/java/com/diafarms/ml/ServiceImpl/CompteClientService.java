@@ -156,8 +156,10 @@ public class CompteClientService {
     private static CompteClientDTO assembler(Client client, double vendu, double paye, double imputeVentes, double imputeTout,
                                              List<CompteClientDTO.AvanceReserveeDTO> reservees) {
         double rembourse = CalculImputation.arrondi(imputeTout - imputeVentes);
-        double reste = CalculImputation.arrondi(vendu - imputeVentes);
-        double avance = CalculImputation.arrondi(paye - imputeTout);
+        // Affichage : un reste ou une avance sous le demi-franc (centimes d'anciennes
+        // ventes) vaut 0 (voir Franc.solde) ; l'imputation garde la précision au centime.
+        double reste = com.diafarms.ml.commons.Franc.solde(CalculImputation.arrondi(vendu - imputeVentes));
+        double avance = com.diafarms.ml.commons.Franc.solde(CalculImputation.arrondi(paye - imputeTout));
         double reservee = CalculImputation.arrondi(reservees.stream().mapToDouble(CompteClientDTO.AvanceReserveeDTO::getMontant).sum());
         return CompteClientDTO.builder()
                 .clientUniqueId(client.getUniqueId()).clientNom(client.getNom())

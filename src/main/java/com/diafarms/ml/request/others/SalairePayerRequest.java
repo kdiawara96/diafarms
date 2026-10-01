@@ -10,9 +10,9 @@ public class SalairePayerRequest {
     // Salaire est en mode JOURNALIER/HORAIRE (montant = tauxBase × quantite), ignoré
     // en MENSUEL. Saisi à la main : Diafarms n'a pas de système de pointage.
     private Double quantite;
-    // ANCIEN champ (APK <= 1.35) : le téléphone y mettait le montant calculé avec le
-    // taux de sa dernière synchro. IGNORÉ depuis 2026-10 : le serveur calcule toujours
-    // le montant avec le taux de LA PÉRIODE payée (voir SalaireServiceImpl.payer).
+    // ANCIEN champ (APK <= 1.35) : le montant calculé avec le taux de la dernière
+    // synchro. Ignoré s'il vaut le calcul automatique (grille du téléphone ou de la
+    // période) ; sinon pris comme montant forcé (voir SalaireServiceImpl.montantForceEffectif).
     private Double montant;
     // Montant forcé (prime, retenue...) : seul moyen de payer autre chose que le
     // calcul de la grille. Réservé aux rôles qui gèrent les salaires (ADMIN,

@@ -102,6 +102,7 @@ MOIS_1="$(date -d "$(date +%Y-%m-15) -2 month" +%Y-%m)"   # deux mois passés, p
 MOIS_2="$(date -d "$(date +%Y-%m-15) -3 month" +%Y-%m)"
 MOIS_3="$(date -d "$(date +%Y-%m-15) -4 month" +%Y-%m)"
 MOIS_4="$(date -d "$(date +%Y-%m-15) -5 month" +%Y-%m)"
+MOIS_5="$(date -d "$(date +%Y-%m-15) -6 month" +%Y-%m)"
 
 echo "== 1. Salaire : taux de la période, date du paiement, montant forcé"
 api POST /personnel/create "{\"nom\":\"Coherence $SUFFIXE\",\"poste\":\"Ouvrier\"}"
@@ -128,7 +129,7 @@ api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$MOIS_2\",
 check "date de paiement dans le futur : 400" "code == 400 and 'futur' in err"
 api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$MOIS_2\",\"datePaiement\":\"30/09/2026\"}"
 check "date de paiement mal formée : 400" "code == 400 and 'Date invalide' in err"
-api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$MOIS_2\",\"montant\":99999,\"datePaiement\":\"$PASSE\"}"
+api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$MOIS_2\",\"montant\":36000,\"datePaiement\":\"$PASSE\"}"
 check "paiement hors ligne daté du $PASSE : accepté" "code == 201"
 check_eq "paiement et dépense gardent la date du paiement ($PASSE), montant au taux de la période" "30000|$PASSE|$PASSE" \
   "$(psql_run "SELECT p.montant_paye::bigint || '|' || p.date_paiement || '|' || t.date FROM paiements_salaire p
@@ -142,17 +143,38 @@ check_eq "montant forcé arrondi au franc" "31000" \
      JOIN personnel e ON e.id = s.employe_id WHERE e.unique_id = '$EMP' AND p.periode = '$MOIS_3'")"
 api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$MOIS_4\",\"montantForce\":0}"
 check "montant forcé nul : 400" "code == 400"
+# 1.34 dont le montant a été changé à la main (ni la grille du téléphone, 36000, ni
+# celle de la période, 30000) : c'est une prime, gardée comme montant forcé.
+api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$MOIS_5\",\"montant\":33333}"
+check "1.34 montant changé à la main : accepté" "code == 201"
+check_eq "1.34 montant changé à la main : gardé comme montant forcé" "33333" \
+  "$(psql_run "SELECT p.montant_paye::bigint FROM paiements_salaire p JOIN salaires s ON s.id = p.salaire_id
+     JOIN personnel e ON e.id = s.employe_id WHERE e.unique_id = '$EMP' AND p.periode = '$MOIS_5'")"
 api POST /salaires/payer "{\"employeUniqueId\":\"$EMP\",\"periode\":\"$(date +%Y-%m)\"}"
 check "mois courant sans montant : taux actuel (36000)" "code == 201 and d['data']['montantPaye'] == 36000"
 
 api POST /personnel/create "{\"nom\":\"Journalier $SUFFIXE\",\"poste\":\"Ouvrier\"}"
 EMP_J="$(jval "d['data']['uniqueId']")"
 api POST /salaires/definir "{\"employeUniqueId\":\"$EMP_J\",\"modePaiement\":\"JOURNALIER\",\"tauxBase\":2500.5}"
-api POST /salaires/payer "{\"employeUniqueId\":\"$EMP_J\",\"periode\":\"$(date +%Y-%m)\",\"quantite\":3,\"montant\":1}"
-check "1.34 journalier (3 jours, montant envoyé 1) : accepté" "code == 201"
+api POST /salaires/payer "{\"employeUniqueId\":\"$EMP_J\",\"periode\":\"$(date +%Y-%m)\",\"quantite\":3,\"montant\":7502}"
+check "1.34 journalier (3 jours, montant proposé par le téléphone) : accepté" "code == 201"
 check_eq "journalier : taux x jours arrondi au franc (2500,5 x 3 = 7501,5 -> 7502)" "7502" \
   "$(psql_run "SELECT p.montant_paye::bigint FROM paiements_salaire p JOIN salaires s ON s.id = p.salaire_id
      JOIN personnel e ON e.id = s.employe_id WHERE e.unique_id = '$EMP_J'")"
+
+# Téléphone resté sur une grille MENSUELLE alors que la période payée était au jour :
+# pas de quantité envoyée ; le montant envoyé est gardé (forcé) au lieu d'un refus.
+api POST /personnel/create "{\"nom\":\"Ex-journalier $SUFFIXE\",\"poste\":\"Ouvrier\"}"
+EMP_M="$(jval "d['data']['uniqueId']")"
+api POST /salaires/definir "{\"employeUniqueId\":\"$EMP_M\",\"modePaiement\":\"JOURNALIER\",\"tauxBase\":2000}"
+psql_run "UPDATE salaire_historiques SET date_effective = DATE '$(date +%Y)-01-01' - 365
+  WHERE salaire_id = (SELECT s.id FROM salaires s JOIN personnel e ON e.id = s.employe_id WHERE e.unique_id = '$EMP_M')" >/dev/null
+api POST /salaires/definir "{\"employeUniqueId\":\"$EMP_M\",\"modePaiement\":\"MENSUEL\",\"tauxBase\":40000}"
+api POST /salaires/payer "{\"employeUniqueId\":\"$EMP_M\",\"periode\":\"$MOIS_1\",\"montant\":40000}"
+check "1.34 grille mensuelle en cache, période au jour, sans quantité : accepté (plus de 400)" "code == 201"
+check_eq "montant envoyé gardé comme montant forcé" "40000" \
+  "$(psql_run "SELECT p.montant_paye::bigint FROM paiements_salaire p JOIN salaires s ON s.id = p.salaire_id
+     JOIN personnel e ON e.id = s.employe_id WHERE e.unique_id = '$EMP_M'")"
 
 echo "== 2. Entrée / Sortie d'argent"
 api POST /transactions/create "{\"type\":\"ENTREE\",\"commun\":true,\"categorie\":\"Don\",\"description\":\"zéro\",\"montant\":0,\"date\":\"$AUJ\"}"
@@ -289,6 +311,35 @@ api POST "/commandes/$CMD/livrer?quantite=3&montantRecu=10.6&mode=ESPECES&date=$
 check "livraison datée d'hier : acceptée" "code == 200"
 check_eq "livraison : vente au franc (3 x 100,04 = 300,12 -> 300), datée d'hier" "300|$HIER" \
   "$(psql_run "SELECT v.montant::bigint || '|' || v.date FROM ventes_oeufs v JOIN commandes c ON c.id = v.commande_id WHERE c.unique_id = '$CMD'")"
+api POST "/commandes/$CMD/livrer?quantite=3" ""
+api POST "/commandes/$CMD/livrer?quantite=4" ""
+check "livraisons suivantes (3 puis 4) : acceptées" "code == 200 and d['data']['statut'] == 'CONVERTIE'"
+check_eq "arrondi cumulé : 300 + 300 + 400 = round(10 x 100,04) = 1000" "300,300,400|1000" \
+  "$(psql_run "SELECT string_agg(v.montant::bigint::text, ',' ORDER BY v.id) || '|' || sum(v.montant)::bigint
+     FROM ventes_oeufs v JOIN commandes c ON c.id = v.commande_id WHERE c.unique_id = '$CMD'")"
+
+echo "== 5 bis. Ancienne vente à centimes"
+api POST /clients/create "{\"nom\":\"Client centimes $SUFFIXE\",\"telephone\":\"6$(python3 -c 'import random; print(random.randint(1000000, 9999999))')\"}"
+CLIENT_C="$(jval "d['data']['uniqueId']")"
+api POST /ventes-oeufs/create "{\"magasinUniqueId\":\"$BOUTIQUE\",\"clientUniqueId\":\"$CLIENT_C\",\"quantiteOeufs\":10,\"prixUnitaire\":133.333,\"montant\":1333,\"date\":\"$PASSE\"}"
+VENTE_C="$(jval "d['data']['uniqueId']")"
+# Vente enregistrée avant l'arrondi au franc : 1333,33 en base.
+psql_run "UPDATE ventes_oeufs SET montant = 1333.33 WHERE unique_id = '$VENTE_C'" >/dev/null
+psql_run "UPDATE ventes_oeufs_repartitions SET montant_attribue = 1333.33
+  WHERE vente_oeufs_id = (SELECT id FROM ventes_oeufs WHERE unique_id = '$VENTE_C')" >/dev/null
+psql_run "UPDATE transactions SET montant = 1333.33 WHERE source_unique_id IN (SELECT r.unique_id FROM ventes_oeufs_repartitions r
+  JOIN ventes_oeufs v ON v.id = r.vente_oeufs_id WHERE v.unique_id = '$VENTE_C')" >/dev/null
+api POST /paiements-client/create "{\"clientUniqueId\":\"$CLIENT_C\",\"montant\":1333,\"mode\":\"ESPECES\",\"venteCibleType\":\"VENTE_OEUFS\",\"venteCibleUniqueId\":\"$VENTE_C\"}"
+check "paiement de 1333 sur la vente de 1333,33 : accepté" "code == 201"
+api GET "/clients/$CLIENT_C/report" ""
+check "fiche client : vente PAYEE, reste 0 (0,33 F impossibles à payer)" \
+  "code == 200 and [l for l in d['data']['historique'] if l['uniqueId'] == '$VENTE_C'][0]['statutPaiement'] == 'PAYEE' and [l for l in d['data']['historique'] if l['uniqueId'] == '$VENTE_C'][0]['resteAPayer'] == 0"
+api GET "/clients/$CLIENT_C/compte" ""
+check "compte client : reste à payer 0, avance 0" "code == 200 and d['data']['compte']['resteAPayer'] == 0 and d['data']['compte']['avance'] == 0"
+api PUT "/ventes-oeufs/update/$VENTE_C" "{\"date\":\"$HIER\",\"montant\":1333}"
+check "modification de la date seule (montant renvoyé arrondi) : acceptée" "code == 200"
+check_eq "montant d'origine gardé (1333,33), date changée" "1333.33|$HIER" \
+  "$(psql_run "SELECT montant || '|' || date FROM ventes_oeufs WHERE unique_id = '$VENTE_C'")"
 
 echo "== 6. Achats (aliment, médicament) au franc"
 api POST "/alimentations/create/$PROJET" "{\"typeAliment\":\"PONTE\",\"sac\":2,\"quantiteKg\":100,\"coutTotal\":25000.7,\"dateDistribution\":\"$AUJ\"}"

@@ -111,7 +111,10 @@ public class MortaliteImpl implements MortaliteService {
     @Override
     @Transactional
     public MortaliteDTO update(String uniqueId, MortaliteUpdate data) {
+        Utilisateurs utilisateurFerme = getCurrentUserSafe();
+        // Mortalité d'une autre ferme (par son projet) : même message qu'inexistante.
         Mortalite m = mortaliteRepo.findByUniqueId(uniqueId)
+                .filter(x -> x.getProjet() != null && com.diafarms.ml.commons.FermeScope.memeFerme(x.getProjet().getFarm(), utilisateurFerme))
                 .orElseThrow(() -> new IllegalArgumentException("Mortalité introuvable : " + uniqueId));
 
         int ancienNombre = m.getNombreMorts() != null ? m.getNombreMorts() : 0;
@@ -153,7 +156,10 @@ public class MortaliteImpl implements MortaliteService {
     @Override
     @Transactional
     public String deleteOrRecover(String uniqueId) {
+        Utilisateurs utilisateurFerme = getCurrentUserSafe();
+        // Mortalité d'une autre ferme (par son projet) : même message qu'inexistante.
         Mortalite m = mortaliteRepo.findByUniqueId(uniqueId)
+                .filter(x -> x.getProjet() != null && com.diafarms.ml.commons.FermeScope.memeFerme(x.getProjet().getFarm(), utilisateurFerme))
                 .orElseThrow(() -> new IllegalArgumentException("Mortalité introuvable : " + uniqueId));
 
         m.getInitialisation().setRemoved(!m.getInitialisation().getRemoved());

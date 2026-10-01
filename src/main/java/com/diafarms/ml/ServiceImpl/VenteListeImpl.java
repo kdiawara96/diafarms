@@ -246,7 +246,8 @@ public class VenteListeImpl {
             return;
         }
         double paye = compteClientService.payeVente(type, venteUniqueId);
-        double reste = compteClientService.resteAPayerVente(type, venteUniqueId, nz(montant));
+        // Reste sous le demi-franc (centimes d'une ancienne vente) = soldée (voir Franc.solde).
+        double reste = com.diafarms.ml.commons.Franc.solde(compteClientService.resteAPayerVente(type, venteUniqueId, nz(montant)));
         d.setPaye(paye);
         d.setResteAPayer(reste);
         d.setStatutPaiement(reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE"));

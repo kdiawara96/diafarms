@@ -240,7 +240,7 @@ public class CommandeServiceImpl implements CommandeService {
 
     private static String statutPaiementLigne(double montant, double paye) {
         double reste = CalculImputation.arrondi(montant - paye);
-        return reste <= 0 ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE");
+        return com.diafarms.ml.commons.Franc.estSolde(reste) ? "PAYEE" : (paye > 0 ? "PARTIELLE" : "NON_PAYEE");
     }
 
     // Construit le CommandeDTO enrichi : chiffres et historique de livraisons
@@ -656,7 +656,11 @@ public class CommandeServiceImpl implements CommandeService {
             }
             prixUnitaire = c.getPrixUnitaireEstime() != null ? c.getPrixUnitaireEstime()
                     : c.getMontantEstime() / c.getQuantite();
-            montantLivraison = com.diafarms.ml.commons.Franc.arrondi(prixUnitaire * quantite);
+            // Arrondi CUMULÉ : livraison k = round(pu x cumul_k) - round(pu x cumul_k-1), pour
+            // que la somme des livraisons au franc retombe exactement sur round(pu x total)
+            // (des arrondis par livraison pourraient dériver d'un franc par livraison).
+            int dejaLivre = nz(c.getQuantiteLivree());
+            montantLivraison = Math.round(prixUnitaire * (dejaLivre + quantite)) - Math.round(prixUnitaire * dejaLivre);
         }
 
         // montantRapporte/modePaiement laissés vides à la création de la vente : cette

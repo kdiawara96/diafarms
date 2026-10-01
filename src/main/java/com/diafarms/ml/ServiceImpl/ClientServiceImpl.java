@@ -280,7 +280,7 @@ public class ClientServiceImpl implements ClientService {
 
         for (VenteOeufs v : ventesOeufs) {
             double paye = compteClientService.payeVente(CibleImputation.VENTE_OEUFS, v.getUniqueId());
-            double reste = compteClientService.resteAPayerVente(CibleImputation.VENTE_OEUFS, v.getUniqueId(), nz(v.getMontant()));
+            double reste = com.diafarms.ml.commons.Franc.solde(compteClientService.resteAPayerVente(CibleImputation.VENTE_OEUFS, v.getUniqueId(), nz(v.getMontant())));
             historique.add(ClientVenteLigneDTO.builder()
                     .uniqueId(v.getUniqueId())
                     .date(v.getDate())
@@ -298,7 +298,7 @@ public class ClientServiceImpl implements ClientService {
         }
         for (VenteReforme v : ventesReforme) {
             double paye = compteClientService.payeVente(CibleImputation.VENTE_REFORME, v.getUniqueId());
-            double reste = compteClientService.resteAPayerVente(CibleImputation.VENTE_REFORME, v.getUniqueId(), nz(v.getMontant()));
+            double reste = com.diafarms.ml.commons.Franc.solde(compteClientService.resteAPayerVente(CibleImputation.VENTE_REFORME, v.getUniqueId(), nz(v.getMontant())));
             historique.add(ClientVenteLigneDTO.builder()
                     .uniqueId(v.getUniqueId())
                     .date(v.getDate())

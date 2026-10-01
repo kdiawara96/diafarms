@@ -56,12 +56,13 @@ public class FactureDTO {
 
         double montantTotal = nz(f.getMontantTotal());
         double montantPaye = payeCalcule;
-        double resteAPayer = CalculImputation.arrondi(montantTotal - montantPaye);
+        // Reste sous le demi-franc = soldée (centimes impossibles à payer, voir Franc.solde).
+        double resteAPayer = com.diafarms.ml.commons.Franc.solde(CalculImputation.arrondi(montantTotal - montantPaye));
 
         String statut;
         if (f.getStatut() == Facture.StatutFacture.ANNULEE) {
             statut = Facture.StatutFacture.ANNULEE.name();
-        } else if (montantPaye >= montantTotal) {
+        } else if (resteAPayer <= 0) {
             statut = Facture.StatutFacture.PAYEE.name();
         } else if (montantPaye > 0) {
             statut = Facture.StatutFacture.PARTIELLE.name();

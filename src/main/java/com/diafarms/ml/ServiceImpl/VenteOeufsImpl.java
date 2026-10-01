@@ -330,8 +330,6 @@ public class VenteOeufsImpl implements VenteOeufsService {
     @Override
     @Transactional
     public VenteOeufsDTO update(String uniqueId, VenteOeufsUpdate data) {
-        data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
-        data.setMontantRapporte(com.diafarms.ml.commons.Franc.arrondi(data.getMontantRapporte()));
         Utilisateurs currentUser = getCurrentUserSafe();
         // Modifier une vente touche au solde (montant rapporté) : même population que pour
         // en demander la suppression, jamais le vendeur (il effacerait son propre manquant).
@@ -342,6 +340,10 @@ public class VenteOeufsImpl implements VenteOeufsService {
         if (v.getInitialisation() != null && Boolean.TRUE.equals(v.getInitialisation().getRemoved())) {
             throw new IllegalArgumentException("Cette vente est supprimée : restaurez-la avant de la modifier.");
         }
+        // Montants au franc (voir Franc) ; égal au franc près au montant actuel = inchangé
+        // (ancienne vente à centimes modifiée sur sa date seulement, par exemple).
+        data.setMontant(com.diafarms.ml.commons.Franc.modifie(data.getMontant(), v.getMontant()));
+        data.setMontantRapporte(com.diafarms.ml.commons.Franc.modifie(data.getMontantRapporte(), v.getMontantRapporte()));
 
         // Client visé par la modification (null = inchangé, "" = retiré). Trois cas, l'argent
         // déjà passé suit toujours (rien n'est perdu ni compté deux fois) :
