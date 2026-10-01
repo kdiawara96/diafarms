@@ -52,6 +52,9 @@ public class VenteLigneDTO {
     private String creeParUniqueId;
     private String creeParNom;
     private List<String> projets; // codes des projets contributeurs, vide = commune
+    // Part de chaque projet dans la vente (répartition : œufs ou sujets attribués et
+    // montant), dans l'ordre des lignes de répartition ; vide = commune.
+    private List<PartProjetDTO> repartitionProjets;
     // Statut de la (des) transaction(s) générée(s) : REJETE si l'une a été rejetée
     // (anciennes ventes, avant que le rejet d'une vente passe par sa suppression).
     private StatutTransaction statut;

@@ -24,6 +24,19 @@ public class ProjetsControllers {
 
     private final ProjetServices services;
     private final com.diafarms.ml.services.ProjetRapportPdfService rapportPdfService;
+    private final com.diafarms.ml.ServiceImpl.EncaissementProjetService encaissementProjetService;
+
+    // Ventes du projet : vendu (sa part des ventes actives), encaissé (argent reçu pour
+    // cette part), reste à encaisser. Voir EncaissementProjetService.
+    @GetMapping("/{uniqueId}/encaissement")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.EncaissementProjetDTO>> encaissement(@PathVariable String uniqueId) {
+        try {
+            return ApiResponse.createResponse("Encaissement du projet", HttpStatus.OK,
+                    encaissementProjetService.encaissementProjet(uniqueId), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Erreur", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        }
+    }
 
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<PaginatedResponse<ProjetsDTO>>> getProjets(

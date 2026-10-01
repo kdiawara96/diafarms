@@ -81,4 +81,23 @@ public interface PaiementClientRepo extends JpaRepository<PaiementClient, Long> 
            "AND COALESCE(k.initialisation.removed, false) = false " +
            "GROUP BY p.client.id, k.uniqueId, k.dateCommande ORDER BY k.dateCommande, k.uniqueId")
     List<Object[]> sumParCommandeOuverteParClient(@Param("clientIds") java.util.Collection<Long> clientIds);
+
+    // Paiements d'une page de la Comptabilité (lignes PAIEMENT_CLIENT), avec leur commande.
+    @Query("SELECT p FROM PaiementClient p LEFT JOIN FETCH p.commande WHERE p.uniqueId IN :uids")
+    List<PaiementClient> findByUniqueIdsAvecCommande(@Param("uids") java.util.Collection<String> uids);
+
+    // Argent en attente à l'échelle de la ferme (voir EncaissementProjetService.attenteFerme).
+    @Query("SELECT COALESCE(SUM(p.montant), 0) FROM PaiementClient p WHERE p.farm.id = :farmId " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF")
+    Double sumActifsByFarm(@Param("farmId") Long farmId);
+
+    // [commandeId, Σ paiements actifs] des commandes ouvertes de la ferme (même filtre que
+    // sumParCommandeOuverte).
+    @Query("SELECT k.id, SUM(p.montant) FROM PaiementClient p JOIN p.commande k " +
+           "WHERE p.farm.id = :farmId AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
+           "AND COALESCE(k.initialisation.removed, false) = false GROUP BY k.id")
+    List<Object[]> sumParCommandeOuverteByFarm(@Param("farmId") Long farmId);
 }

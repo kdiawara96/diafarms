@@ -76,6 +76,9 @@ public class TransactionServiceImpl implements TransactionService {
     @Autowired
     @Lazy
     private CompteClientService compteClientService;
+    @Autowired
+    @Lazy
+    private EncaissementProjetService encaissementProjetService;
 
     // Sentinelles "pas de filtre" pour les requêtes agrégat par date (voir
     // TransactionRepo.countByProjetIdsAndStatut) — Postgres échoue à déterminer le
@@ -1037,6 +1040,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .map(TransactionDTO::fromEntity)
                 .toList();
         enrichMontantReel(dtoList);
+        enrichRepartitionPaiements(dtoList);
 
         return new PaginatedResponse<>(
                 dtoList,
@@ -1113,6 +1117,28 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
+    /** Lignes "Paiement client" (projet "Commun") : à quels projets l'argent a servi, et ce
+     * qui reste en attente (voir EncaissementProjetService.repartitionPaiements). Lecture
+     * groupée pour toute la page. */
+    private void enrichRepartitionPaiements(List<TransactionDTO> dtoList) {
+        List<String> uids = dtoList.stream()
+                .filter(d -> d.getSourceType() == SourceTransaction.PAIEMENT_CLIENT && d.getSourceUniqueId() != null)
+                .map(TransactionDTO::getSourceUniqueId).distinct().toList();
+        if (uids.isEmpty()) return;
+        Map<String, EncaissementProjetService.RepartitionPaiement> parPaiement = encaissementProjetService.repartitionPaiements(uids);
+        for (TransactionDTO d : dtoList) {
+            if (d.getSourceType() != SourceTransaction.PAIEMENT_CLIENT) continue;
+            EncaissementProjetService.RepartitionPaiement r = parPaiement.get(d.getSourceUniqueId());
+            if (r == null) continue;
+            d.setRepartitionProjets(r.projets());
+            d.setMontantNonAttribue(r.montantNonAttribue());
+            d.setNatureNonAttribue(r.natureNonAttribue());
+            d.setCommandeUniqueId(r.commandeUniqueId());
+            d.setCommandeDate(r.commandeDate());
+            d.setMontantRembourse(r.montantRembourse());
+        }
+    }
+
     private double ratio(RepartitionRatioDTO r) {
         if (r.getVenteMontant() == null || r.getVenteMontant() == 0) return 1.0;
         if (r.getClientId() != null) {
@@ -1141,6 +1167,7 @@ public class TransactionServiceImpl implements TransactionService {
                     .totalMontantRecuVentes(0.0).totalDuParVendeurs(0.0).totalDuParClients(0.0)
                     .totalVendu(0.0).totalEncaisse(0.0).totalRembourse(0.0)
                     .totalDuClients(0.0).totalAvancesClients(0.0)
+                    .totalAcomptesEnAttente(0.0).totalAvancesLibres(0.0)
                     .vueParProjet(true)
                     .build();
         }
@@ -1226,6 +1253,7 @@ public class TransactionServiceImpl implements TransactionService {
         // non supprimées). En vue par projet (pas de paiement client rattaché à un projet),
         // elles restent la valeur des ventes du projet plus ses autres entrées.
         if (!vueParProjet) totalEntrees = encaisse;
+        double[] attente = vueParProjet ? new double[] { 0, 0 } : encaissementProjetService.attenteFerme(farmId);
 
         return TransactionStatsDTO.builder()
                 .nbValide(nbValide)
@@ -1243,6 +1271,8 @@ public class TransactionServiceImpl implements TransactionService {
                 .totalRembourse(rembourse)
                 .totalDuClients(totalDuClients)
                 .totalAvancesClients(totalAvancesClients)
+                .totalAcomptesEnAttente(attente[0])
+                .totalAvancesLibres(attente[1])
                 .vueParProjet(vueParProjet)
                 .build();
     }

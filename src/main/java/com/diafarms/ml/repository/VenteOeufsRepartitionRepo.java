@@ -75,4 +75,20 @@ public interface VenteOeufsRepartitionRepo extends JpaRepository<VenteOeufsRepar
 
     @Query("SELECT r FROM VenteOeufsRepartition r JOIN FETCH r.projet WHERE r.venteOeufs.id IN :venteIds")
     List<VenteOeufsRepartition> findByVenteIds(@Param("venteIds") List<Long> venteIds);
+
+    // Encaissement par projet (voir EncaissementProjetService) : parts du projet dans ses
+    // ventes actives. [venteUniqueId, venteMontant, montantAttribue, clientId (null = vente
+    // sans client), venteMontantRapporte, venteQuantite, quantiteAttribuee]. LEFT JOIN
+    // explicite sur le client : une jointure implicite écarterait les ventes sans client.
+    @Query("SELECT v.uniqueId, v.montant, r.montantAttribue, c.id, v.montantRapporte, v.quantiteOeufs, r.quantiteAttribuee " +
+        "FROM VenteOeufsRepartition r JOIN r.venteOeufs v LEFT JOIN v.client c " +
+        "WHERE r.projet.id = :projetId AND v.initialisation.removed = false")
+    List<Object[]> findPartsActivesParProjet(@Param("projetId") Long projetId);
+
+    // Parts par projet de plusieurs ventes (popup "à quels Projets a servi ce paiement").
+    // [venteUniqueId, venteMontant, projetUniqueId, projetCode, projetTitre, montantAttribue,
+    // venteQuantite, quantiteAttribuee], dans l'ordre des lignes de répartition.
+    @Query("SELECT v.uniqueId, v.montant, p.uniqueId, p.code, p.titre, r.montantAttribue, v.quantiteOeufs, r.quantiteAttribuee " +
+        "FROM VenteOeufsRepartition r JOIN r.venteOeufs v JOIN r.projet p WHERE v.uniqueId IN :uids ORDER BY r.id")
+    List<Object[]> findPartsParVentes(@Param("uids") java.util.Collection<String> uids);
 }

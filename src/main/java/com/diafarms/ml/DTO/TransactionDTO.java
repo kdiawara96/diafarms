@@ -99,6 +99,17 @@ public class TransactionDTO {
     // transaction non verrouillée, y compris une transaction générée (saisieSource non
     // null), pour laquelle c'est même la SEULE modification permise.
     private boolean rattachementModifiable;
+    // Ligne "Paiement client" (sourceType PAIEMENT_CLIENT) seulement, null sinon : à quels
+    // projets l'argent a servi (ventes réglées, au prorata de la part de chaque projet),
+    // ce qui n'a pas encore réglé de vente (natureNonAttribue : ACOMPTE_RESERVE = réservé à
+    // la commande commandeUniqueId du commandeDate, AVANCE = avance du client) et ce qui a
+    // été rendu au client. Voir EncaissementProjetService.repartitionPaiements.
+    private List<PartProjetDTO> repartitionProjets;
+    private Double montantNonAttribue;
+    private String natureNonAttribue;
+    private String commandeUniqueId;
+    private java.time.LocalDate commandeDate;
+    private Double montantRembourse;
 
     public static TransactionDTO fromEntity(Transaction t) {
         if (t == null) return null;

@@ -156,6 +156,8 @@ public class VenteListeImpl {
             statutPaiement(d, v.getClient(), CibleImputation.VENTE_OEUFS, v.getUniqueId(), v.getMontant());
             d.setCommandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null);
             d.setProjets(codes(reps.stream().map(VenteOeufsRepartition::getProjet).toList()));
+            d.setRepartitionProjets(reps.stream().sorted(Comparator.comparing(VenteOeufsRepartition::getId))
+                    .map(r -> part(r.getProjet(), r.getQuantiteAttribuee(), r.getMontantAttribue())).toList());
             d.setStatut(statut(reps.stream().map(VenteOeufsRepartition::getUniqueId).toList(), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());
             lignes.add(d);
@@ -180,6 +182,8 @@ public class VenteListeImpl {
             statutPaiement(d, v.getClient(), CibleImputation.VENTE_REFORME, v.getUniqueId(), v.getMontant());
             d.setCommandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null);
             d.setProjets(codes(reps.stream().map(VenteReformeRepartition::getProjet).toList()));
+            d.setRepartitionProjets(reps.stream().sorted(Comparator.comparing(VenteReformeRepartition::getId))
+                    .map(r -> part(r.getProjet(), r.getNombreSujetsAttribue(), r.getMontantAttribue())).toList());
             d.setStatut(statut(reps.stream().map(VenteReformeRepartition::getUniqueId).toList(), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());
             lignes.add(d);
@@ -195,6 +199,7 @@ public class VenteListeImpl {
             d.setDescription(v.getDescription()); // brute : le web affiche "Vente de fientes" si vide
             d.setStatutPaiement("COMPTANT"); // jamais de client sur une vente diverse
             d.setProjets(List.of());
+            d.setRepartitionProjets(List.of());
             d.setStatut(statut(List.of(v.getUniqueId()), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());
             lignes.add(d);
@@ -254,6 +259,12 @@ public class VenteListeImpl {
         d.setDemandeSuppressionParNom(par != null ? par.getFullName() : null);
         d.setDateDemandeSuppression(date);
         d.setMotifSuppression(par != null ? motif : null);
+    }
+
+    private static com.diafarms.ml.DTO.PartProjetDTO part(Projets p, Integer quantite, Double montant) {
+        return com.diafarms.ml.DTO.PartProjetDTO.builder()
+                .projetUniqueId(p.getUniqueId()).code(p.getCode()).titre(p.getTitre())
+                .quantite(quantite != null ? quantite.doubleValue() : null).montant(montant).build();
     }
 
     private static List<String> codes(List<Projets> projets) {

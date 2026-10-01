@@ -44,5 +44,11 @@ public class TransactionStatsDTO {
     private Double totalRembourse;
     private Double totalDuClients;
     private Double totalAvancesClients;
+    // Détail, ferme entière (voir EncaissementProjetService.attenteFerme) : argent des
+    // clients qui n'a pas encore réglé de vente. Acomptes réservés à une commande pas
+    // encore livrée, et avances libres. Avec l'encaissé de chaque projet, ils font
+    // exactement Σ paiements clients - Σ remboursements + ventes sans client.
+    private Double totalAcomptesEnAttente;
+    private Double totalAvancesLibres;
     private boolean vueParProjet;
 }

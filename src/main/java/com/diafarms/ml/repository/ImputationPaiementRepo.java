@@ -94,4 +94,28 @@ public interface ImputationPaiementRepo extends JpaRepository<ImputationPaiement
            "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
            "AND COALESCE(k.initialisation.removed, false) = false GROUP BY k.uniqueId")
     List<Object[]> sumImputeParCommandeOuverteParClients(@Param("clientIds") java.util.Collection<Long> clientIds);
+
+    // Popup "à quels Projets a servi ce paiement" : [paiementId, cibleType, cibleUniqueId,
+    // Σ montant], dans l'ordre où l'argent a été imputé.
+    @Query("SELECT i.paiement.id, i.cibleType, i.cibleUniqueId, SUM(i.montant), MIN(i.id) FROM ImputationPaiement i " +
+           "WHERE i.paiement.id IN :ids AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "GROUP BY i.paiement.id, i.cibleType, i.cibleUniqueId ORDER BY MIN(i.id)")
+    List<Object[]> sumActivesParPaiementEtCibleOrdonnees(@Param("ids") java.util.Collection<Long> ids);
+
+    // Argent en attente à l'échelle de la ferme : imputations actives des paiements actifs.
+    @Query("SELECT COALESCE(SUM(i.montant), 0) FROM ImputationPaiement i JOIN i.paiement p WHERE i.farm.id = :farmId " +
+           "AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF")
+    Double sumActivesByFarm(@Param("farmId") Long farmId);
+
+    // [commandeId, Σ imputations actives] des paiements actifs des commandes ouvertes de la
+    // ferme (même filtre que PaiementClientRepo.sumParCommandeOuverteByFarm).
+    @Query("SELECT k.id, SUM(i.montant) FROM ImputationPaiement i JOIN i.paiement p JOIN p.commande k " +
+           "WHERE i.farm.id = :farmId AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND p.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF " +
+           "AND k.statut IN (com.diafarms.ml.models.Commande.StatutCommande.EN_ATTENTE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.CONFIRMEE, " +
+           "com.diafarms.ml.models.Commande.StatutCommande.EN_LIVRAISON) " +
+           "AND COALESCE(k.initialisation.removed, false) = false GROUP BY k.id")
+    List<Object[]> sumImputeParCommandeOuverteByFarm(@Param("farmId") Long farmId);
 }

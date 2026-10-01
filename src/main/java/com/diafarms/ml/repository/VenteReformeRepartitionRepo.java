@@ -72,4 +72,15 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
 
     @Query("SELECT r FROM VenteReformeRepartition r JOIN FETCH r.projet WHERE r.venteReforme.id IN :venteIds")
     List<com.diafarms.ml.models.VenteReformeRepartition> findByVenteIds(@Param("venteIds") List<Long> venteIds);
+
+    // Mêmes requêtes que VenteOeufsRepartitionRepo.findPartsActivesParProjet /
+    // findPartsParVentes, en sujets au lieu d'œufs.
+    @Query("SELECT v.uniqueId, v.montant, r.montantAttribue, c.id, v.montantRapporte, v.nombreSujets, r.nombreSujetsAttribue " +
+        "FROM VenteReformeRepartition r JOIN r.venteReforme v LEFT JOIN v.client c " +
+        "WHERE r.projet.id = :projetId AND v.initialisation.removed = false")
+    List<Object[]> findPartsActivesParProjet(@Param("projetId") Long projetId);
+
+    @Query("SELECT v.uniqueId, v.montant, p.uniqueId, p.code, p.titre, r.montantAttribue, v.nombreSujets, r.nombreSujetsAttribue " +
+        "FROM VenteReformeRepartition r JOIN r.venteReforme v JOIN r.projet p WHERE v.uniqueId IN :uids ORDER BY r.id")
+    List<Object[]> findPartsParVentes(@Param("uids") java.util.Collection<String> uids);
 }
