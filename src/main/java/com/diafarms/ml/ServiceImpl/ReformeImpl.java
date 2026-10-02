@@ -48,7 +48,7 @@ public class ReformeImpl implements ReformeService {
     private final OtherService otherService;
     private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
     private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
-    private final ReformePointDeVente pointDeVente;
+    private final ReformeStockage reformeStockage;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -102,8 +102,9 @@ public class ReformeImpl implements ReformeService {
 
         Batiment poulailler = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         validerEffectifPoulailler(projet, poulailler, data.getNombreSujets(), 0);
-        // Point de vente résolu AVANT toute écriture (400 si plusieurs sans désignation).
-        com.diafarms.ml.models.Magasin magasinVente = pointDeVente.resoudre(projet.getFarm(), data.getMagasinVenteUniqueId());
+        // Magasin de stockage résolu AVANT toute écriture (défaut pour un ancien téléphone).
+        com.diafarms.ml.models.Magasin magasinStockage = reformeStockage.resoudre(projet.getFarm(), projet,
+                data.getMagasinStockageUniqueId(), data.getMagasinVenteUniqueId());
 
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -118,10 +119,14 @@ public class ReformeImpl implements ReformeService {
 
         r.setBatiment(poulailler);
         r.setFarm(projet.getFarm());
-        r.setMagasinVente(magasinVente);
+        r.setMagasinStockage(magasinStockage);
 
         Reforme saved = reformeRepo.save(r);
-        pointDeVente.apresCreation(saved, magasinVente, currentUser);
+        // Comme une collecte : transfert automatique vers le point de vente par défaut du
+        // magasin de stockage, sinon les réformés restent au magasin de stockage.
+        reformeStockage.changer(saved, new ReformeStockage.Etat(0, false, null),
+                new ReformeStockage.Etat(saved.getNombreSujets(), true, magasinStockage), currentUser);
+        saved = reformeRepo.save(saved);
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Reforme",
@@ -138,9 +143,9 @@ public class ReformeImpl implements ReformeService {
         Reforme r = reformeRepo.findByUniqueId(uniqueId)
                 .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getProjet().getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Réforme introuvable : " + uniqueId));
-        int ancienNombre = r.getNombreSujets();
-        com.diafarms.ml.models.Magasin magasinDemande = (data.getMagasinVenteUniqueId() == null || data.getMagasinVenteUniqueId().isBlank())
-                ? null : pointDeVente.resoudre(r.getProjet().getFarm(), data.getMagasinVenteUniqueId());
+        boolean active = r.getInitialisation() == null || !Boolean.TRUE.equals(r.getInitialisation().getRemoved());
+        ReformeStockage.Etat avant = new ReformeStockage.Etat(r.getNombreSujets(), active, r.getMagasinStockage());
+        com.diafarms.ml.models.Magasin stockageDemande = reformeStockage.stockageDemande(r.getProjet().getFarm(), data.getMagasinStockageUniqueId());
 
         // Poulailler et plafond du poulailler vérifiés AVANT toute modification de
         // l'entité (sinon la somme lue en base inclurait déjà la nouvelle valeur).
@@ -177,9 +182,11 @@ public class ReformeImpl implements ReformeService {
         }
 
         Utilisateurs currentUser = getCurrentUserSafe();
-        // Transfert lié ajusté (même écart, nouvelle date, point de vente éventuel) ;
-        // refusé si le point de vente a déjà vendu ces réformés.
-        pointDeVente.apresModification(r, ancienNombre, r.getNombreSujets(), magasinDemande, currentUser);
+        // Transfert lié ajusté (même écart, nouvelle date, magasin de stockage éventuel) ;
+        // refusé si ces réformés ont déjà quitté le magasin de stockage ou été vendus.
+        com.diafarms.ml.models.Magasin stockageApres = stockageDemande != null ? stockageDemande : r.getMagasinStockage();
+        reformeStockage.changer(r, avant, new ReformeStockage.Etat(r.getNombreSujets(), active, stockageApres), currentUser);
+        r.setMagasinStockage(stockageApres);
         Reforme saved = reformeRepo.save(r);
 
         if (currentUser != null) {
@@ -198,8 +205,11 @@ public class ReformeImpl implements ReformeService {
 
         boolean removed = !Boolean.TRUE.equals(r.getInitialisation().getRemoved());
         // Transfert lié supprimé/restauré avec la réforme (suppression refusée si ces
-        // réformés ont déjà été vendus depuis le point de vente).
-        pointDeVente.apresSuppressionOuRestauration(r, removed);
+        // réformés ont déjà été transférés ou vendus).
+        int n = nz(r.getNombreSujets());
+        // removed = nouvel état : la réforme était active avant ssi on la supprime maintenant.
+        reformeStockage.changer(r, new ReformeStockage.Etat(n, removed, r.getMagasinStockage()),
+                new ReformeStockage.Etat(n, !removed, r.getMagasinStockage()), getCurrentUserSafe());
         r.getInitialisation().setRemoved(removed);
         reformeRepo.save(r);
 

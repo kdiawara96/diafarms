@@ -272,7 +272,7 @@ public class VenteReformeImpl implements VenteReformeService {
         }
 
         // Verrou du point de vente : sérialise avec les autres ventes et avec les baisses de
-        // réformes (ReformePointDeVente.verifierRetrait) qui puisent dans le même stock.
+        // réformes (ReformeStockage) qui puisent dans le même stock.
         magasinRepo.verrouillerParId(magasin.getId());
         int restant = disponibleParProjetDansMagasin(magasin).values().stream().mapToInt(Integer::intValue).sum();
         if (data.getNombreSujets() > restant) {

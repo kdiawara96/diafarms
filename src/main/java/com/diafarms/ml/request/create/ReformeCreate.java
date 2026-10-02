@@ -10,7 +10,10 @@ public class ReformeCreate {
     private String heure; // "HH:mm", optionnel
     private Integer nombreSujets;
     private String cause; // optionnel
-    // Point de vente où placer les réformés (optionnel : défaut = ReformePointDeVente.parDefaut ;
-    // les anciens téléphones ne l'envoient pas).
+    // Magasin de stockage des réformés (comme une collecte). Optionnel : les anciens
+    // téléphones ne l'envoient pas, voir ReformeStockage.resoudre pour le défaut.
+    private String magasinStockageUniqueId;
+    // ANCIEN contrat (point de vente direct) : sert seulement à retrouver le magasin de
+    // stockage dont c'est le point de vente par défaut.
     private String magasinVenteUniqueId;
 }

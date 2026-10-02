@@ -109,4 +109,11 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     // reconstituer jour par jour NTO/NEC/non utilisables sur toute la vie du projet.
     @Query("SELECT c FROM CollecteOeufs c WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
     java.util.List<CollecteOeufs> findAllByProjetId(@Param("projetId") Long projetId);
+
+    // Magasin de stockage des dernières collectes d'un projet (le plus récent d'abord) :
+    // défaut d'une réforme envoyée sans magasin par un ancien téléphone (ReformeStockage).
+    @Query("SELECT c.magasinStockage FROM CollecteOeufs c WHERE c.projet.id = :projetId " +
+        "AND c.initialisation.removed = false AND c.magasinStockage IS NOT NULL ORDER BY c.date DESC, c.id DESC")
+    java.util.List<com.diafarms.ml.models.Magasin> findMagasinsStockageRecentsByProjetId(@Param("projetId") Long projetId,
+                                                                                   org.springframework.data.domain.Pageable pageable);
 }

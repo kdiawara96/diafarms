@@ -38,24 +38,24 @@ public class MagasinTransfert {
 
     // Toujours renseigné (OEUFS comme REFORME) : c'est ce qui porte l'attribution du
     // chiffre d'affaires à un projet précis en aval (VenteOeufsImpl/VenteReformeImpl).
-    // Pour OEUFS, calculé automatiquement (répartition proportionnelle entre les
-    // projets contributeurs DE magasinStockage ci-dessous, voir
-    // MagasinTransfertServiceImpl.create) — l'utilisateur choisit un magasin de
-    // stockage, pas un projet ; pour REFORME, toujours choisi directement par
-    // l'utilisateur (pas de notion de magasin de stockage pour les sujets réformés).
+    // Calculé automatiquement (répartition proportionnelle entre les projets
+    // contributeurs DE magasinStockage ci-dessous, voir MagasinTransfertServiceImpl.create) :
+    // l'utilisateur choisit un magasin de stockage, pas un projet. Seul cas choisi
+    // directement : réformés anciens sans magasin de stockage (voir ReformeStockage).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;
 
-    // Magasin de stockage SOURCE (Magasin.TypeMagasin.STOCKAGE) — renseigné uniquement
-    // pour un transfert OEUFS (null pour REFORME). Voir CollecteOeufs.magasinStockage :
-    // c'est de là que les œufs partent physiquement vers le magasin de vente ci-dessus.
+    // Magasin de stockage SOURCE (Magasin.TypeMagasin.STOCKAGE), pour les œufs comme pour
+    // les réformés (voir CollecteOeufs.magasinStockage, Reforme.magasinStockage) : c'est de
+    // là qu'ils partent vers le point de vente ci-dessus. Null : transfert REFORME ancien
+    // (« depuis le projet » ou envoi direct du 2 octobre 2026).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_stockage_id")
     private Magasin magasinStockage;
 
     // Réforme à l'origine de ce transfert (transfert REFORME automatique, voir
-    // ReformePointDeVente) : la modification, la suppression ou la restauration de la
+    // ReformeStockage) : la modification, la suppression ou la restauration de la
     // réforme ajuste ce transfert. Null = transfert manuel ou transfert d'œufs.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reforme_id")

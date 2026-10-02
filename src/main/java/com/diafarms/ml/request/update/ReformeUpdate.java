@@ -9,5 +9,5 @@ public class ReformeUpdate {
     private String heure;
     private Integer nombreSujets;
     private String cause;
-    private String magasinVenteUniqueId; // optionnel : déplace les réformés vers ce point de vente
+    private String magasinStockageUniqueId; // optionnel : déplace les réformés vers ce magasin de stockage
 }

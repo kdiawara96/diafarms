@@ -58,6 +58,24 @@ public interface MagasinTransfertRepo extends JpaRepository<MagasinTransfert, Lo
         "WHERE t.magasin.id = :magasinId AND t.type = :type AND t.initialisation.removed = false")
     Integer sumQuantiteByMagasinIdAndType(@Param("magasinId") Long magasinId, @Param("type") TypeStockMagasin type);
 
-    // Transfert automatique lié à une réforme (supprimé ou non), voir ReformePointDeVente.
+    // Transfert automatique lié à une réforme (supprimé ou non), voir ReformeStockage.
     java.util.Optional<MagasinTransfert> findFirstByReformeIdOrderByIdAsc(Long reformeId);
+
+    // Réformés transférés depuis UN magasin de stockage (ou sans magasin de stockage :
+    // transferts manuels anciens « depuis un projet » et envois directs du 2 octobre 2026)
+    // pour un projet, sans compter le transfert lié à une réforme donnée (-1 = aucune).
+    // LEFT JOIN explicite : le transfert manuel n'a pas de réforme.
+    @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t LEFT JOIN t.reforme rf " +
+        "WHERE t.projet.id = :projetId AND t.magasinStockage.id = :magasinStockageId " +
+        "AND t.type = com.diafarms.ml.enums.TypeStockMagasin.REFORME AND t.initialisation.removed = false " +
+        "AND (rf IS NULL OR rf.id <> :reformeId)")
+    Integer sumReformeByProjetIdAndMagasinStockageIdHors(@Param("projetId") Long projetId,
+                                                         @Param("magasinStockageId") Long magasinStockageId,
+                                                         @Param("reformeId") Long reformeId);
+
+    @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t LEFT JOIN t.reforme rf " +
+        "WHERE t.projet.id = :projetId AND t.magasinStockage IS NULL " +
+        "AND t.type = com.diafarms.ml.enums.TypeStockMagasin.REFORME AND t.initialisation.removed = false " +
+        "AND (rf IS NULL OR rf.id <> :reformeId)")
+    Integer sumReformeSansStockageByProjetIdHors(@Param("projetId") Long projetId, @Param("reformeId") Long reformeId);
 }

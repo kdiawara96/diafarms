@@ -17,11 +17,11 @@ import com.diafarms.ml.repository.FarmsRepo;
 
 import lombok.RequiredArgsConstructor;
 
-// Reprise des transferts de réformés vers un point de vente (voir
+// Reprise des réformes anciennes sans magasin de stockage (voir
 // ReformeTransfertsManquantsService). executer=false (défaut) : simulation, rien n'est
 // écrit. SUPER_ADMIN : n'importe quelle ferme (farmUniqueId obligatoire) ; ADMIN : sa
 // propre ferme uniquement (farmUniqueId facultatif, refusé s'il désigne une autre ferme).
-// magasinVenteUniqueId facultatif : sinon point de vente par défaut (ReformePointDeVente).
+// magasinStockageUniqueId facultatif : sinon le seul magasin de stockage de la ferme.
 @RestController
 @RequestMapping("/diafarms/api/v1")
 @RequiredArgsConstructor
@@ -38,7 +38,7 @@ public class RepriseReformeTransfertsController {
     public ResponseEntity<ApiResponse<RepriseReformeTransfertsDTO>> reprise(
             @RequestParam(defaultValue = "false") boolean executer,
             @RequestParam(required = false) String farmUniqueId,
-            @RequestParam(required = false) String magasinVenteUniqueId) {
+            @RequestParam(required = false) String magasinStockageUniqueId) {
         try {
             Utilisateurs u = otherService.getCurrentUser();
             if (u == null) return ApiResponse.createResponse("Non authentifié", HttpStatus.UNAUTHORIZED, null, null);
@@ -58,9 +58,9 @@ public class RepriseReformeTransfertsController {
                 return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null,
                         List.of("Réservé à l'administrateur de la ferme ou au super-administrateur."));
             }
-            RepriseReformeTransfertsDTO rapport = service.lancer(farm, executer, magasinVenteUniqueId, u);
+            RepriseReformeTransfertsDTO rapport = service.lancer(farm, executer, magasinStockageUniqueId, u);
             String msg = rapport.getErreur() != null ? rapport.getErreur()
-                    : executer ? "Transferts des réformés créés" : "Simulation (rien n'a été écrit)";
+                    : executer ? "Réformes anciennes affectées au magasin de stockage" : "Simulation (rien n'a été écrit)";
             return ApiResponse.createResponse(msg, HttpStatus.OK, rapport, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));

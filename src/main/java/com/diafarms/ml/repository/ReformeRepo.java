@@ -71,9 +71,32 @@ public interface ReformeRepo extends JpaRepository<Reforme, Long> {
     @Query("SELECT DISTINCT r.projet.id FROM Reforme r WHERE r.projet.farm.id = :farmId AND r.initialisation.removed = false")
     java.util.List<Long> findDistinctProjetIdsByFarmId(@Param("farmId") Long farmId);
 
-    // Réformes actives d'un projet sans transfert automatique lié, les plus récentes d'abord.
+    // Réformés d'un projet dans UN magasin de stockage (ou sans magasin de stockage : réformes
+    // anciennes), sans compter une réforme donnée (-1 = aucune) : base du stock de réformés
+    // d'un magasin de stockage, voir ReformeStockage.
+    @Query("SELECT COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
+        "WHERE r.projet.id = :projetId AND r.magasinStockage.id = :magasinStockageId AND r.id <> :reformeId " +
+        "AND r.initialisation.removed = false")
+    Integer sumSujetsByProjetIdAndMagasinStockageIdHors(@Param("projetId") Long projetId,
+                                                        @Param("magasinStockageId") Long magasinStockageId,
+                                                        @Param("reformeId") Long reformeId);
+
+    @Query("SELECT COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
+        "WHERE r.projet.id = :projetId AND r.magasinStockage IS NULL AND r.id <> :reformeId " +
+        "AND r.initialisation.removed = false")
+    Integer sumSujetsSansStockageByProjetIdHors(@Param("projetId") Long projetId, @Param("reformeId") Long reformeId);
+
+    // Projets ayant des réformés actifs dans ce magasin de stockage (transfert manuel
+    // réparti entre projets, comme les œufs : MagasinTransfertServiceImpl).
+    @Query("SELECT DISTINCT r.projet.id FROM Reforme r WHERE r.magasinStockage.id = :magasinStockageId " +
+        "AND r.initialisation.removed = false")
+    java.util.List<Long> findDistinctProjetIdsByMagasinStockageId(@Param("magasinStockageId") Long magasinStockageId);
+
+    // Reprise (ReformeTransfertsManquantsService) : réformes actives d'un projet sans
+    // magasin de stockage ni transfert lié, les plus récentes d'abord.
     @Query("SELECT r FROM Reforme r WHERE r.projet.id = :projetId AND r.initialisation.removed = false " +
+        "AND r.magasinStockage IS NULL " +
         "AND NOT EXISTS (SELECT t.id FROM MagasinTransfert t WHERE t.reforme.id = r.id) " +
         "ORDER BY r.date DESC, r.id DESC")
-    java.util.List<Reforme> findSansTransfertByProjetId(@Param("projetId") Long projetId);
+    java.util.List<Reforme> findSansStockageNiTransfertByProjetId(@Param("projetId") Long projetId);
 }

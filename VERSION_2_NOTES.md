@@ -885,3 +885,32 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   point de vente n'est noté que si des sujets y sont transférés (sinon 400) ; jamais plus de sujets
   transférés que réformés pour un projet (baisse/suppression refusée si elle crée un excédent). La
   reprise garde le point de vente déjà noté d'une réforme. Script : 88 assertions.
+
+## Mise à jour 2026-10-02 bis (réformés : même chemin que les œufs, magasin de stockage)
+
+- **Décision (option A)** : remplace l'envoi direct au point de vente ci-dessus. Réforme ->
+  magasin de STOCKAGE (`reformes.magasin_stockage_id`, nullable) -> point de vente : transfert
+  REFORME lié automatique si ce magasin a un point de vente par défaut (même mécanisme que
+  `CollecteOeufsImpl`), sinon les réformés y restent jusqu'à un transfert manuel depuis ce magasin
+  (`MagasinTransfertServiceImpl`, chemin des œufs, `magasin_stockage_id` renseigné).
+  `reformes.magasin_vente_id` gardé (lignes du 2 octobre), désormais = point de vente du transfert lié.
+- **Règle unique** `ReformeStockage` : stock d'un magasin de stockage par projet = réformés entrés -
+  transférés depuis ce magasin ; « sans magasin » (réformes anciennes) = ces réformés - transferts
+  sans magasin de stockage (manuels anciens « depuis le projet », envois directs du 2 octobre) ;
+  point de vente = reçus - vendus (inchangé). Modification, suppression, restauration, changement
+  de magasin : transfert lié ajusté, refus si un de ces stocks passerait sous zéro (verrous FOR NO
+  KEY UPDATE du magasin de stockage, du point de vente, ou du projet pour « sans magasin »).
+- **Ancien téléphone** (sans magasin) : le seul magasin de stockage ; sinon (ancien contrat
+  `magasinVenteUniqueId`) celui dont c'est le point de vente par défaut ; sinon celui de la dernière
+  collecte du projet ; sinon réforme enregistrée sans magasin (jamais de 400 pour ça).
+- **Transfert manuel REFORME** : `magasinStockageUniqueId` (comme les œufs) ; sans lui,
+  `projetUniqueId` reste accepté mais plafonné aux réformés sans magasin. `/magasin-transferts/
+  disponible-batiment?type=REFORME` = réformés d'un magasin de stockage.
+- **Reprise** `POST /admin/reformes/transferts-manquants?executer=false&farmUniqueId=&magasinStockageUniqueId=` :
+  réformes actives sans magasin ni transfert lié -> magasin de stockage (le seul, ou celui précisé ;
+  plusieurs sans précision -> erreur dans le rapport), plus récentes d'abord, tant qu'elles ne sont
+  pas couvertes par un transfert manuel ancien (celles-là restent telles quelles, « laisses ») ;
+  transfert automatique si ce magasin a un point de vente par défaut. Simulation par défaut,
+  idempotent. Vérification SQL en lecture seule : `reformes-stockage-check.sql` (scratchpad).
+- Tests : `scripts/scenarios-reforme-transfert.sh` réécrit (105 assertions) ; reforme-kilo (67),
+  stock-sécurité (51), idempotence (60), cohérence (86), rattachement (85) OK.

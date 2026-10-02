@@ -45,6 +45,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
     private final ProjetsRepo projetsRepo;
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final ReformeRepo reformeRepo;
+    private final ReformeStockage reformeStockage;
     private final OtherService otherService;
     private final LogsServices logs;
 
@@ -93,6 +94,9 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
                 .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
         TypeStockMagasin t = TypeStockMagasin.valueOf(type.toUpperCase());
+        // Réformés : seuls ceux sans magasin de stockage (réformes anciennes) partent
+        // « depuis le projet » ; les autres partent de leur magasin de stockage.
+        if (t == TypeStockMagasin.REFORME) return Math.max(0, reformeStockage.libreSansStockage(projet.getId()));
         int total = stockTotalProjet(projet, t);
         int dejaTransfere = nz(magasinTransfertRepo.sumQuantiteByProjetIdAndType(projet.getId(), t));
         // Jamais négatif : un transfert historique excédentaire (ex. œufs non
@@ -108,6 +112,9 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
      * create() ci-dessous), même rôle que VenteOeufsImpl.disponibleParProjetDansMagasin
      * mais un cran plus tôt dans la chaîne (magasin de stockage, pas magasin de vente). */
     private Map<Long, Integer> disponibleParProjetDansMagasinStockage(Magasin magasinStockage, TypeStockMagasin type) {
+        // Réformés : même chemin que les œufs (entrés dans ce magasin - transférés depuis),
+        // règle unique dans ReformeStockage.
+        if (type == TypeStockMagasin.REFORME) return reformeStockage.libreParProjetDansStockage(magasinStockage);
         Map<Long, Integer> disponible = new LinkedHashMap<>();
         for (Long projetId : collecteOeufsRepo.findDistinctProjetIdsByMagasinStockageId(magasinStockage.getId())) {
             int totalPool;
@@ -178,20 +185,25 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
 
         LocalDate date = com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), LocalDate.now());
 
-        if (type == TypeStockMagasin.REFORME) {
-            // Réforme : pas de magasin de stockage, le projet source reste choisi
-            // directement — comportement inchangé.
+        boolean reformeDepuisStockage = type == TypeStockMagasin.REFORME
+                && data.getMagasinStockageUniqueId() != null && !data.getMagasinStockageUniqueId().isBlank();
+        if (type == TypeStockMagasin.REFORME && !reformeDepuisStockage) {
+            // Réformés SANS magasin de stockage (réformes anciennes) : le projet source est
+            // choisi directement, plafonné par ces seuls réformés. Les autres partent de leur
+            // magasin de stockage (chemin des œufs ci-dessous).
             if (data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank()) {
-                throw new IllegalArgumentException("Projet source requis pour un transfert réforme.");
+                throw new IllegalArgumentException("Magasin de stockage source requis pour un transfert de réformés.");
             }
             Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
                     .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), currentUser))
                     .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
+            // Verrou du projet : sérialise avec les baisses de réformes (ReformeStockage).
+            projetsRepo.verrouillerParId(projet.getId());
             int disponible = disponibleATransfererDepuisProjet(data.getProjetUniqueId(), type.name());
             if (data.getQuantite() > disponible) {
                 throw new IllegalArgumentException(
-                    "Stock insuffisant pour ce projet (" + disponible + " unité(s) restantes à transférer)."
+                    "Réformés sans magasin de stockage insuffisants pour ce projet (" + disponible + " sujet(s) restant(s) à transférer)."
                 );
             }
 
@@ -230,12 +242,17 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             throw new IllegalArgumentException("Magasin de stockage invalide : " + data.getMagasinStockageUniqueId());
         }
 
+        // Verrou du magasin de stockage : sérialise avec les baisses de réformes
+        // (ReformeStockage) et les autres transferts depuis ce magasin.
+        magasinRepo.verrouillerParId(magasinStockage.getId());
         Map<Long, Integer> disponibleParProjet = disponibleParProjetDansMagasinStockage(magasinStockage, type);
         int disponibleTotal = disponibleParProjet.values().stream().mapToInt(Integer::intValue).sum();
         if (data.getQuantite() > disponibleTotal) {
             throw new IllegalArgumentException(
-                (type == TypeStockMagasin.OEUFS_CASSES ? "Stock d'œufs cassés insuffisant" : "Stock insuffisant")
-                        + " dans ce magasin de stockage (" + disponibleTotal + " œuf(s) restant(s))."
+                (type == TypeStockMagasin.OEUFS_CASSES ? "Stock d'œufs cassés insuffisant"
+                        : type == TypeStockMagasin.REFORME ? "Réformés insuffisants" : "Stock insuffisant")
+                        + " dans ce magasin de stockage (" + disponibleTotal
+                        + (type == TypeStockMagasin.REFORME ? " sujet(s) restant(s))." : " œuf(s) restant(s)).")
             );
         }
 

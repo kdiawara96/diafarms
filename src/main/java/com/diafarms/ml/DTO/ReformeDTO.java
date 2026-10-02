@@ -28,6 +28,10 @@ public class ReformeDTO {
     private String projetUniqueId;
     private String batimentNom;
     private String batimentUniqueId;
+    private String magasinStockageUniqueId;
+    private String magasinStockageNom;
+    // Point de vente où se trouvent ces réformés (transfert lié automatique, ou ancien
+    // envoi direct) ; null s'ils sont encore au magasin de stockage.
     private String magasinVenteUniqueId;
     private String magasinVenteNom;
     private LocalDateTime createdAt;
@@ -45,6 +49,8 @@ public class ReformeDTO {
                 .projetUniqueId(r.getProjet() != null ? r.getProjet().getUniqueId() : null)
                 .batimentNom(r.getBatiment() != null ? r.getBatiment().getNom() : null)
                 .batimentUniqueId(r.getBatiment() != null ? r.getBatiment().getUniqueId() : null)
+                .magasinStockageUniqueId(r.getMagasinStockage() != null ? r.getMagasinStockage().getUniqueId() : null)
+                .magasinStockageNom(r.getMagasinStockage() != null ? r.getMagasinStockage().getNom() : null)
                 .magasinVenteUniqueId(r.getMagasinVente() != null ? r.getMagasinVente().getUniqueId() : null)
                 .magasinVenteNom(r.getMagasinVente() != null ? r.getMagasinVente().getNom() : null)
                 .createdAt(r.getInitialisation() != null ? r.getInitialisation().getCreatedAt() : null)

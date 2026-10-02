@@ -62,10 +62,17 @@ public class Reforme {
     @JoinColumn(name = "farm_id")
     private Farm farm;
 
-    // Point de vente où les sujets réformés sont placés automatiquement à la saisie
-    // (transfert REFORME lié, voir MagasinTransfert.reforme et ReformePointDeVente) :
-    // une vente de réformes se fait toujours depuis un point de vente. Null = réforme
-    // antérieure à ce transfert automatique, ou ferme sans aucun point de vente.
+    // Magasin de STOCKAGE où vont les sujets réformés, comme les œufs d'une collecte
+    // (voir CollecteOeufs.magasinStockage et ReformeStockage) : ils passent ensuite au
+    // point de vente par défaut de ce magasin (transfert REFORME lié, automatique) ou par
+    // un transfert manuel. Null = réforme ancienne (avant cette règle) ou sans magasin
+    // déterminable (ancien téléphone, ferme sans magasin de stockage).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "magasin_stockage_id")
+    private Magasin magasinStockage;
+
+    // ANCIEN (2 octobre 2026, avant la règle du magasin de stockage) : point de vente où
+    // les réformés étaient envoyés directement. Conservé pour ces lignes, plus écrit.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_vente_id")
     private Magasin magasinVente;

@@ -212,7 +212,7 @@ api POST "/alimentations/create/$PROJET" "{\"nomAliment\":\"Maïs idem\",\"sac\"
 check "achat d'aliment (stock pour la consommation)" "code in (200, 201)"
 cas_idem "consommation d'aliment" /consommations-aliment/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"quantiteKg\":1}" consommations_aliment
 cas_idem "mortalité" /mortalites/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreMorts\":1,\"cause\":\"Idempotence\"}" mortalites
-cas_idem "réforme" /reformes/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreSujets\":1,\"magasinVenteUniqueId\":\"$BOUTIQUE\"}" reformes
+cas_idem "réforme" /reformes/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreSujets\":1,\"magasinStockageUniqueId\":\"$STOCK\"}" reformes
 cas_idem "commande" /commandes/create "{\"clientUniqueId\":\"$CLIENT\",\"magasinUniqueId\":\"$BOUTIQUE\",\"type\":\"OEUFS\",\"quantite\":10,\"montantEstime\":1000}" commandes
 
 echo "== 7. Sans en-tête : comportement inchangé"
