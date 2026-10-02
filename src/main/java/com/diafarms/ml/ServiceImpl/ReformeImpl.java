@@ -48,6 +48,7 @@ public class ReformeImpl implements ReformeService {
     private final OtherService otherService;
     private final com.diafarms.ml.commons.PoulaillerObligatoire poulaillerObligatoire;
     private final com.diafarms.ml.commons.EffectifVivantHelper effectifVivantHelper;
+    private final ReformePointDeVente pointDeVente;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -85,6 +86,7 @@ public class ReformeImpl implements ReformeService {
     @Transactional
     public ReformeDTO create(ReformeCreate data) {
         Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
+                .filter(p -> com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
 
         if (data.getNombreSujets() == null || data.getNombreSujets() <= 0) {
@@ -100,6 +102,8 @@ public class ReformeImpl implements ReformeService {
 
         Batiment poulailler = poulaillerObligatoire.resoudre(projet, data.getBatimentUniqueId());
         validerEffectifPoulailler(projet, poulailler, data.getNombreSujets(), 0);
+        // Point de vente résolu AVANT toute écriture (400 si plusieurs sans désignation).
+        com.diafarms.ml.models.Magasin magasinVente = pointDeVente.resoudre(projet.getFarm(), data.getMagasinVenteUniqueId());
 
         Utilisateurs currentUser = getCurrentUserSafe();
 
@@ -113,11 +117,11 @@ public class ReformeImpl implements ReformeService {
         r.setInitialisation(Initialisation.init());
 
         r.setBatiment(poulailler);
-        if (currentUser != null) {
-            r.setFarm(currentUser.getFarm());
-        }
+        r.setFarm(projet.getFarm());
+        r.setMagasinVente(magasinVente);
 
         Reforme saved = reformeRepo.save(r);
+        pointDeVente.apresCreation(saved, magasinVente, currentUser);
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Reforme",
@@ -132,7 +136,11 @@ public class ReformeImpl implements ReformeService {
     @Transactional
     public ReformeDTO update(String uniqueId, ReformeUpdate data) {
         Reforme r = reformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getProjet().getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Réforme introuvable : " + uniqueId));
+        int ancienNombre = r.getNombreSujets();
+        com.diafarms.ml.models.Magasin magasinDemande = (data.getMagasinVenteUniqueId() == null || data.getMagasinVenteUniqueId().isBlank())
+                ? null : pointDeVente.resoudre(r.getProjet().getFarm(), data.getMagasinVenteUniqueId());
 
         // Poulailler et plafond du poulailler vérifiés AVANT toute modification de
         // l'entité (sinon la somme lue en base inclurait déjà la nouvelle valeur).
@@ -168,9 +176,12 @@ public class ReformeImpl implements ReformeService {
             r.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }
 
+        Utilisateurs currentUser = getCurrentUserSafe();
+        // Transfert lié ajusté (même écart, nouvelle date, point de vente éventuel) ;
+        // refusé si le point de vente a déjà vendu ces réformés.
+        pointDeVente.apresModification(r, ancienNombre, r.getNombreSujets(), magasinDemande, currentUser);
         Reforme saved = reformeRepo.save(r);
 
-        Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Reforme", "Modification d'une saisie de réforme");
         }
@@ -182,11 +193,15 @@ public class ReformeImpl implements ReformeService {
     @Transactional
     public String deleteOrRecover(String uniqueId) {
         Reforme r = reformeRepo.findByUniqueId(uniqueId)
+                .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getProjet().getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Réforme introuvable : " + uniqueId));
 
-        r.getInitialisation().setRemoved(!r.getInitialisation().getRemoved());
+        boolean removed = !Boolean.TRUE.equals(r.getInitialisation().getRemoved());
+        // Transfert lié supprimé/restauré avec la réforme (suppression refusée si ces
+        // réformés ont déjà été vendus depuis le point de vente).
+        pointDeVente.apresSuppressionOuRestauration(r, removed);
+        r.getInitialisation().setRemoved(removed);
         reformeRepo.save(r);
-        boolean removed = r.getInitialisation().getRemoved();
 
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {

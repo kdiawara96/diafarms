@@ -36,10 +36,13 @@ import lombok.extern.slf4j.Slf4j;
 //
 // Sans l'en-tête : rien ne change (web, anciens APK). Avec l'en-tête, sur POST/PUT/PATCH :
 // - première requête : enregistrement EN_COURS (contrainte unique clé+utilisateur, validé
-//   tout de suite), exécution normale, puis réponse mémorisée seulement si elle est
-//   définitive : 2xx, ou refus métier déterministe 400/403/422 (voir estMemorisable). Tout
-//   le reste (5xx, exception, 404, 405, 408, 409, 413, 415, 429..., réponse de plus de
-//   1 Mo, échec d'écriture de la réponse) libère la clé : un nouvel envoi ré-exécute ;
+//   tout de suite), exécution normale, puis réponse mémorisée SEULEMENT si c'est un succès
+//   2xx (voir estMemorisable). Tout échec (4xx dont les refus métier 400/403/422, 5xx,
+//   exception, réponse de plus de 1 Mo, échec d'écriture de la réponse) libère la clé :
+//   une requête refusée n'a rien écrit, la ré-exécuter est sans risque, et un refus lié à
+//   l'état du moment (stock insuffisant...) doit pouvoir réussir une fois l'état corrigé ;
+// - un ancien enregistrement TERMINE avec un statut non 2xx (mémorisé avant cette règle)
+//   est supprimé à la lecture : la requête est ré-exécutée au lieu d'être rejouée ;
 // - même clé, même chemin, même corps, déjà TERMINE : la réponse mémorisée est rejouée
 //   telle quelle (statut + corps) avec l'en-tête Idempotency-Replayed: true, sans rien
 //   ré-exécuter ;
@@ -112,6 +115,10 @@ public class IdempotenceFilter extends OncePerRequestFilter {
             if (id != null) break;
             Enregistrement e = store.trouver(cle, utilisateur).orElse(null);
             if (e == null) continue;
+            if (IdempotenceStore.TERMINE.equals(e.statut()) && !estMemorisable(nz(e.statutReponse()))) {
+                liberer(e.id(), cle); // échec mémorisé par une ancienne version : on ré-exécute
+                continue;
+            }
             if (!e.methodeChemin().equals(methodeChemin) || !e.hashCorps().equals(hash)) {
                 ecrireErreur(response, 422, "Clé déjà utilisée pour une autre saisie",
                         "Clé déjà utilisée pour une autre saisie");
@@ -159,11 +166,14 @@ public class IdempotenceFilter extends OncePerRequestFilter {
         reponse.copyBodyToResponse();
     }
 
-    // Réponse définitive, rejouable telle quelle : succès, ou refus métier qui se
-    // reproduirait à l'identique (400 données invalides, 403 droits, 422). Les autres 4xx
-    // (404 route absente, 409 conflit passager, 429, 408...) peuvent réussir plus tard.
+    // Seul un succès est rejoué tel quel. Un échec n'a rien écrit : la clé est libérée et
+    // un renvoi ré-exécute (un 400 « stock insuffisant » peut réussir après un transfert).
     static boolean estMemorisable(int statut) {
-        return (statut >= 200 && statut < 300) || statut == 400 || statut == 403 || statut == 422;
+        return statut >= 200 && statut < 300;
+    }
+
+    private static int nz(Integer v) {
+        return v == null ? 0 : v;
     }
 
     private void liberer(long id, String cle) {

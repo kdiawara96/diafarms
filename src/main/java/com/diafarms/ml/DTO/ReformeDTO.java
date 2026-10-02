@@ -28,6 +28,8 @@ public class ReformeDTO {
     private String projetUniqueId;
     private String batimentNom;
     private String batimentUniqueId;
+    private String magasinVenteUniqueId;
+    private String magasinVenteNom;
     private LocalDateTime createdAt;
 
     public static ReformeDTO fromEntity(Reforme r) {
@@ -43,6 +45,8 @@ public class ReformeDTO {
                 .projetUniqueId(r.getProjet() != null ? r.getProjet().getUniqueId() : null)
                 .batimentNom(r.getBatiment() != null ? r.getBatiment().getNom() : null)
                 .batimentUniqueId(r.getBatiment() != null ? r.getBatiment().getUniqueId() : null)
+                .magasinVenteUniqueId(r.getMagasinVente() != null ? r.getMagasinVente().getUniqueId() : null)
+                .magasinVenteNom(r.getMagasinVente() != null ? r.getMagasinVente().getNom() : null)
                 .createdAt(r.getInitialisation() != null ? r.getInitialisation().getCreatedAt() : null)
                 .build();
     }

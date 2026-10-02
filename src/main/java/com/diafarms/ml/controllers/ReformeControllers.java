@@ -76,7 +76,9 @@ public class ReformeControllers {
         try {
             return ApiResponse.createResponse("Opération réussie", HttpStatus.OK, service.deleteOrRecover(uniqueId), null);
         } catch (IllegalArgumentException e) {
-            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
+            // Introuvable -> 404 ; refus métier (réformés déjà vendus au point de vente) -> 400.
+            HttpStatus statut = e.getMessage() != null && e.getMessage().contains("introuvable") ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+            return ApiResponse.createResponse(e.getMessage(), statut, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

@@ -146,10 +146,9 @@ api POST /clients/create "{\"nom\":\"Client kilo $SUFFIXE\",\"telephone\":\"$TEL
 CLIENT="$(jval "d['data']['uniqueId']")"
 check "client créé" "code in (200, 201) and d['data']['uniqueId']"
 
-api POST /reformes/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreSujets\":40}"
-check "réforme de 40 sujets" "code in (200, 201)"
-api POST /magasin-transferts/create "{\"magasinUniqueId\":\"$BOUTIQUE\",\"projetUniqueId\":\"$PROJET\",\"type\":\"REFORME\",\"quantite\":40,\"date\":\"$AUJ\"}"
-check "transfert de 40 sujets réformés vers la boutique" "code in (200, 201)"
+# La réforme place elle-même ses sujets au point de vente choisi (transfert automatique).
+api POST /reformes/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreSujets\":40,\"magasinVenteUniqueId\":\"$BOUTIQUE\"}"
+check "réforme de 40 sujets placée dans la boutique" "code in (200, 201) and d['data']['magasinVenteUniqueId'] == '$BOUTIQUE'"
 
 # ---------------------------------------------------------------------------
 echo "== 1. Validations à la création"

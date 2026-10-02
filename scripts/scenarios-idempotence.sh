@@ -6,7 +6,7 @@
 # - même clé + même corps : la première réponse est rejouée (Idempotency-Replayed: true) ;
 # - 5 envois simultanés : une seule ligne ;
 # - même clé, autre corps : 422 ;
-# - un refus métier 400 est rejoué tel quel (pas ré-exécuté) ;
+# - un refus métier 400 n'est pas mémorisé : le renvoi ré-exécute (et réussit si l'état a changé) ;
 # - une erreur serveur 5xx n'est pas mémorisée : le renvoi ré-exécute la saisie ;
 # - chaque création mobile couverte une fois (collecte, vente, paiement client, transaction,
 #   consommation, mortalité, réforme, commande) ;
@@ -171,18 +171,25 @@ CORPS_REORDONNE="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print
 api POST /collectes-oeufs/create "$CORPS_REORDONNE" "$CLE"
 check "même saisie, champs dans un autre ordre : rejouée (pas 422)" "code == 201 and rejoue"
 
-echo "== 4. Refus métier 400 rejoué, pas ré-exécuté"
+echo "== 4. Refus métier 400 non mémorisé : le renvoi ré-exécute"
+# Boutique vide et magasin de stockage qui y transfère automatiquement chaque collecte.
+api POST /magasins/create "{\"nom\":\"Boutique vide $SUFFIXE\",\"type\":\"VENTE\"}"
+VIDE="$(jval "d['data']['uniqueId']")"
+api POST /magasins/create "{\"nom\":\"Stock vide $SUFFIXE\",\"type\":\"STOCKAGE\",\"magasinVenteParDefautUniqueId\":\"$VIDE\"}"
+STOCK_VIDE="$(jval "d['data']['uniqueId']")"
 CLE="$(uuid)"
-api POST /ventes-oeufs/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$BOUTIQUE\",\"quantiteOeufs\":5,\"prixUnitaire\":100,\"montant\":500}" "$CLE"
+api POST /ventes-oeufs/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$VIDE\",\"quantiteOeufs\":5,\"prixUnitaire\":100,\"montant\":500,\"montantRapporte\":500}" "$CLE"
 check "vente au-delà du stock de la boutique vide : 400" "code == 400 and not rejoue"
-MSG400="$(cat "$TMP/body")"
-# Du stock arrive entre-temps : une ré-exécution réussirait, le rejeu doit rester 400.
-api POST /collectes-oeufs/create "$(collecte_corps "$(jour_au_hasard)" 20)" ""
+check_eq "le 400 libère la clé (aucun enregistrement)" "0" "$(idem_sql "$CLE" "count(*)")"
+# Du stock arrive entre-temps : le renvoi avec la même clé est ré-exécuté et réussit
+# (un refus n'a rien écrit, le ré-exécuter est sans risque).
+api POST /collectes-oeufs/create "$(collecte_corps "$(jour_au_hasard)" 20 | sed "s/$STOCK/$STOCK_VIDE/")" ""
 check "collecte (transfert auto vers la boutique)" "code == 201"
-api POST /ventes-oeufs/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$BOUTIQUE\",\"quantiteOeufs\":5,\"prixUnitaire\":100,\"montant\":500}" "$CLE"
-check "renvoi du refus : 400 rejoué, bien que le stock suffise désormais" "code == 400 and rejoue"
-if [ "$(cat "$TMP/body")" = "$MSG400" ]; then ok "message du 400 rejoué identique"; else echec "message du 400 rejoué différent"; fi
-check_eq "enregistrement du 400 conservé (TERMINE)" "TERMINE|400" "$(idem_sql "$CLE" "statut || '|' || statut_reponse")"
+api POST /ventes-oeufs/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$VIDE\",\"quantiteOeufs\":5,\"prixUnitaire\":100,\"montant\":500,\"montantRapporte\":500}" "$CLE"
+check "renvoi du refus une fois le stock arrivé : 201 exécuté (pas rejoué)" "code == 201 and not rejoue"
+check_eq "succès mémorisé (TERMINE)" "TERMINE|201" "$(idem_sql "$CLE" "statut || '|' || statut_reponse")"
+api POST /ventes-oeufs/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$VIDE\",\"quantiteOeufs\":5,\"prixUnitaire\":100,\"montant\":500,\"montantRapporte\":500}" "$CLE"
+check "renvoi du succès : 201 rejoué" "code == 201 and rejoue"
 
 echo "== 5. Erreur serveur 5xx non mémorisée"
 psql_run "CREATE OR REPLACE FUNCTION idem_panne() RETURNS trigger AS \$\$ BEGIN RAISE EXCEPTION 'panne simulée'; END \$\$ LANGUAGE plpgsql" >/dev/null
@@ -205,7 +212,7 @@ api POST "/alimentations/create/$PROJET" "{\"nomAliment\":\"Maïs idem\",\"sac\"
 check "achat d'aliment (stock pour la consommation)" "code in (200, 201)"
 cas_idem "consommation d'aliment" /consommations-aliment/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"quantiteKg\":1}" consommations_aliment
 cas_idem "mortalité" /mortalites/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreMorts\":1,\"cause\":\"Idempotence\"}" mortalites
-cas_idem "réforme" /reformes/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreSujets\":1}" reformes
+cas_idem "réforme" /reformes/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"nombreSujets\":1,\"magasinVenteUniqueId\":\"$BOUTIQUE\"}" reformes
 cas_idem "commande" /commandes/create "{\"clientUniqueId\":\"$CLIENT\",\"magasinUniqueId\":\"$BOUTIQUE\",\"type\":\"OEUFS\",\"quantite\":10,\"montantEstime\":1000}" commandes
 
 echo "== 7. Sans en-tête : comportement inchangé"

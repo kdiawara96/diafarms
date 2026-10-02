@@ -54,6 +54,13 @@ public class MagasinTransfert {
     @JoinColumn(name = "magasin_stockage_id")
     private Magasin magasinStockage;
 
+    // Réforme à l'origine de ce transfert (transfert REFORME automatique, voir
+    // ReformePointDeVente) : la modification, la suppression ou la restauration de la
+    // réforme ajuste ce transfert. Null = transfert manuel ou transfert d'œufs.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reforme_id")
+    private Reforme reforme;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false, length = 20)
     private TypeStockMagasin type;

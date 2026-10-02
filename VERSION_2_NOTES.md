@@ -854,3 +854,27 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   renvoyée hors verrou. dernier-poids-moyen : dateFin DESC, jamais nulle. Isolation des fermes
   ajoutée sur modification/suppression/demandes de suppression des ventes œufs, réforme, diverses.
   Script : 67 assertions.
+
+## Mise à jour 2026-10-02 (réformés placés automatiquement au point de vente, idempotence)
+
+- **Bug prod** : ferme 1, 7 sujets réformés mais aucun transfert REFORME vers un point de vente →
+  vente réforme 400 « Stock de sujets réformés insuffisant dans ce magasin (0 sujet(s) restants) ».
+- **Réforme → transfert automatique** (`ReformePointDeVente`) : `reformes.magasin_vente_id` et
+  `magasin_transferts.reforme_id` (nullables). Création = transfert REFORME lié de nombreSujets ;
+  modification = même écart, date et point de vente suivis ; suppression/restauration = transfert
+  supprimé/restauré. Jamais de stock négatif au point de vente : baisse, déplacement ou suppression
+  au-delà de ce qui n'y est pas encore vendu → 400 « Impossible de ... déjà été vendus ».
+  `ReformeCreate/Update.magasinVenteUniqueId` facultatif ; sans lui (anciens téléphones) : le seul
+  point de vente, sinon celui désigné par TOUS les magasins de stockage (magasin_vente_par_defaut_id),
+  sinon 400 « Choisissez le point de vente des réformés ». Ferme sans point de vente : réforme
+  enregistrée sans transfert. Isolation des fermes ajoutée sur réforme create/update/delete.
+- **Reprise** `POST /admin/reformes/transferts-manquants?executer=false&farmUniqueId=&magasinVenteUniqueId=`
+  (SUPER_ADMIN : farmUniqueId obligatoire ; ADMIN : sa ferme). Par projet : manquant = réformés -
+  transferts REFORME actifs (manuels compris), rattaché aux réformes sans transfert lié, les plus
+  récentes d'abord. Simulation par défaut, idempotent. Vérification SQL en lecture seule :
+  `reformes-sans-transfert.sql` (scratchpad de la session).
+- **Idempotence** : seules les réponses 2xx sont mémorisées et rejouées. Tout échec (400/403/422
+  compris) libère la clé : un refus n'a rien écrit, le renvoi est ré-exécuté. Un ancien
+  enregistrement TERMINE non 2xx est supprimé à la lecture (plus jamais rejoué).
+- Tests : `scripts/scenarios-reforme-transfert.sh` (64 assertions) ; idempotence (60),
+  reforme-kilo (66), stock-sécurité (51), cohérence (86), rattachement (85) OK.

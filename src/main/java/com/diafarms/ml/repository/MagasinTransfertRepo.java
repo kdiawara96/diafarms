@@ -57,4 +57,7 @@ public interface MagasinTransfertRepo extends JpaRepository<MagasinTransfert, Lo
     @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t " +
         "WHERE t.magasin.id = :magasinId AND t.type = :type AND t.initialisation.removed = false")
     Integer sumQuantiteByMagasinIdAndType(@Param("magasinId") Long magasinId, @Param("type") TypeStockMagasin type);
+
+    // Transfert automatique lié à une réforme (supprimé ou non), voir ReformePointDeVente.
+    java.util.Optional<MagasinTransfert> findFirstByReformeIdOrderByIdAsc(Long reformeId);
 }

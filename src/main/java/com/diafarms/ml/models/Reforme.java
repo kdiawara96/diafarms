@@ -62,6 +62,14 @@ public class Reforme {
     @JoinColumn(name = "farm_id")
     private Farm farm;
 
+    // Point de vente où les sujets réformés sont placés automatiquement à la saisie
+    // (transfert REFORME lié, voir MagasinTransfert.reforme et ReformePointDeVente) :
+    // une vente de réformes se fait toujours depuis un point de vente. Null = réforme
+    // antérieure à ce transfert automatique, ou ferme sans aucun point de vente.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "magasin_vente_id")
+    private Magasin magasinVente;
+
     @Embedded
     private Initialisation initialisation;
 }
