@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -187,7 +188,7 @@ public class AlimentationImpl implements AlimentationService {
         logAction(currentUser, saved,
             "Création de l'alimentation '" + saved.getNomAliment()
                 + "' (" + saved.getQuantiteKg() + " kg, " + saved.getSac() + " sacs) pour le projet '"
-                + projet.getTitre() + "' | Coût total : " + saved.getCoutTotal() + " FCFA"
+                + projet.getTitre() + "' | Coût total : " + Devise.montant(saved.getCoutTotal())
         );
 
         return AlimentationDTO.fromEntityList(saved);
@@ -292,7 +293,7 @@ public class AlimentationImpl implements AlimentationService {
         logAction(currentUser, updated,
             "Modification de l'alimentation '" + ancienNom + "' → '" + updated.getNomAliment()
                 + "' | Quantité : " + ancienneQuantite + " → " + updated.getQuantiteKg()
-                + " kg | Coût : " + ancienCout + " → " + updated.getCoutTotal() + " FCFA"
+                + " kg | Coût : " + Devise.montant(ancienCout) + " → " + Devise.montant(updated.getCoutTotal())
         );
 
         return AlimentationDTO.fromEntityList(updated);

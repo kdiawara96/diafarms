@@ -21,6 +21,7 @@ import com.diafarms.ml.commons.FermeScope;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ModePaiement;
+import com.diafarms.ml.commons.Devise;
 import com.diafarms.ml.enums.OriginePaiement;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
@@ -129,15 +130,10 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
     }
 
-    /** "" ou null -> ESPECES (comportement historique implicite) ; sinon la valeur de
-     * l'enum ModePaiement — même règle que PaiementClientService.mode(String). */
-    private ModePaiement modeOuEspeces(String raw) {
-        if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
-        try {
-            return ModePaiement.valueOf(raw.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Mode de paiement inconnu : " + raw);
-        }
+    /** "" ou null -> ESPECES ; sinon mode de la ferme du client (valeurs historiques de
+     * l'enum toujours acceptées) : voir ModesPaiementService.resoudre. */
+    private ModesPaiementService.ModeChoisi modeOuEspeces(String raw, Client client) {
+        return paiementClientService.mode(raw, client.getFarm());
     }
 
     /** BON -> pool de transfert OEUFS, CASSE -> pool OEUFS_CASSES — deux pools de stock
@@ -223,7 +219,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         return lignes;
     }
 
-    /** " · Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
+    /** " · Rapporté : X / Y théoriques (manque/surplus Z)" (montants dans la devise de la ferme), vide si pas
      * encore de montant rapporté saisi ou si égal au théorique (rien à signaler). Même
      * convention de signe que SoldeVendeurServiceImpl.ajusterSolde : écart = théorique -
      * rapporté, positif = le vendeur doit de l'argent à la ferme. */
@@ -232,8 +228,8 @@ public class VenteOeufsImpl implements VenteOeufsService {
             return "";
         }
         double ecart = montantTheorique - montantRapporte;
-        return String.format(Locale.FRANCE, " · Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
-                montantRapporte, montantTheorique, ecart > 0 ? "manque" : "surplus", Math.abs(ecart));
+        return " · Rapporté : " + Devise.montant(montantRapporte) + " / " + Devise.montant(montantTheorique)
+                + " théoriques (" + (ecart > 0 ? "manque" : "surplus") + " " + Devise.montant(Math.abs(ecart)) + ")";
     }
 
     @Override
@@ -331,7 +327,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         } else {
             if (data.getMontantRapporte() != null && data.getMontantRapporte() > 0) {
                 paiementClientService.enregistrerInterne(client, data.getMontantRapporte(),
-                        modeOuEspeces(data.getModePaiement()), OriginePaiement.VENTE, saved.getCommande(),
+                        modeOuEspeces(data.getModePaiement(), client), OriginePaiement.VENTE, saved.getCommande(),
                         CibleImputation.VENTE_OEUFS, saved.getUniqueId(), null, null, saved.getDate());
             } else {
                 compteClientService.imputer(client); // une avance éventuelle règle cette vente
@@ -339,7 +335,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteOeufs",
-                "Vente de " + saved.getQuantiteOeufs() + " œufs (" + saved.getMontant() + " FCFA) depuis " + magasin.getNom() + ", répartie entre les projets contributeurs");
+                "Vente de " + saved.getQuantiteOeufs() + " œufs (" + Devise.montant(saved.getMontant()) + ") depuis " + magasin.getNom() + ", répartie entre les projets contributeurs");
 
         VenteOeufsDTO dto = VenteOeufsDTO.fromEntity(saved);
         dto.setRepartitions(lignes.stream().map(VenteOeufsRepartitionDTO::fromEntity).toList());

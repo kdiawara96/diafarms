@@ -59,6 +59,18 @@ public class Farm {
     @Column(name = "tampon_nom_minio")
     private String tamponNomMinio;
 
+    // Pays (code ISO 3166 alpha-2, "AUTRE" hors liste) et devise (ISO 4217) de la ferme,
+    // choisis par le propriétaire dans Paramètres > Pays et devise. Nullable (ajout
+    // ddl-auto sur une table existante) : null = ML / XOF, la configuration d'origine.
+    // La devise n'est qu'une unité d'affichage et d'arrondi (voir commons.Devise) :
+    // aucun montant n'est jamais converti. Distinct de `pays` ci-dessus, texte libre
+    // de l'adresse imprimée sur les factures.
+    @Column(name = "pays_code", length = 10)
+    private String paysCode;
+
+    @Column(name = "devise", length = 3)
+    private String devise;
+
     @OneToMany(mappedBy = "farm")
     private List<Utilisateurs> utilisateurs;
 

@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -198,7 +199,7 @@ public class MedicamentService {
         AchatMedicament saved = achatRepo.save(a);
         syncTransaction(saved, u);
         if (u != null) logs.addLogs(u.getId(), saved.getId(), "AchatMedicament",
-                "Achat de " + q(saved.getQuantite()) + " " + saved.getUnite() + " de " + saved.getNom() + " (" + saved.getCoutTotal() + " FCFA), projet " + projet.getTitre());
+                "Achat de " + q(saved.getQuantite()) + " " + saved.getUnite() + " de " + saved.getNom() + " (" + Devise.montant(saved.getCoutTotal()) + "), projet " + projet.getTitre());
         return AchatMedicamentDTO.fromEntity(saved);
     }
 

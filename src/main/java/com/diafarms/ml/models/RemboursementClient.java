@@ -43,6 +43,12 @@ public class RemboursementClient {
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
     private ModePaiement mode;
 
+    // Libellé du mode quand ce n'est pas une valeur historique de l'enum (Free Money,
+    // MTN, mode ajouté par la ferme) : `mode` vaut alors AUTRE. Null pour les valeurs
+    // historiques et les anciens enregistrements (voir ModesPaiementService).
+    @Column(name = "mode_libelle", length = 60)
+    private String modeLibelle;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String motif;
 

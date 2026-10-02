@@ -39,6 +39,7 @@ public class PaiementClientService {
     private final TransactionService transactionService;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final ModesPaiementService modesPaiementService;
 
     private Utilisateurs user() {
         try { return otherService.getCurrentUser(); } catch (Exception e) { return null; }
@@ -94,10 +95,10 @@ public class PaiementClientService {
         return farm != null && u != null && u.getFarm() != null && farm.getId().equals(u.getFarm().getId());
     }
 
-    private static ModePaiement mode(String raw) {
-        if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
-        try { return ModePaiement.valueOf(raw.trim().toUpperCase()); }
-        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Mode de paiement inconnu : " + raw); }
+    /** Mode envoyé -> enum + libellé, selon les modes de la ferme du client (voir
+     * ModesPaiementService.resoudre : valeurs historiques toujours acceptées). */
+    public ModesPaiementService.ModeChoisi mode(String raw, Farm farm) {
+        return modesPaiementService.resoudre(raw, farm);
     }
 
     @Transactional
@@ -120,7 +121,7 @@ public class PaiementClientService {
             throw new IllegalArgumentException("Un paiement sur une commande en cours ne peut régler que les livraisons de "
                     + "cette commande. Pour régler une autre vente, enregistrez le paiement sans commande.");
         }
-        PaiementClient p = enregistrerInterne(c, d.getMontant(), mode(d.getMode()), origine, commande, cibleType,
+        PaiementClient p = enregistrerInterne(c, d.getMontant(), mode(d.getMode(), c.getFarm()), origine, commande, cibleType,
                 d.getVenteCibleUniqueId(), facture, d.getObservations(),
                 DateSaisie.parse(d.getDate(), LocalDate.now()));
         return PaiementClientDTO.fromEntity(p, CalculImputation.arrondi(imputationRepo.sumActivesByPaiementId(p.getId())));
@@ -132,6 +133,15 @@ public class PaiementClientService {
     public PaiementClient enregistrerInterne(Client c, Double montant, ModePaiement mode, OriginePaiement origine,
             Commande commande, CibleImputation venteCibleType, String venteCibleUid, Facture facture,
             String observations, LocalDate date) {
+        return enregistrerInterne(c, montant, new ModesPaiementService.ModeChoisi(mode, null), origine, commande,
+                venteCibleType, venteCibleUid, facture, observations, date);
+    }
+
+    @Transactional
+    public PaiementClient enregistrerInterne(Client c, Double montant, ModesPaiementService.ModeChoisi choisi, OriginePaiement origine,
+            Commande commande, CibleImputation venteCibleType, String venteCibleUid, Facture facture,
+            String observations, LocalDate date) {
+        ModePaiement mode = choisi != null ? choisi.mode() : null;
         if (montant == null || com.diafarms.ml.commons.Franc.arrondi(montant) <= 0)
             throw new IllegalArgumentException("Le montant payé doit être positif.");
         DateSaisie.pasDansLeFutur(date); // toutes les entrées d'argent client passent ici
@@ -143,6 +153,7 @@ public class PaiementClientService {
         p.setDate(date != null ? date : LocalDate.now());
         p.setMontant(com.diafarms.ml.commons.Franc.arrondi(montant));
         p.setMode(mode != null ? mode : ModePaiement.ESPECES);
+        p.setModeLibelle(choisi != null ? choisi.libelle() : null);
         p.setOrigine(origine);
         p.setCommande(commande);
         p.setVenteCibleType(venteCibleType);
@@ -156,12 +167,13 @@ public class PaiementClientService {
 
         transactionService.createMouvementClient(TypeTransaction.ENTREE, c.getFarm(), c, saved.getMontant(),
                 "Paiement client", saved.getDate(),
-                "Paiement de " + c.getNom() + " (" + libelleOrigine(origine) + ", " + saved.getMode() + ")",
+                "Paiement de " + c.getNom() + " (" + libelleOrigine(origine) + ", "
+                        + ModesPaiementService.libelleAffiche(saved.getMode(), saved.getModeLibelle()) + ")",
                 SourceTransaction.PAIEMENT_CLIENT, saved.getUniqueId(), u);
 
         compteClientService.imputer(c);
         if (u != null) logs.addLogs(u.getId(), saved.getId(), "PaiementClient",
-                "Paiement de " + saved.getMontant() + " FCFA reçu de " + c.getNom() + " (" + origine + ")");
+                "Paiement de " + com.diafarms.ml.commons.Devise.montant(saved.getMontant()) + " reçu de " + c.getNom() + " (" + origine + ")");
         return saved;
     }
 
@@ -256,13 +268,20 @@ public class PaiementClientService {
         ensureCanRembourser(u);
         Client c = client(d.getClientUniqueId(), u);
         Commande commande = commandeDuClient(d.getCommandeUniqueId(), c);
-        return RemboursementClientDTO.fromEntity(rembourserInterne(c, com.diafarms.ml.commons.Franc.arrondi(d.getMontant()), mode(d.getMode()),
+        return RemboursementClientDTO.fromEntity(rembourserInterne(c, com.diafarms.ml.commons.Franc.arrondi(d.getMontant()), mode(d.getMode(), c.getFarm()),
                 MotifSuppressionRequest.exiger(d.getMotif()), commande));
     }
 
     @Transactional
     public RemboursementClient rembourserInterne(Client clientNonVerrouille, Double montant, ModePaiement mode,
                                                  String motif, Commande commande) {
+        return rembourserInterne(clientNonVerrouille, montant, new ModesPaiementService.ModeChoisi(mode, null), motif, commande);
+    }
+
+    @Transactional
+    public RemboursementClient rembourserInterne(Client clientNonVerrouille, Double montant, ModesPaiementService.ModeChoisi choisi,
+                                                 String motif, Commande commande) {
+        ModePaiement mode = choisi != null ? choisi.mode() : null;
         Client c = clientRepo.findByIdForUpdate(clientNonVerrouille.getId()).orElseThrow();
         Utilisateurs u = user();
         RemboursementClient r = new RemboursementClient();
@@ -277,6 +296,7 @@ public class PaiementClientService {
         r.setDate(LocalDate.now());
         r.setMontant(CalculImputation.arrondi(montant));
         r.setMode(mode != null ? mode : ModePaiement.ESPECES);
+        r.setModeLibelle(choisi != null ? choisi.libelle() : null);
         r.setMotif(motif);
         r.setEffectuePar(u);
         r.setStatut(StatutMouvement.ACTIF);
@@ -287,7 +307,7 @@ public class PaiementClientService {
                 "Remboursement au client", saved.getDate(), "Remboursement à " + c.getNom() + " : " + motif,
                 SourceTransaction.REMBOURSEMENT_CLI, saved.getUniqueId(), u);
         if (u != null) logs.addLogs(u.getId(), saved.getId(), "RemboursementClient",
-                "Remboursement de " + saved.getMontant() + " FCFA à " + c.getNom() + ", motif : " + motif);
+                "Remboursement de " + com.diafarms.ml.commons.Devise.montant(saved.getMontant()) + " à " + c.getNom() + ", motif : " + motif);
         return saved;
     }
 

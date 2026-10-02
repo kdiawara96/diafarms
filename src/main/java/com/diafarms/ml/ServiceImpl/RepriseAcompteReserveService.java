@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,7 +51,7 @@ public class RepriseAcompteReserveService {
     }
 
     private static String fcfa(double v) {
-        return (v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)) + " FCFA";
+        return Devise.montant(v);
     }
 
     public RepriseAcompteReserveRapportDTO lancer(List<Farm> farms, boolean executer, Utilisateurs lanceur) {

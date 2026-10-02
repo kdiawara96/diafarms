@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -618,7 +619,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Transaction",
-                    "Création de la transaction '" + saved.getRef() + "' (" + saved.getType() + ", " + saved.getMontant() + " FCFA)");
+                    "Création de la transaction '" + saved.getRef() + "' (" + saved.getType() + ", " + Devise.montant(saved.getMontant()) + ")");
         }
 
         return TransactionDTO.fromEntity(saved);

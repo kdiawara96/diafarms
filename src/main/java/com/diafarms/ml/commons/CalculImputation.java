@@ -1,5 +1,6 @@
 package com.diafarms.ml.commons;
 
+import com.diafarms.ml.commons.Devise;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -90,9 +91,9 @@ public final class CalculImputation {
         double reserveAilleurs = arrondi(sources.stream().mapToDouble(s -> Math.max(0, s.reste())).sum() - dispoTotal);
         if (voulu <= 0) throw new IllegalArgumentException("Le montant à rembourser doit être positif.");
         if (voulu > dispoTotal) {
-            throw new IllegalArgumentException("Le remboursement (" + voulu + " FCFA) dépasse l'avance disponible du client ("
-                    + dispoTotal + " FCFA)." + (reserveAilleurs > 0 ? " " + reserveAilleurs
-                    + " FCFA sont réservés à des commandes en cours : pour les rendre, remboursez depuis la commande concernée."
+            throw new IllegalArgumentException("Le remboursement (" + Devise.montant(voulu) + ") dépasse l'avance disponible du client ("
+                    + Devise.montant(dispoTotal) + ")." + (reserveAilleurs > 0 ? " " + Devise.montant(reserveAilleurs)
+                    + " sont réservés à des commandes en cours : pour les rendre, remboursez depuis la commande concernée."
                     : ""));
         }
         List<Source> ordre = new ArrayList<>(utilisables);

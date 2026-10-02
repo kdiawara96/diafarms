@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -74,7 +75,7 @@ public class RepriseCircuitClientService {
     private static double nz(Double v) { return v == null ? 0.0 : v; }
     private static double r2(double v) { return CalculImputation.arrondi(v); }
     private static String fcfa(double v) {
-        return (v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v)) + " FCFA";
+        return Devise.montant(v);
     }
 
     /** farms : fermes à traiter (une transaction chacune). lanceur : pour les logs. */

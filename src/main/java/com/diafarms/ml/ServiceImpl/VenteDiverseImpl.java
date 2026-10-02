@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -166,7 +167,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
                 SourceTransaction.VENTE_DIVERSE, saved.getUniqueId(), currentUser);
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteDiverse",
-                "Vente " + (produit == ProduitVenteDiverse.FIENTES ? "de fientes" : "diverse") + " (" + saved.getMontant() + " FCFA)");
+                "Vente " + (produit == ProduitVenteDiverse.FIENTES ? "de fientes" : "diverse") + " (" + Devise.montant(saved.getMontant()) + ")");
         return saved;
     }
 

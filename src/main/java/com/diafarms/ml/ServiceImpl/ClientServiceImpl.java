@@ -328,6 +328,7 @@ public class ClientServiceImpl implements ClientService {
                     .type("PAIEMENT")
                     .montant(p.getMontant())
                     .mode(p.getMode() != null ? p.getMode().name() : null)
+                    .modeLibelle(ModesPaiementService.libelleAffiche(p.getMode(), p.getModeLibelle()))
                     .origine(p.getOrigine() != null ? p.getOrigine().name() : null)
                     .statut(p.getStatut() != null ? p.getStatut().name() : null)
                     .commandeUniqueId(p.getCommande() != null ? p.getCommande().getUniqueId() : null)
@@ -341,6 +342,7 @@ public class ClientServiceImpl implements ClientService {
                     .type("REMBOURSEMENT")
                     .montant(r.getMontant() != null ? -r.getMontant() : null)
                     .mode(r.getMode() != null ? r.getMode().name() : null)
+                    .modeLibelle(ModesPaiementService.libelleAffiche(r.getMode(), r.getModeLibelle()))
                     .statut(r.getStatut() != null ? r.getStatut().name() : null)
                     .commandeUniqueId(r.getCommande() != null ? r.getCommande().getUniqueId() : null)
                     .build());

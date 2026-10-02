@@ -24,6 +24,7 @@ public class RemboursementClientDTO {
     private LocalDate date;
     private Double montant;
     private ModePaiement mode;
+    private String modeLibelle; // libellé à afficher, voir PaiementClientDTO
     private String motif;
     private String commandeUniqueId;
     private String effectueParNom;
@@ -38,6 +39,7 @@ public class RemboursementClientDTO {
                 .date(r.getDate())
                 .montant(r.getMontant())
                 .mode(r.getMode())
+                .modeLibelle(com.diafarms.ml.ServiceImpl.ModesPaiementService.libelleAffiche(r.getMode(), r.getModeLibelle()))
                 .motif(r.getMotif())
                 .commandeUniqueId(r.getCommande() != null ? r.getCommande().getUniqueId() : null)
                 .effectueParNom(r.getEffectuePar() != null ? r.getEffectuePar().getFullName() : null)

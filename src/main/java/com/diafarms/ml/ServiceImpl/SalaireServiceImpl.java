@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -157,7 +158,7 @@ public class SalaireServiceImpl implements SalaireService {
 
             logs.addLogs(currentUser.getId(), saved.getId(), "Salaire",
                     (nouveau ? "Grille salariale définie pour " : "Grille salariale mise à jour pour ") + employe.getNom()
-                            + " (" + modePaiement + ", " + data.getTauxBase() + " FCFA)");
+                            + " (" + modePaiement + ", " + Devise.montant(data.getTauxBase()) + ")");
             return SalaireDTO.fromEntity(saved, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(saved.getId()));
         }
 
@@ -206,15 +207,15 @@ public class SalaireServiceImpl implements SalaireService {
                                                ModePaiement modePeriode) {
         if (data.getMontantForce() != null) return data.getMontantForce();
         if (data.getMontant() == null || data.getMontant() <= 0) return null;
-        long envoye = Math.round(data.getMontant());
+        double envoye = com.diafarms.ml.commons.Franc.arrondi(data.getMontant());
         Double q = data.getQuantite() != null && data.getQuantite() > 0 ? data.getQuantite() : null;
         if (modePeriode != ModePaiement.MENSUEL && q == null) return data.getMontant();
-        long periode = modePeriode == ModePaiement.MENSUEL
-                ? Math.round(tauxPeriode.getTauxBase()) : Math.round(tauxPeriode.getTauxBase() * q);
-        Long telephone = null;
+        double periode = modePeriode == ModePaiement.MENSUEL
+                ? com.diafarms.ml.commons.Franc.arrondi(tauxPeriode.getTauxBase()) : com.diafarms.ml.commons.Franc.arrondi(tauxPeriode.getTauxBase() * q);
+        Double telephone = null;
         if (s.getTauxBase() != null) {
-            if (s.getModePaiement() == null || s.getModePaiement() == ModePaiement.MENSUEL) telephone = Math.round(s.getTauxBase());
-            else if (q != null) telephone = Math.round(s.getTauxBase() * q);
+            if (s.getModePaiement() == null || s.getModePaiement() == ModePaiement.MENSUEL) telephone = com.diafarms.ml.commons.Franc.arrondi(s.getTauxBase());
+            else if (q != null) telephone = com.diafarms.ml.commons.Franc.arrondi(s.getTauxBase() * q);
         }
         boolean auto = envoye == periode || (telephone != null && envoye == telephone);
         return auto ? null : data.getMontant();
@@ -270,11 +271,11 @@ public class SalaireServiceImpl implements SalaireService {
             if (montantForce <= 0) {
                 throw new IllegalArgumentException("Le montant forcé doit être positif.");
             }
-            montant = Math.round(montantForce);
+            montant = com.diafarms.ml.commons.Franc.arrondi(montantForce);
         } else if (modePeriode == ModePaiement.MENSUEL) {
-            montant = Math.round(tauxPeriode.getTauxBase());
+            montant = com.diafarms.ml.commons.Franc.arrondi(tauxPeriode.getTauxBase());
         } else {
-            montant = Math.round(tauxPeriode.getTauxBase() * quantite);
+            montant = com.diafarms.ml.commons.Franc.arrondi(tauxPeriode.getTauxBase() * quantite);
         }
         if (montant <= 0) {
             throw new IllegalArgumentException("Le montant calculé est nul : vérifiez la grille salariale.");
@@ -301,7 +302,7 @@ public class SalaireServiceImpl implements SalaireService {
                 description, SourceTransaction.SALAIRE, saved.getUniqueId(), currentUser);
 
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementSalaire",
-                "Salaire de " + montant + " FCFA payé à " + s.getEmploye().getNom() + " pour " + data.getPeriode());
+                "Salaire de " + Devise.montant(montant) + " payé à " + s.getEmploye().getNom() + " pour " + data.getPeriode());
         return PaiementSalaireDTO.fromEntity(saved);
     }
 
@@ -351,7 +352,7 @@ public class SalaireServiceImpl implements SalaireService {
             throw new IllegalArgumentException("Le montant corrigé doit être positif.");
         }
 
-        p.setMontantPaye((double) Math.round(data.getMontant()));
+        p.setMontantPaye(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
         if (p.getInitialisation() != null) {
             p.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
@@ -363,7 +364,7 @@ public class SalaireServiceImpl implements SalaireService {
 
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementSalaire",
                 "Correction du montant payé à " + saved.getSalaire().getEmploye().getNom()
-                        + " pour " + saved.getPeriode() + " → " + data.getMontant() + " FCFA");
+                        + " pour " + saved.getPeriode() + " → " + Devise.montant(data.getMontant()));
 
         return PaiementSalaireDTO.fromEntity(saved);
     }
@@ -515,7 +516,7 @@ public class SalaireServiceImpl implements SalaireService {
             detail.addCell(PdfStyle.tableHeaderCell("Mode de paiement"));
             detail.addCell(PdfStyle.tableHeaderCell("Taux"));
             detail.addCell(PdfStyle.bodyCell(modeLabel));
-            detail.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA %s", tauxBulletin, suffixeTaux)));
+            detail.addCell(PdfStyle.bodyCell(Devise.montant(tauxBulletin) + " " + suffixeTaux));
             if (p.getQuantite() != null) {
                 String uniteQuantite = modeBulletin == ModePaiement.HORAIRE ? "Heures travaillées" : "Jours travaillés";
                 detail.addCell(PdfStyle.tableHeaderCell(uniteQuantite));
@@ -526,7 +527,7 @@ public class SalaireServiceImpl implements SalaireService {
             document.add(detail);
             document.add(new Paragraph(" "));
 
-            document.add(PdfStyle.highlightAmount("MONTANT NET PAYÉ", String.format("%,.0f FCFA", p.getMontantPaye())));
+            document.add(PdfStyle.highlightAmount("MONTANT NET PAYÉ", Devise.montant(p.getMontantPaye())));
             document.add(new Paragraph(" "));
             document.add(new Paragraph(" "));
 

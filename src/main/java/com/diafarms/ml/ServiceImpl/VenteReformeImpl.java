@@ -22,6 +22,7 @@ import com.diafarms.ml.commons.FermeScope;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ModePaiement;
+import com.diafarms.ml.commons.Devise;
 import com.diafarms.ml.enums.OriginePaiement;
 import com.diafarms.ml.enums.SourceTransaction;
 import com.diafarms.ml.enums.TypeStockMagasin;
@@ -136,15 +137,10 @@ public class VenteReformeImpl implements VenteReformeService {
         }
     }
 
-    /** "" ou null -> ESPECES (comportement historique implicite) ; sinon la valeur de
-     * l'enum ModePaiement — même règle que PaiementClientService.mode(String). */
-    private ModePaiement modeOuEspeces(String raw) {
-        if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
-        try {
-            return ModePaiement.valueOf(raw.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Mode de paiement inconnu : " + raw);
-        }
+    /** "" ou null -> ESPECES ; sinon mode de la ferme du client (valeurs historiques de
+     * l'enum toujours acceptées) : voir ModesPaiementService.resoudre. */
+    private ModesPaiementService.ModeChoisi modeOuEspeces(String raw, Client client) {
+        return paiementClientService.mode(raw, client.getFarm());
     }
 
     /** Avant toute écriture : chaque part de la vente supprimée doit tenir dans le stock
@@ -212,7 +208,7 @@ public class VenteReformeImpl implements VenteReformeService {
         return lignes;
     }
 
-    /** " · Rapporté : X FCFA / Y FCFA théoriques (manque/surplus Z FCFA)", vide si pas
+    /** " · Rapporté : X / Y théoriques (manque/surplus Z)" (montants dans la devise de la ferme), vide si pas
      * encore de montant rapporté saisi ou si égal au théorique — même helper que
      * VenteOeufsImpl (dupliqué, pas de base commune entre les deux services), même
      * convention de signe que SoldeVendeurServiceImpl.ajusterSolde. */
@@ -221,8 +217,8 @@ public class VenteReformeImpl implements VenteReformeService {
             return "";
         }
         double ecart = montantTheorique - montantRapporte;
-        return String.format(Locale.FRANCE, " · Rapporté : %.0f FCFA / %.0f FCFA théoriques (%s %.0f FCFA)",
-                montantRapporte, montantTheorique, ecart > 0 ? "manque" : "surplus", Math.abs(ecart));
+        return " · Rapporté : " + Devise.montant(montantRapporte) + " / " + Devise.montant(montantTheorique)
+                + " théoriques (" + (ecart > 0 ? "manque" : "surplus") + " " + Devise.montant(Math.abs(ecart)) + ")";
     }
 
     @Override
@@ -319,7 +315,7 @@ public class VenteReformeImpl implements VenteReformeService {
         } else {
             if (data.getMontantRapporte() != null && data.getMontantRapporte() > 0) {
                 paiementClientService.enregistrerInterne(client, data.getMontantRapporte(),
-                        modeOuEspeces(data.getModePaiement()), OriginePaiement.VENTE, saved.getCommande(),
+                        modeOuEspeces(data.getModePaiement(), client), OriginePaiement.VENTE, saved.getCommande(),
                         CibleImputation.VENTE_REFORME, saved.getUniqueId(), null, null, saved.getDate());
             } else {
                 compteClientService.imputer(client); // une avance éventuelle règle cette vente
@@ -327,7 +323,7 @@ public class VenteReformeImpl implements VenteReformeService {
         }
 
         logs.addLogs(currentUser.getId(), saved.getId(), "VenteReforme",
-                "Vente réforme de " + saved.getNombreSujets() + " sujet(s) (" + saved.getMontant() + " FCFA) depuis " + magasin.getNom() + ", répartie entre les projets contributeurs");
+                "Vente réforme de " + saved.getNombreSujets() + " sujet(s) (" + Devise.montant(saved.getMontant()) + ") depuis " + magasin.getNom() + ", répartie entre les projets contributeurs");
 
         VenteReformeDTO dto = VenteReformeDTO.fromEntity(saved);
         dto.setRepartitions(lignes.stream().map(VenteReformeRepartitionDTO::fromEntity).toList());
@@ -441,7 +437,7 @@ public class VenteReformeImpl implements VenteReformeService {
         if (tarifChange && data.getMontant() == null && v.getTypeVente() == TypeVenteReforme.KILO
                 && v.getPoidsTotalKg() != null && v.getPrixUnitaire() != null) {
             double recalcule = com.diafarms.ml.commons.Franc.arrondi(v.getPoidsTotalKg() * v.getPrixUnitaire());
-            if (v.getMontant() == null || Math.round(recalcule) != Math.round(v.getMontant())) data.setMontant(recalcule);
+            if (v.getMontant() == null || com.diafarms.ml.commons.Franc.arrondi(recalcule) != com.diafarms.ml.commons.Franc.arrondi(v.getMontant())) data.setMontant(recalcule);
         }
 
         boolean redistribuer = data.getNombreSujets() != null || data.getMontant() != null;

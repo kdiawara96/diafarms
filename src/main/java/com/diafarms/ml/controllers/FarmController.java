@@ -53,6 +53,12 @@ public class FarmController {
         result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
         result.put("logoUrl", brandingUrlOrNull(request, farm, farm.getLogoNomMinio(), "logo"));
         result.put("tamponUrl", brandingUrlOrNull(request, farm, farm.getTamponNomMinio(), "tampon"));
+        // Pays/devise (voir ModesPaiementService, GET /farm-settings/devise pour le détail).
+        com.diafarms.ml.DTO.DeviseFermeDTO dv = com.diafarms.ml.ServiceImpl.ModesPaiementService.devise(farm);
+        result.put("paysCode", dv.getPays());
+        result.put("devise", dv.getDevise());
+        result.put("deviseSymbole", dv.getSymbole());
+        result.put("deviseDecimales", String.valueOf(dv.getDecimales()));
         return ApiResponse.createResponse("Ferme récupérée", HttpStatus.OK, result, null);
     }
 

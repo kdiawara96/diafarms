@@ -217,13 +217,10 @@ public class CommandeServiceImpl implements CommandeService {
         }
     }
 
-    private static ModePaiement mode(String raw) {
-        if (raw == null || raw.isBlank()) return ModePaiement.ESPECES;
-        try {
-            return ModePaiement.valueOf(raw.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Mode de paiement inconnu : " + raw);
-        }
+    // Mode envoyé -> enum + libellé selon les modes de la ferme (voir
+    // ModesPaiementService.resoudre : valeurs historiques toujours acceptées).
+    private ModesPaiementService.ModeChoisi mode(String raw, Client client) {
+        return paiementClientService.mode(raw, client != null ? client.getFarm() : null);
     }
 
     private static String statutLibelle(StatutCommande s) {
@@ -440,7 +437,7 @@ public class CommandeServiceImpl implements CommandeService {
         // nombre théorique sur la commande — enregistré comme un vrai paiement client
         // (PaiementClientService.enregistrerInterne), pas juste imputable plus tard.
         if (nz(saved.getMontantAcompte()) > 0) {
-            paiementClientService.enregistrerInterne(client, saved.getMontantAcompte(), mode(data.getModePaiement()),
+            paiementClientService.enregistrerInterne(client, saved.getMontantAcompte(), mode(data.getModePaiement(), client),
                     OriginePaiement.ACOMPTE, saved, null, null, null, "Acompte sur commande", saved.getDateCommande());
         }
 
@@ -487,7 +484,7 @@ public class CommandeServiceImpl implements CommandeService {
         // des paiements. montantAcompte reste donc figé après la création : c'est
         // l'historique du tout premier acompte, rien d'autre.
         if (data.getMontantAcompte() != null
-                && Math.round(data.getMontantAcompte()) != Math.round(nz(c.getMontantAcompte()))) {
+                && com.diafarms.ml.commons.Franc.arrondi(data.getMontantAcompte()) != com.diafarms.ml.commons.Franc.arrondi(nz(c.getMontantAcompte()))) {
             throw new IllegalArgumentException(
                     "Un acompte supplémentaire s'enregistre comme un paiement sur la commande.");
         }
@@ -568,7 +565,7 @@ public class CommandeServiceImpl implements CommandeService {
                     .filter(s -> c.getUniqueId().equals(s.commandeUniqueId()))
                     .mapToDouble(CalculImputation.Source::reste).sum();
             if (disponible > 0) {
-                paiementClientService.rembourserInterne(c.getClient(), disponible, mode(modeBrut),
+                paiementClientService.rembourserInterne(c.getClient(), disponible, mode(modeBrut, c.getClient()),
                         "Annulation de la commande : " + motif, c);
             }
         }
@@ -660,7 +657,7 @@ public class CommandeServiceImpl implements CommandeService {
             // que la somme des livraisons au franc retombe exactement sur round(pu x total)
             // (des arrondis par livraison pourraient dériver d'un franc par livraison).
             int dejaLivre = nz(c.getQuantiteLivree());
-            montantLivraison = Math.round(prixUnitaire * (dejaLivre + quantite)) - Math.round(prixUnitaire * dejaLivre);
+            montantLivraison = com.diafarms.ml.commons.Franc.arrondi(com.diafarms.ml.commons.Franc.arrondi(prixUnitaire * (dejaLivre + quantite)) - com.diafarms.ml.commons.Franc.arrondi(prixUnitaire * dejaLivre));
         }
 
         // montantRapporte/modePaiement laissés vides à la création de la vente : cette
@@ -720,7 +717,7 @@ public class CommandeServiceImpl implements CommandeService {
         // passe les paiements réservés qui visent une vente avant les autres).
         compteClientService.retirerImputationsProvisoires(typeCible, venteUniqueId);
         if (nz(montantRecu) > 0) {
-            paiementClientService.enregistrerInterne(c.getClient(), montantRecu, mode(modeBrut), OriginePaiement.LIVRAISON,
+            paiementClientService.enregistrerInterne(c.getClient(), montantRecu, mode(modeBrut, c.getClient()), OriginePaiement.LIVRAISON,
                     c, typeCible, venteUniqueId, null, null, dateLivraison);
         } else {
             compteClientService.imputer(c.getClient());
@@ -743,7 +740,7 @@ public class CommandeServiceImpl implements CommandeService {
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "Commande",
                     "Livraison de " + quantite + " (" + c.getType() + ")"
-                            + (auKilo ? ", " + poidsTotalKg + " kg à " + prixUnitaire + " FCFA/kg" : "")
+                            + (auKilo ? ", " + poidsTotalKg + " kg à " + prixUnitaire + " " + com.diafarms.ml.commons.Devise.unite() + "/kg" : "")
                             + " pour " + c.getClient().getNom()
                             + (complete ? ", commande entièrement livrée" : ", reste " + (c.getQuantite() - quantiteLivreeApres)));
         }
@@ -766,7 +763,7 @@ public class CommandeServiceImpl implements CommandeService {
         // la livraison entamée, tout nouveau paiement est un règlement ordinaire.
         OriginePaiement origine = nz(c.getQuantiteLivree()) == 0 ? OriginePaiement.ACOMPTE : OriginePaiement.REGLEMENT;
         LocalDate date = DateSaisie.parse(data.getDate(), LocalDate.now());
-        paiementClientService.enregistrerInterne(c.getClient(), data.getMontant(), mode(data.getMode()), origine,
+        paiementClientService.enregistrerInterne(c.getClient(), data.getMontant(), mode(data.getMode(), c.getClient()), origine,
                 c, null, null, null, data.getObservations(), date);
         return enrichir(c);
     }

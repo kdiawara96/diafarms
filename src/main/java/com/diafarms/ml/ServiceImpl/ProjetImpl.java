@@ -584,7 +584,7 @@ public class ProjetImpl implements ProjetServices {
                 "Création du projet '" + savedProjet.getTitre() 
                     + "' (" + savedProjet.getNbSujets() + " sujets, Objectif : " 
                     + savedProjet.getObjectif() + ") | Cout Achat total : " 
-                    + savedProjet.getCaTotalSujets() + " FCFA"
+                    + com.diafarms.ml.commons.Devise.montant(savedProjet.getCaTotalSujets())
             );
         }
 
@@ -781,8 +781,8 @@ public class ProjetImpl implements ProjetServices {
                 currentUser.getId(),
                 source.getId(),
                 "Projet",
-                "Transfert de " + restantKg + " kg d'aliment (valeur " + valeurTransferee
-                    + " FCFA) vers le projet '" + cible.getCode() + "'"
+                "Transfert de " + restantKg + " kg d'aliment (valeur " + com.diafarms.ml.commons.Devise.montant(valeurTransferee)
+                    + ") vers le projet '" + cible.getCode() + "'"
             );
         }
 
@@ -874,7 +874,7 @@ public class ProjetImpl implements ProjetServices {
                 "Mise à jour du projet '" + updatedProjet.getTitre() 
                     + "' (" + updatedProjet.getNbSujets() + " sujets, Objectif : " 
                     + updatedProjet.getObjectif() + ") | Coût Achat total : " 
-                    + updatedProjet.getCaTotalSujets() + " FCFA"
+                    + com.diafarms.ml.commons.Devise.montant(updatedProjet.getCaTotalSujets())
             );
         }
 

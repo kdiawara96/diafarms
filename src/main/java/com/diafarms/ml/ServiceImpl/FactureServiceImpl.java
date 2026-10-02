@@ -21,6 +21,7 @@ import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.commons.PdfStyle;
 import com.diafarms.ml.enums.CibleImputation;
 import com.diafarms.ml.enums.ModePaiement;
+import com.diafarms.ml.commons.Devise;
 import com.diafarms.ml.enums.OriginePaiement;
 import com.diafarms.ml.enums.TypeStockMagasin;
 import com.diafarms.ml.models.Client;
@@ -381,12 +382,8 @@ public class FactureServiceImpl implements FactureService {
         }
         double montantAPayer = CalculImputation.arrondi((montant != null && montant > 0) ? Math.min(montant, reste) : reste);
 
-        ModePaiement modePaiement;
-        try {
-            modePaiement = (mode == null || mode.isBlank()) ? ModePaiement.ESPECES : ModePaiement.valueOf(mode.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Mode de paiement inconnu : " + mode);
-        }
+        // Modes de la ferme (valeurs historiques de l'enum toujours acceptées).
+        ModesPaiementService.ModeChoisi modePaiement = paiementClientService.mode(mode, f.getClient().getFarm());
         LocalDate datePaiement = date != null ? date : LocalDate.now();
         String observations = "Paiement facture " + f.getNumeroFacture();
 
@@ -422,7 +419,7 @@ public class FactureServiceImpl implements FactureService {
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), f.getId(), "Facture",
-                    "Paiement de " + montantAPayer + " FCFA enregistré sur la facture " + f.getNumeroFacture());
+                    "Paiement de " + Devise.montant(montantAPayer) + " enregistré sur la facture " + f.getNumeroFacture());
         }
 
         return toDto(f);
@@ -593,14 +590,14 @@ public class FactureServiceImpl implements FactureService {
             if (reconstruire) {
                 table.addCell(PdfStyle.bodyCell(f.getDescription()));
                 table.addCell(PdfStyle.bodyCell(f.getQuantite() != null ? f.getQuantite().toString() : "-", Element.ALIGN_RIGHT));
-                table.addCell(PdfStyle.bodyCell(f.getPrixUnitaire() != null ? String.format("%.0f", f.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
-                table.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA", nz(f.getMontantTotal())), Element.ALIGN_RIGHT));
+                table.addCell(PdfStyle.bodyCell(f.getPrixUnitaire() != null ? Devise.prix(f.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
+                table.addCell(PdfStyle.bodyCell(Devise.montant(nz(f.getMontantTotal())), Element.ALIGN_RIGHT));
             } else {
                 for (FactureLigneDTO l : dto.getLignes()) {
                     table.addCell(PdfStyle.bodyCell(l.getDescription()));
                     table.addCell(PdfStyle.bodyCell(l.getQuantite() != null ? l.getQuantite().toString() : "-", Element.ALIGN_RIGHT));
-                    table.addCell(PdfStyle.bodyCell(l.getPrixUnitaire() != null ? String.format("%.0f", l.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
-                    table.addCell(PdfStyle.bodyCell(String.format("%,.0f FCFA", nz(l.getMontant())), Element.ALIGN_RIGHT));
+                    table.addCell(PdfStyle.bodyCell(l.getPrixUnitaire() != null ? Devise.prix(l.getPrixUnitaire()) : "-", Element.ALIGN_RIGHT));
+                    table.addCell(PdfStyle.bodyCell(Devise.montant(nz(l.getMontant())), Element.ALIGN_RIGHT));
                 }
             }
             document.add(table);
@@ -613,15 +610,15 @@ public class FactureServiceImpl implements FactureService {
             recap.setHorizontalAlignment(Element.ALIGN_RIGHT);
             recap.setWidths(new float[]{1, 1});
             recap.addCell(PdfStyle.layoutCell(new Paragraph("Montant total", PdfStyle.normal())));
-            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", nz(f.getMontantTotal())), PdfStyle.normal()))));
+            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(Devise.montant(nz(f.getMontantTotal())), PdfStyle.normal()))));
             recap.addCell(PdfStyle.layoutCell(new Paragraph("Montant payé", PdfStyle.normal())));
-            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(String.format("%,.0f FCFA", nz(dto.getMontantPaye())), PdfStyle.normal()))));
+            recap.addCell(PdfStyle.layoutCell(alignRight(new Paragraph(Devise.montant(nz(dto.getMontantPaye())), PdfStyle.normal()))));
             document.add(recap);
             document.add(new Paragraph(" "));
 
             document.add(PdfStyle.highlightAmount(
                     reste > 0 ? "RESTE DÛ" : "FACTURE SOLDÉE",
-                    String.format("%,.0f FCFA", reste)));
+                    Devise.montant(reste)));
             document.add(new Paragraph(" "));
             document.add(new Paragraph(" "));
 

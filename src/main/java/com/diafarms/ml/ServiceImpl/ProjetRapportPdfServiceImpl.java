@@ -1,5 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
+import com.diafarms.ml.commons.Devise;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.text.DecimalFormat;
@@ -91,7 +92,8 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
 
     private static String n0(double v) { return nombre(0).format(v); }
     private static String n1(double v) { return nombre(1).format(v); }
-    private static String fcfa(double v) { return nombre(0).format(Math.round(v)) + " FCFA"; }
+    // Montant dans la devise de la ferme (voir commons.Devise), nom historique gardé.
+    private static String fcfa(double v) { return Devise.montant(v); }
     private static double nz(Double v) { return v == null ? 0 : v; }
     private static int nz(Integer v) { return v == null ? 0 : v; }
     private static boolean dans(LocalDate d, LocalDate debut, LocalDate fin) {

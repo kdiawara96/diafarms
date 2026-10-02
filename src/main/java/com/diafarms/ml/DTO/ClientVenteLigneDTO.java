@@ -35,6 +35,7 @@ public class ClientVenteLigneDTO {
 
     // Lignes "PAIEMENT"/"REMBOURSEMENT".
     private String mode; // ModePaiement
+    private String modeLibelle; // libellé à afficher (voir PaiementClientDTO)
     private String origine; // OriginePaiement, paiements seulement
     private String statut; // StatutMouvement (ACTIF/ANNULE)
     private String commandeUniqueId;

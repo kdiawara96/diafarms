@@ -29,6 +29,8 @@ public class PaiementClientDTO {
     private LocalDate date;
     private Double montant;
     private ModePaiement mode;
+    // Libellé à afficher (toujours renseigné) : "Espèces", "Free Money", mode ajouté...
+    private String modeLibelle;
     private OriginePaiement origine;
     private String commandeUniqueId;
     private String venteCibleUniqueId;
@@ -52,6 +54,7 @@ public class PaiementClientDTO {
                 .date(p.getDate())
                 .montant(p.getMontant())
                 .mode(p.getMode())
+                .modeLibelle(com.diafarms.ml.ServiceImpl.ModesPaiementService.libelleAffiche(p.getMode(), p.getModeLibelle()))
                 .origine(p.getOrigine())
                 .commandeUniqueId(p.getCommande() != null ? p.getCommande().getUniqueId() : null)
                 .venteCibleUniqueId(p.getVenteCibleUniqueId())
