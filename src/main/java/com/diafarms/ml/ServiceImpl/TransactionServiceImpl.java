@@ -327,10 +327,12 @@ public class TransactionServiceImpl implements TransactionService {
     /**
      * @param messageProjetObligatoire non null = la catégorie impose le Projet (Santé /
      *        Vétérinaire) : message d'erreur si aucun projet n'est donné.
+     * @param date date de la transaction : occupant du poulailler à cette date (ancien format).
      */
     RattachementResolu normaliserRattachement(String rattachement, Boolean commun, String projetUniqueId,
                                               List<String> projetsConcernesUniqueIds, String siteUniqueId,
-                                              String batimentUniqueId, String messageProjetObligatoire) {
+                                              String batimentUniqueId, String messageProjetObligatoire,
+                                              LocalDate date) {
         Utilisateurs u = getCurrentUserSafe();
         boolean aProjet = rempli(projetUniqueId);
         List<String> concernes = projetsConcernesUniqueIds == null ? List.of()
@@ -407,7 +409,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
         if (aBatiment) {
             com.diafarms.ml.models.Batiment batiment = resoudreBatiment(batimentUniqueId, u);
-            Projets occupant = occupantUnique(batiment, u);
+            Projets occupant = occupantUnique(batiment, date != null ? date : LocalDate.now(), u);
             if (occupant != null) {
                 return new RattachementResolu(occupant, new java.util.ArrayList<>(), null, batiment);
             }
@@ -434,9 +436,9 @@ public class TransactionServiceImpl implements TransactionService {
         return b;
     }
 
-    /** Seul projet occupant aujourd'hui le poulailler (null s'il est vide ou partagé). */
-    private Projets occupantUnique(com.diafarms.ml.models.Batiment batiment, Utilisateurs u) {
-        List<Projets> occupants = occupationBatimentRepo.findActiveByBatimentId(batiment.getId()).stream()
+    /** Seul projet occupant le poulailler à la date de la dépense (null s'il est vide ou partagé). */
+    private Projets occupantUnique(com.diafarms.ml.models.Batiment batiment, LocalDate date, Utilisateurs u) {
+        List<Projets> occupants = occupationBatimentRepo.findOccupationsALaDate(batiment.getId(), date).stream()
                 .map(com.diafarms.ml.models.OccupationBatiment::getProjet)
                 .filter(p -> p != null && memeFerme(p.getFarm(), u)
                         && (p.getInitialisation() == null || !Boolean.TRUE.equals(p.getInitialisation().getRemoved())))
@@ -564,7 +566,8 @@ public class TransactionServiceImpl implements TransactionService {
         // Rattachement résolu AVANT toute écriture : une incohérence n'enregistre rien.
         RattachementResolu rattachement = normaliserRattachement(data.getRattachement(), data.getCommun(),
                 data.getProjetUniqueId(), data.getProjetsConcernesUniqueIds(), data.getSiteUniqueId(),
-                data.getBatimentUniqueId(), santeCreation ? MESSAGE_SANTE_SANS_PROJET : null);
+                data.getBatimentUniqueId(), santeCreation ? MESSAGE_SANTE_SANS_PROJET : null,
+                com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate() != null ? data.getDate() : LocalDate.now()));
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = new Transaction();
@@ -878,14 +881,15 @@ public class TransactionServiceImpl implements TransactionService {
         // Rattachement : nouveau format (`rattachement`) = remplacement complet, contrôlé
         // strictement ; ancien format = état actuel + champs envoyés, puis normalisé (voir
         // normaliserRattachement). Rien d'envoyé = rattachement inchangé.
-        boolean toucheRattachement = rempli(data.getRattachement()) || data.getCommun() != null
-                || data.getSiteUniqueId() != null || data.getBatimentUniqueId() != null
-                || data.getProjetsConcernesUniqueIds() != null;
+        // Ancien format : seul un champ envoyé DIFFÉRENT de l'enregistré compte (un
+        // formulaire qui renvoie tout à l'identique laisse le rattachement intact, même
+        // une ancienne combinaison ou un site supprimé depuis).
+        boolean toucheRattachement = rempli(data.getRattachement()) || rattachementAncienFormatModifie(t, data);
         String messageProjet = santeApres ? MESSAGE_SANTE_SANS_PROJET : null;
         if (rempli(data.getRattachement())) {
             appliquerRattachement(t, normaliserRattachement(data.getRattachement(), data.getCommun(),
                     data.getProjetUniqueId(), data.getProjetsConcernesUniqueIds(), data.getSiteUniqueId(),
-                    data.getBatimentUniqueId(), messageProjet));
+                    data.getBatimentUniqueId(), messageProjet, t.getDate()));
         } else if (toucheRattachement) {
             if (Boolean.FALSE.equals(data.getCommun()) && !rempli(data.getProjetUniqueId())) {
                 throw new IllegalArgumentException("Un projet doit être sélectionné si la transaction n'est pas commune.");
@@ -900,7 +904,7 @@ public class TransactionServiceImpl implements TransactionService {
                     : t.getSite() != null ? t.getSite().getUniqueId() : null;
             String batimentUid = data.getBatimentUniqueId() != null ? data.getBatimentUniqueId()
                     : t.getBatiment() != null ? t.getBatiment().getUniqueId() : null;
-            appliquerRattachement(t, normaliserRattachement(null, commun, projetUid, concernes, siteUid, batimentUid, messageProjet));
+            appliquerRattachement(t, normaliserRattachement(null, commun, projetUid, concernes, siteUid, batimentUid, messageProjet, t.getDate()));
         }
         if (santeApres) {
             // Rattachement non modifié : ancienne Santé « commune » à un seul projet = ce projet.
@@ -926,6 +930,30 @@ public class TransactionServiceImpl implements TransactionService {
         }
 
         return TransactionDTO.fromEntity(saved);
+    }
+
+    private static String uidOuNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    /** Un champ d'ancien format envoyé diffère-t-il du rattachement enregistré ? */
+    static boolean rattachementAncienFormatModifie(Transaction t, TransactionUpdate data) {
+        String projetActuel = t.getProjet() != null ? t.getProjet().getUniqueId() : null;
+        java.util.Set<String> concernesActuels = new java.util.HashSet<>();
+        if (t.getProjetsConcernes() != null) t.getProjetsConcernes().forEach(p -> concernesActuels.add(p.getUniqueId()));
+        if (data.getCommun() != null) {
+            if (data.getCommun() != (projetActuel == null)) return true;
+            if (!data.getCommun() && !java.util.Objects.equals(uidOuNull(data.getProjetUniqueId()), projetActuel)) return true;
+        }
+        if (data.getProjetsConcernesUniqueIds() != null && !Boolean.FALSE.equals(data.getCommun())) {
+            java.util.Set<String> envoyes = new java.util.HashSet<>();
+            data.getProjetsConcernesUniqueIds().forEach(x -> { if (uidOuNull(x) != null) envoyes.add(x.trim()); });
+            if (!envoyes.equals(concernesActuels)) return true;
+        }
+        if (data.getSiteUniqueId() != null && !java.util.Objects.equals(uidOuNull(data.getSiteUniqueId()),
+                t.getSite() != null ? t.getSite().getUniqueId() : null)) return true;
+        return data.getBatimentUniqueId() != null && !java.util.Objects.equals(uidOuNull(data.getBatimentUniqueId()),
+                t.getBatiment() != null ? t.getBatiment().getUniqueId() : null);
     }
 
     // Transaction générée par une saisie : seul le rattachement (site, poulailler) se
@@ -1442,7 +1470,9 @@ public class TransactionServiceImpl implements TransactionService {
         double totalDuClients;
         double totalAvancesClients;
         if (vueParProjet) {
-            vendu = nz(totalVenteOeufs) + nz(totalVenteReforme);
+            // Fientes / autres ventes rattachées au Projet (« Le Projet ») : vendues par ce projet.
+            vendu = nz(totalVenteOeufs) + nz(totalVenteReforme)
+                    + nz(transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_DIVERSE, dDeb, dFin));
             encaisse = 0.0;
             rembourse = 0.0;
             totalDuClients = 0.0;

@@ -27,4 +27,12 @@ public interface VenteDiverseRepo extends JpaRepository<VenteDiverse, Long> {
 
     @Query("SELECT v FROM VenteDiverse v LEFT JOIN FETCH v.demandeSuppressionPar WHERE v.uniqueId IN :uniqueIds")
     List<VenteDiverse> findByUniqueIds(@Param("uniqueIds") List<String> uniqueIds);
+
+    // Ventes diverses actives d'un projet (« Le Projet ») dont la transaction est VALIDE :
+    // vendues ET encaissées par ce projet (vente comptant, jamais de client). Une requête.
+    @Query("SELECT COALESCE(SUM(v.montant), 0.0) FROM VenteDiverse v WHERE v.projet.id = :projetId " +
+        "AND v.initialisation.removed = false AND EXISTS (SELECT 1 FROM Transaction t " +
+        "WHERE t.sourceUniqueId = v.uniqueId AND t.initialisation.removed = false " +
+        "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE)")
+    Double sumValideesParProjet(@Param("projetId") Long projetId);
 }

@@ -32,11 +32,13 @@ import lombok.RequiredArgsConstructor;
 //   part d'un projet dans une vente = montantAttribue / montant de la vente
 //     (à défaut de montant : quantité ou sujets attribués / total) ;
 //   encaissé du projet = Σ imputations actives sur ses ventes × sa part
-//     + montant rapporté des ventes sans client × sa part.
+//     + montant rapporté des ventes sans client × sa part
+//     + ventes diverses (fientes, autres) du projet dont la transaction est VALIDE.
 // Ce qui n'a pas encore réglé de vente reste au niveau de la ferme : acomptes réservés à
 // une commande ouverte, avances libres. D'où, pour la ferme :
 //   Σ encaissé des projets + acomptes en attente + avances libres
 //     = Σ paiements actifs - Σ remboursements + Σ montant rapporté des ventes sans client
+//       + Σ ventes diverses rattachées à un projet (transaction VALIDE)
 // (vérifié par scripts/scenarios-encaissement-projets.sh). Toutes les lectures sont
 // groupées (quelques requêtes, jamais une par vente ou par paiement).
 @Service
@@ -52,12 +54,19 @@ public class EncaissementProjetService {
     private final VenteReformeRepartitionRepo venteReformeRepartitionRepo;
     private final ImputationPaiementRepo imputationRepo;
     private final PaiementClientRepo paiementRepo;
+    private final com.diafarms.ml.repository.VenteDiverseRepo venteDiverseRepo;
 
     private static double nz(Object v) { return v == null ? 0.0 : ((Number) v).doubleValue(); }
 
-    /** Part d'un projet dans une vente : montant attribué / montant de la vente, ou à
-     * défaut quantité (œufs, sujets) attribuée / quantité vendue. */
-    static double part(Object venteMontant, Object montantAttribue, Object venteQuantite, Object quantiteAttribuee) {
+    /** Part d'un projet dans une vente : montant attribué / total attribué de la vente, à
+     * défaut / montant de la vente, à défaut quantité (œufs, sujets) attribuée / vendue. */
+    static double part(Object venteMontant, Object montantAttribue, Object venteQuantite, Object quantiteAttribuee,
+                       Object totalAttribue) {
+        // Rapportée au total RÉPARTI (Σ montants attribués de la vente) : les parts font
+        // toujours exactement 1, même pour une ancienne vente à centimes (1 333,33) dont la
+        // répartition a été arrondie au franc (1 333) ; sinon 0,33 F se perdait par vente.
+        double t = nz(totalAttribue);
+        if (t > 0) return nz(montantAttribue) / t;
         double m = nz(venteMontant);
         if (m > 0) return nz(montantAttribue) / m;
         double q = nz(venteQuantite);
@@ -89,7 +98,7 @@ public class EncaissementProjetService {
         double vendu = 0, encClients = 0, encSansClient = 0;
         for (Object[] r : parts) {
             // [venteUid, venteMontant, montantAttribue, clientId, montantRapporte, venteQte, qteAttribuee]
-            double p = part(r[1], r[2], r[5], r[6]);
+            double p = part(r[1], r[2], r[5], r[6], r[7]);
             vendu += nz(r[2]);
             if (r[3] != null) {
                 encClients += paye.getOrDefault((String) r[0], 0.0) * p;
@@ -99,6 +108,10 @@ public class EncaissementProjetService {
                 encSansClient += (r[4] != null ? nz(r[4]) : nz(r[1])) * p;
             }
         }
+        // Fientes / autres ventes du Projet : comptant, vendues et encaissées d'un coup.
+        double diverses = nz(venteDiverseRepo.sumValideesParProjet(projet.getId()));
+        vendu += diverses;
+        encSansClient += diverses;
         double encaisse = CalculImputation.arrondi(encClients + encSansClient);
         vendu = CalculImputation.arrondi(vendu);
         return EncaissementProjetDTO.builder()
@@ -161,7 +174,7 @@ public class EncaissementProjetService {
             LinkedHashMap<String, PartProjetDTO> projets =
                     projetsParPaiement.computeIfAbsent(pid, k -> new LinkedHashMap<>());
             for (Object[] l : partsParVente.getOrDefault((String) r[2], List.of())) {
-                double m = montant * part(l[1], l[5], l[6], l[7]);
+                double m = montant * part(l[1], l[5], l[6], l[7], l[8]);
                 PartProjetDTO d = projets.computeIfAbsent((String) l[2], k -> PartProjetDTO.builder()
                         .projetUniqueId((String) l[2]).code((String) l[3]).titre((String) l[4]).montant(0.0).build());
                 d.setMontant(d.getMontant() + m);

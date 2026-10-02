@@ -33,6 +33,17 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
         """)
     java.util.List<OccupationBatiment> findActiveByBatimentId(@Param("batimentId") Long batimentId);
 
+    // Occupations d'un bâtiment en cours à une date donnée (entrée ce jour ou avant, pas
+    // encore sortie) : occupant d'un poulailler à la date d'une dépense.
+    @Query("""
+        SELECT o FROM OccupationBatiment o
+        WHERE o.batiment.id = :batimentId
+        AND o.dateEntree <= :date
+        AND (o.dateSortie IS NULL OR o.dateSortie > :date)
+        """)
+    java.util.List<OccupationBatiment> findOccupationsALaDate(@Param("batimentId") Long batimentId,
+                                                              @Param("date") java.time.LocalDate date);
+
     // Tous les poulaillers occupés par un projet, occupations terminées comprises (une
     // saisie peut être antidatée) — voir PoulaillerObligatoire.
     @Query("SELECT DISTINCT o.batiment FROM OccupationBatiment o WHERE o.projet.id = :projetId")

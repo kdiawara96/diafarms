@@ -93,9 +93,9 @@ AUJ="$(date +%F)"
 # contient que les dépenses de ce passage.
 JOUR="$(date -d "$((RANDOM % 300 + 400)) days ago" +%F)"
 
-# Dépense de test : $1 = champs JSON du rattachement, $2 = montant, $3 = catégorie.
+# Dépense de test : $1 = champs JSON du rattachement, $2 = montant, $3 = catégorie, $4 = date.
 sortie() {
-  api POST /transactions/create "{\"type\":\"SORTIE\",\"date\":\"$JOUR\",\"description\":\"Rattachement $SUFFIXE\",\"montant\":${2:-1000},\"categorie\":\"${3:-Logistique}\"${1:+,$1}}"
+  api POST /transactions/create "{\"type\":\"SORTIE\",\"date\":\"${4:-$JOUR}\",\"description\":\"Rattachement $SUFFIXE\",\"montant\":${2:-1000},\"categorie\":\"${3:-Logistique}\"${1:+,$1}}"
 }
 # projet|site|poulailler|nb projets concernés (« - » = vide) d'une transaction.
 etat() {
@@ -184,9 +184,11 @@ check "1.34 commun + 2 projets concernés : accepté" "code == 201"
 check_eq "commun + plusieurs projets : ancien rattachement multi-projet conservé" "-|$SITE|-|2" "$(etat "$(tx_id)")"
 sortie "\"commun\":true,\"projetsConcernesUniqueIds\":[\"$P\"]" 2600
 check_eq "commun + un seul projet concerné -> Le Projet" "$P|-|-|0" "$(etat "$(tx_id)")"
-sortie "\"commun\":true,\"batimentUniqueId\":\"$BAT\"" 2700
+sortie "\"commun\":true,\"batimentUniqueId\":\"$BAT\"" 2700 Logistique "$AUJ"
 check "1.34 commun + poulailler seul : accepté" "code == 201"
-check_eq "commun + poulailler occupé par un seul projet -> Le Projet de ce poulailler" "$P|-|$BAT|0" "$(etat "$(tx_id)")"
+check_eq "commun + poulailler occupé ce jour-là par un seul projet -> Le Projet de ce poulailler" "$P|-|$BAT|0" "$(etat "$(tx_id)")"
+sortie "\"commun\":true,\"batimentUniqueId\":\"$BAT\"" 2750
+check_eq "commun + poulailler pas encore occupé à la date de la dépense -> Toute la ferme" "-|-|-|0" "$(etat "$(tx_id)")"
 sortie "\"commun\":true,\"batimentUniqueId\":\"$LIBRE\"" 2800
 check_eq "commun + poulailler vide -> Toute la ferme" "-|-|-|0" "$(etat "$(tx_id)")"
 sortie "\"commun\":true,\"projetUniqueId\":\"$P\"" 2900
@@ -247,6 +249,17 @@ TL="$(tx_id)"
 psql_run "UPDATE transactions SET site_id = (SELECT id FROM sites WHERE unique_id = '$SITE') WHERE unique_id = '$TL'" >/dev/null
 api PUT "/transactions/update/$TL" "{\"description\":\"Rattachement $SUFFIXE\",\"montant\":3201}"
 check_eq "ancienne donnée projet + site : intacte si le rattachement n'est pas modifié" "$P|$SITE|-|0" "$(etat "$TL")"
+# Formulaire ancien format qui renvoie tout à l'identique, site supprimé depuis : intact.
+api POST /sites/create "{\"nom\":\"Site supprimé $SUFFIXE\"}"
+SITE_SUPPR="$(psql_run "SELECT unique_id FROM sites WHERE farm_id = $FARM_ID AND nom = 'Site supprimé $SUFFIXE'")"
+sortie "\"rattachement\":\"FERME\"" 3300
+TD="$(tx_id)"
+psql_run "UPDATE transactions SET site_id = (SELECT id FROM sites WHERE unique_id = '$SITE_SUPPR'),
+  batiment_id = (SELECT id FROM batiments WHERE unique_id = '$LIBRE') WHERE unique_id = '$TD';
+  UPDATE sites SET removed = true WHERE unique_id = '$SITE_SUPPR'" >/dev/null
+api PUT "/transactions/update/$TD" "{\"commun\":true,\"projetUniqueId\":null,\"projetsConcernesUniqueIds\":[],\"siteUniqueId\":\"$SITE_SUPPR\",\"batimentUniqueId\":\"$LIBRE\",\"montant\":3301}"
+check "renvoi à l'identique (site supprimé) : accepté" "code == 200"
+check_eq "renvoi à l'identique : rattachement enregistré intact" "-|$SITE_SUPPR|$LIBRE|0" "$(etat "$TD")"
 
 echo "== 5. Transaction générée (charges de démarrage du projet) : poulailler du projet seulement"
 TC="$(psql_run "SELECT t.unique_id FROM transactions t JOIN projets p ON p.id = t.projet_id WHERE p.unique_id = '$P' AND t.source_type = 'PROJET_CHARGES'")"
@@ -309,10 +322,11 @@ print(f"{int(tot(site, None))}/{nb(site, None)} {int(tot(None, bat))}/{nb(None, 
 PY
 # Site seul : 1300 (SITE) + 2100 + 2200 (1.34 commun + site) + 2500 (ancien multi-projet,
 # site gardé) + 3201 (ancienne donnée projet + site) = 11301 en 5 dépenses.
-# Poulailler seul : 1100 + 2300 + 2700 + 500 (Santé) + 3100 (dépense modifiée, finalement
-# au Projet avec poulailler) + 900 (Santé modifiée) = 10600 en 6 dépenses.
-check_eq "reporting : totaux par site et par poulailler, jamais site + poulailler ensemble" \
-  "11301/5 10600/6 0" "$(cat "$TMP/rep")"
+# Poulailler seul : 1100 + 2300 + 500 (Santé) + 3100 (dépense modifiée, finalement au
+# Projet avec poulailler) + 900 (Santé modifiée) = 7900 en 5 dépenses (2700 est datée
+# d'aujourd'hui ; TD a un site supprimé ET un poulailler, compté à part).
+check_eq "reporting : totaux par site et par poulailler (site + poulailler : seulement l'ancienne donnée TD)" \
+  "11301/5 7900/5 0" "$(cat "$TMP/rep")"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

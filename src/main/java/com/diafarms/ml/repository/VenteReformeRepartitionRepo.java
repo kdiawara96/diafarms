@@ -75,12 +75,12 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
 
     // Mêmes requêtes que VenteOeufsRepartitionRepo.findPartsActivesParProjet /
     // findPartsParVentes, en sujets au lieu d'œufs.
-    @Query("SELECT v.uniqueId, v.montant, r.montantAttribue, c.id, v.montantRapporte, v.nombreSujets, r.nombreSujetsAttribue " +
+    @Query("SELECT v.uniqueId, v.montant, r.montantAttribue, c.id, v.montantRapporte, v.nombreSujets, r.nombreSujetsAttribue, (SELECT SUM(r2.montantAttribue) FROM VenteReformeRepartition r2 WHERE r2.venteReforme = v) " +
         "FROM VenteReformeRepartition r JOIN r.venteReforme v LEFT JOIN v.client c " +
         "WHERE r.projet.id = :projetId AND v.initialisation.removed = false")
     List<Object[]> findPartsActivesParProjet(@Param("projetId") Long projetId);
 
-    @Query("SELECT v.uniqueId, v.montant, p.uniqueId, p.code, p.titre, r.montantAttribue, v.nombreSujets, r.nombreSujetsAttribue " +
+    @Query("SELECT v.uniqueId, v.montant, p.uniqueId, p.code, p.titre, r.montantAttribue, v.nombreSujets, r.nombreSujetsAttribue, (SELECT SUM(r2.montantAttribue) FROM VenteReformeRepartition r2 WHERE r2.venteReforme = v) " +
         "FROM VenteReformeRepartition r JOIN r.venteReforme v JOIN r.projet p WHERE v.uniqueId IN :uids ORDER BY r.id")
     List<Object[]> findPartsParVentes(@Param("uids") java.util.Collection<String> uids);
 }

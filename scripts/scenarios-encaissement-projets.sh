@@ -14,7 +14,7 @@
 #    part non attribuée (acompte réservé, avance). Page Ventes : répartition par vente.
 # F. Identité, ferme entière : Σ encaissé des Projets + acomptes en attente + avances
 #    libres = Σ paiements clients - Σ remboursements + montant rapporté des ventes sans
-#    client.
+#    client + ventes diverses (fientes, autres) rattachées à un Projet.
 #
 # Pré-requis (non gérés ici) : Postgres + backend démarrés, base seedée par
 # scenarios-circuit-client.sh (ferme + ADMIN admin@t.local / Test1234!, race « Pondeuse
@@ -287,11 +287,14 @@ PAIEMENTS=$(psql_run "select coalesce(sum(montant),0) from paiements_client wher
 REMBOURSEMENTS=$(psql_run "select coalesce(sum(montant),0) from remboursements_client where farm_id=$FARM and statut='ACTIF'")
 CASH=$(psql_run "select coalesce(sum(coalesce(v.montant_rapporte, v.montant)),0) from ventes_oeufs v where v.farm_id=$FARM and v.client_id is null and v.removed=false")
 CASH_R=$(psql_run "select coalesce(sum(coalesce(v.montant_rapporte, v.montant)),0) from ventes_reforme v where v.farm_id=$FARM and v.client_id is null and v.removed=false")
+# Fientes / autres ventes rattachées au Projet : encaissées par ce projet (comptant).
+DIVERSES=$(psql_run "select coalesce(sum(v.montant),0) from ventes_diverses v where v.farm_id=$FARM and v.projet_id is not null and v.removed=false
+  and exists (select 1 from transactions t where t.source_unique_id = v.unique_id and t.statut='VALIDE' and coalesce(t.removed,false)=false)")
 stats_attente
 GAUCHE=$(python3 -c "print(round($SOMME_PROJETS + $ACOMPTES + $AVANCES, 2))")
-DROITE=$(python3 -c "print(round($PAIEMENTS - $REMBOURSEMENTS + $CASH + $CASH_R, 2))")
-echo "      Σ Projets $SOMME_PROJETS + acomptes $ACOMPTES + avances $AVANCES ; paiements $PAIEMENTS - remboursements $REMBOURSEMENTS + sans client $CASH + $CASH_R"
-verifier "F. Σ encaissé Projets + en attente + avances = paiements - remboursements + sans client" "$DROITE" "$GAUCHE"
+DROITE=$(python3 -c "print(round($PAIEMENTS - $REMBOURSEMENTS + $CASH + $CASH_R + $DIVERSES, 2))")
+echo "      Σ Projets $SOMME_PROJETS + acomptes $ACOMPTES + avances $AVANCES ; paiements $PAIEMENTS - remboursements $REMBOURSEMENTS + sans client $CASH + $CASH_R + fientes du Projet $DIVERSES"
+verifier "F. Σ encaissé Projets + en attente + avances = paiements - remboursements + sans client + ventes diverses des Projets" "$DROITE" "$GAUCHE"
 
 echo
 echo "Résultat : $PASS OK, $FAILURES ECHEC"
