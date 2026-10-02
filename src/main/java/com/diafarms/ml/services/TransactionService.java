@@ -109,6 +109,9 @@ public interface TransactionService {
      * quand seul le montant rapporté change (pas la quantité/le montant théorique) :
      * pas de nouvelle répartition, juste rafraîchir le texte de traçabilité de l'écart. */
     void updateDescriptionBySource(String sourceUniqueId, String description);
+
+    /** Projet (null = commune) de la transaction générée par une vente diverse. */
+    void updateProjetBySource(String sourceUniqueId, com.diafarms.ml.models.Projets projet);
     /** Aligne la date de la transaction liée sur celle de sa vente modifiée. */
     void updateDateBySource(String sourceUniqueId, LocalDate date);
 

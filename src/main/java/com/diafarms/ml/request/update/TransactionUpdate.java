@@ -10,6 +10,9 @@ import lombok.Setter;
 @Setter
 public class TransactionUpdate {
     private String type;
+    // PROJET | SITE | FERME (voir TransactionCreate.rattachement) : fourni, il remplace tout
+    // le rattachement (projet, site, poulailler) ; absent, ancien format ci-dessous.
+    private String rattachement;
     // null = on ne touche pas au rattachement projet ; true/false = changement explicite
     // (nécessaire car un simple `projetUniqueId: null` dans le JSON est ambigu entre
     // "champ non fourni" et "je veux passer en Commun").

@@ -27,7 +27,7 @@ import com.diafarms.ml.services.VenteDiverseService;
 import lombok.RequiredArgsConstructor;
 
 // Vente de fientes / autre vente : la vente est l'original, sa Transaction (une seule,
-// commune, SourceTransaction.VENTE_DIVERSE) la suit à chaque création, modification,
+// du Projet ou commune, SourceTransaction.VENTE_DIVERSE) la suit à chaque création, modification,
 // suppression ou restauration. Mêmes règles de suppression que VenteOeufsImpl.
 @Service
 @RequiredArgsConstructor
@@ -37,6 +37,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
     private final TransactionService transactionService;
     private final LogsServices logs;
     private final OtherService otherService;
+    private final com.diafarms.ml.repository.ProjetsRepo projetsRepo;
 
     private Utilisateurs getCurrentUserSafe() {
         try {
@@ -113,8 +114,34 @@ public class VenteDiverseImpl implements VenteDiverseService {
         }
     }
 
+    // « Cette vente concerne » : le Projet ou toute la ferme, jamais un site (voir
+    // TransactionServiceImpl.normaliserRattachement pour les dépenses). rattachement absent
+    // (anciens clients) : projetUniqueId rempli = Projet, sinon toute la ferme.
+    private com.diafarms.ml.models.Projets resoudreProjet(String rattachement, String projetUniqueId, Utilisateurs u) {
+        boolean aProjet = projetUniqueId != null && !projetUniqueId.isBlank();
+        if (rattachement != null && !rattachement.isBlank()) {
+            String mode = rattachement.trim().toUpperCase();
+            switch (mode) {
+                case "PROJET" -> {
+                    if (!aProjet) throw new IllegalArgumentException("Choisissez le projet concerné par cette vente.");
+                }
+                case "FERME" -> {
+                    if (aProjet) throw new IllegalArgumentException("Une vente de toute la ferme ne précise pas de projet.");
+                    return null;
+                }
+                case "SITE" -> throw new IllegalArgumentException("Une vente de fientes concerne le Projet ou toute la ferme, pas un site.");
+                default -> throw new IllegalArgumentException("Rattachement inconnu : " + rattachement + " (attendu PROJET ou FERME).");
+            }
+        }
+        if (!aProjet) return null;
+        return projetsRepo.findByUniqueId(projetUniqueId.trim())
+                .filter(p -> FermeScope.memeFerme(p.getFarm(), u))
+                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+    }
+
     private VenteDiverse creer(ProduitVenteDiverse produit, LocalDate date, Double quantite, Double prixUnitaire,
-                               Double montant, String description, String libelleForce) {
+                               Double montant, String description, String libelleForce,
+                               String rattachement, String projetUniqueId) {
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
@@ -128,12 +155,13 @@ public class VenteDiverseImpl implements VenteDiverseService {
         v.setMontant(com.diafarms.ml.commons.Franc.arrondi(montant));
         v.setDescription(nettoyer(description));
         v.setFarm(currentUser.getFarm());
+        v.setProjet(resoudreProjet(rattachement, projetUniqueId, currentUser));
         v.setCreePar(currentUser);
         v.setInitialisation(Initialisation.init());
         valider(v);
         VenteDiverse saved = venteDiverseRepo.save(v);
 
-        transactionService.createFromSource(null, saved.getFarm(), saved.getMontant(), categorie(produit), saved.getDate(),
+        transactionService.createFromSource(saved.getProjet(), saved.getFarm(), saved.getMontant(), categorie(produit), saved.getDate(),
                 libelleForce != null ? libelleForce : libelleTransaction(saved),
                 SourceTransaction.VENTE_DIVERSE, saved.getUniqueId(), currentUser);
 
@@ -163,7 +191,8 @@ public class VenteDiverseImpl implements VenteDiverseService {
         }
         VenteDiverse saved = creer(parseProduit(data.getProduit()),
                 com.diafarms.ml.commons.DateSaisie.saisie(data.getDate(), null),
-                data.getQuantite(), data.getPrixUnitaire(), data.getMontant(), data.getDescription(), null);
+                data.getQuantite(), data.getPrixUnitaire(), data.getMontant(), data.getDescription(), null,
+                data.getRattachement(), data.getProjetUniqueId());
         return VenteDiverseDTO.fromEntity(saved);
     }
 
@@ -176,7 +205,9 @@ public class VenteDiverseImpl implements VenteDiverseService {
         // on la garde telle quelle, sans la reconstruire (pas de quantité séparée connue).
         VenteDiverse saved = creer(produit, com.diafarms.ml.commons.DateSaisie.pasDansLeFutur(data.getDate()), null, null,
                 data.getMontant(), data.getDescription(),
-                nettoyer(data.getDescription()) != null ? data.getDescription().trim() : null);
+                nettoyer(data.getDescription()) != null ? data.getDescription().trim() : null,
+                // Ancien chemin : vente du Projet seulement si explicitement non commune.
+                null, Boolean.FALSE.equals(data.getCommun()) ? data.getProjetUniqueId() : null);
         return transactionService.findDtoBySource(saved.getUniqueId());
     }
 
@@ -196,6 +227,8 @@ public class VenteDiverseImpl implements VenteDiverseService {
         Double montant = com.diafarms.ml.commons.Franc.modifie(data.getMontant(), v.getMontant());
         if (montant != null) v.setMontant(montant);
         if (data.getDescription() != null) v.setDescription(nettoyer(data.getDescription()));
+        boolean projetModifie = (data.getRattachement() != null && !data.getRattachement().isBlank()) || data.getProjetUniqueId() != null;
+        if (projetModifie) v.setProjet(resoudreProjet(data.getRattachement(), data.getProjetUniqueId(), currentUser));
         valider(v);
         Initialisation.updateDate(v.getInitialisation());
         VenteDiverse saved = venteDiverseRepo.save(v);
@@ -203,6 +236,7 @@ public class VenteDiverseImpl implements VenteDiverseService {
         transactionService.updateMontantBySource(saved.getUniqueId(), saved.getMontant());
         transactionService.updateDateBySource(saved.getUniqueId(), saved.getDate());
         transactionService.updateDescriptionBySource(saved.getUniqueId(), libelleTransaction(saved));
+        if (projetModifie) transactionService.updateProjetBySource(saved.getUniqueId(), saved.getProjet());
 
         if (currentUser != null) {
             logs.addLogs(currentUser.getId(), saved.getId(), "VenteDiverse", "Modification d'une vente diverse");

@@ -198,7 +198,8 @@ public class VenteListeImpl {
             d.setPrixUnitaire(v.getPrixUnitaire());
             d.setDescription(v.getDescription()); // brute : le web affiche "Vente de fientes" si vide
             d.setStatutPaiement("COMPTANT"); // jamais de client sur une vente diverse
-            d.setProjets(List.of());
+            d.setProjets(v.getProjet() != null ? codes(List.of(v.getProjet())) : List.of());
+            d.setProjetUniqueId(v.getProjet() != null ? v.getProjet().getUniqueId() : null);
             d.setRepartitionProjets(List.of());
             d.setStatut(statut(List.of(v.getUniqueId()), statutParSource));
             suppression(d, v.getDemandeSuppressionPar(), v.getDateDemandeSuppression(), v.getMotifSuppression());

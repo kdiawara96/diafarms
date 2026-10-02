@@ -10,4 +10,8 @@ public class VenteDiverseUpdate {
     private Double prixUnitaire;
     private Double montant;
     private String description;
+    // « Cette vente concerne » : PROJET (projetUniqueId obligatoire) ou FERME (commune).
+    // Absent : projetUniqueId rempli = PROJET, sinon FERME (anciens clients : toujours FERME).
+    private String rattachement;
+    private String projetUniqueId;
 }

@@ -18,7 +18,7 @@ public interface VenteDiverseRepo extends JpaRepository<VenteDiverse, Long> {
 
     // Bornes de dates attendues NON NULLES (voir TransactionServiceImpl.deb/fin) :
     // jamais de ":param IS NULL OR" avec Postgres.
-    @Query("SELECT v FROM VenteDiverse v LEFT JOIN FETCH v.creePar LEFT JOIN FETCH v.demandeSuppressionPar " +
+    @Query("SELECT v FROM VenteDiverse v LEFT JOIN FETCH v.creePar LEFT JOIN FETCH v.demandeSuppressionPar LEFT JOIN FETCH v.projet " +
         "WHERE v.farm.id = :farmId AND v.initialisation.removed = false " +
         "AND v.date >= :dateDebut AND v.date <= :dateFin")
     List<VenteDiverse> findActives(@Param("farmId") Long farmId,

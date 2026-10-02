@@ -29,6 +29,9 @@ public class TransactionDTO {
     private String projetCode; // "Commun" si pas de projet lié
     private String projetUniqueId;
     private List<ProjetsSelect> projetsConcernes; // uniquement pertinent quand "Commun"
+    // « Cette dépense concerne » : PROJET (projet lié), SITE (site sans projet) ou FERME
+    // (le reste, y compris une ancienne dépense commune à plusieurs projets concernés).
+    private String rattachement;
     private String description;
     private Double montant;
     // Montant réellement encaissé pour cette transaction (vente à crédit partielle ou
@@ -121,6 +124,9 @@ public class TransactionDTO {
                 .type(t.getType())
                 .projetCode(t.getProjet() != null ? t.getProjet().getCode() : "Commun")
                 .projetUniqueId(t.getProjet() != null ? t.getProjet().getUniqueId() : null)
+                .rattachement(t.getProjet() != null ? "PROJET"
+                        : t.getSite() != null && (t.getProjetsConcernes() == null || t.getProjetsConcernes().isEmpty()) ? "SITE"
+                        : "FERME")
                 .projetsConcernes(t.getProjetsConcernes() != null
                         ? t.getProjetsConcernes().stream().map(ProjetsSelect::selectEntity).toList()
                         : List.of())

@@ -10,6 +10,10 @@ import lombok.Setter;
 @Setter
 public class TransactionCreate {
     private String type; // "ENTREE" | "SORTIE"
+    // Nouveau format (web, APK >= 1.36) : « Cette dépense concerne » = PROJET | SITE | FERME,
+    // règles strictes (voir TransactionServiceImpl.normaliserRattachement). Absent = ancien
+    // format (commun / projets concernés / site / poulailler), normalisé par le serveur.
+    private String rattachement;
     private Boolean commun; // true = dépense/rentrée commune, false = liée à un seul projet
     private String projetUniqueId; // requis si commun = false
     private List<String> projetsConcernesUniqueIds; // optionnel, pertinent seulement si commun = true

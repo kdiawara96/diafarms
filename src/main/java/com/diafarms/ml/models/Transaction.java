@@ -70,12 +70,12 @@ public class Transaction {
     )
     private List<Projets> projetsConcernes = new ArrayList<>();
 
-    // Rattachements FACULTATIFS, indépendants du projet et entre eux : par défaut une
-    // transaction concerne la ferme entière. Un site et/ou un poulailler précis peuvent
-    // être renseignés (ex: électricité d'un site, réparation d'un poulailler) pour un
-    // suivi des dépenses par site / par poulailler. N'ont AUCUN effet sur le résultat d'un
-    // projet (seul le rattachement direct `projet` y compte). Les poulaillers ne sont pas
-    // liés à un site en base (voir Batiment) : aucune cohérence site/poulailler imposée.
+    // Rattachement « Cette dépense concerne » (voir TransactionServiceImpl.normaliserRattachement) :
+    // Le Projet = projet (+ poulailler facultatif occupé par ce projet, jamais de site) ;
+    // Un site = site seul (ni projet ni poulailler) ; Toute la ferme = rien. Les anciennes
+    // transactions peuvent garder d'autres combinaisons (données existantes non migrées).
+    // Les dépenses générées (soins, aliment) gardent le site du projet en plus. Seul le
+    // rattachement direct `projet` compte dans le résultat d'un projet.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "site_id")
     private Site site;

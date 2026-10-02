@@ -52,6 +52,8 @@ public class VenteLigneDTO {
     private String creeParUniqueId;
     private String creeParNom;
     private List<String> projets; // codes des projets contributeurs, vide = commune
+    // Vente diverse seulement : projet de la vente (« Le Projet »), null = toute la ferme.
+    private String projetUniqueId;
     // Part de chaque projet dans la vente (répartition : œufs ou sujets attribués et
     // montant), dans l'ordre des lignes de répartition ; vide = commune.
     private List<PartProjetDTO> repartitionProjets;

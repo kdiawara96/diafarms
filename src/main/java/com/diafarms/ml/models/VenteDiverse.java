@@ -23,8 +23,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Vente de fientes ou "autre vente" — acte Finance, commune à la ferme (aucun projet,
-// aucun stock suivi). Avant, ces ventes n'étaient qu'une Transaction manuelle
+// Vente de fientes ou "autre vente" — acte Finance, sans stock suivi, rattachée au
+// Projet (projet non null) ou à toute la ferme (projet null, cas de toutes les anciennes). Avant, ces ventes n'étaient qu'une Transaction manuelle
 // (catégorie "Vente fientes"/"Autre vente") : la page Ventes devait alors les
 // reconstruire depuis la comptabilité. Maintenant la vente est l'enregistrement
 // d'origine, et sa Transaction (SourceTransaction.VENTE_DIVERSE, sourceUniqueId =
@@ -62,6 +62,12 @@ public class VenteDiverse {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    // « Cette vente concerne » : le Projet (sa transaction compte alors dans le résultat du
+    // projet) ou, null, toute la ferme. Colonne nullable ajoutée par ddl-auto.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "projet_id")
+    private Projets projet;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farm_id", nullable = false)

@@ -10,4 +10,8 @@ public class VenteDiverseCreate {
     private Double prixUnitaire; // facultatif, informatif
     private Double montant; // obligatoire, > 0
     private String description; // obligatoire pour AUTRE
+    // « Cette vente concerne » : PROJET (projetUniqueId obligatoire) ou FERME (commune).
+    // Absent : projetUniqueId rempli = PROJET, sinon FERME (anciens clients : toujours FERME).
+    private String rattachement;
+    private String projetUniqueId;
 }

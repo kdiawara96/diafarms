@@ -25,6 +25,10 @@ public class VenteDiverseDTO {
     private Double prixUnitaire;
     private Double montant;
     private String description;
+    // « Cette vente concerne » : PROJET (projet ci-dessous) ou FERME.
+    private String rattachement;
+    private String projetUniqueId;
+    private String projetCode;
     private String creeParNom;
     private LocalDateTime createdAt;
     private String demandeSuppressionParNom;
@@ -41,6 +45,9 @@ public class VenteDiverseDTO {
                 .prixUnitaire(v.getPrixUnitaire())
                 .montant(v.getMontant())
                 .description(v.getDescription())
+                .rattachement(v.getProjet() != null ? "PROJET" : "FERME")
+                .projetUniqueId(v.getProjet() != null ? v.getProjet().getUniqueId() : null)
+                .projetCode(v.getProjet() != null ? v.getProjet().getCode() : null)
                 .creeParNom(v.getCreePar() != null ? v.getCreePar().getFullName() : null)
                 .createdAt(v.getInitialisation() != null ? v.getInitialisation().getCreatedAt() : null)
                 .demandeSuppressionParNom(v.getDemandeSuppressionPar() != null ? v.getDemandeSuppressionPar().getFullName() : null)

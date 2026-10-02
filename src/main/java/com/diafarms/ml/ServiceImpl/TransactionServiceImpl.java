@@ -58,6 +58,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final ProjetsRepo projetsRepo;
     private final com.diafarms.ml.repository.SiteRepo siteRepo;
     private final com.diafarms.ml.repository.BatimentRepo batimentRepo;
+    private final com.diafarms.ml.repository.OccupationBatimentRepo occupationBatimentRepo;
     private final LogsServices logs;
     private final OtherService otherService;
     private final VenteOeufsRepo venteOeufsRepo;
@@ -292,6 +293,164 @@ public class TransactionServiceImpl implements TransactionService {
                 .toList());
     }
 
+    // ===== Rattachement d'une transaction manuelle : « Cette dépense concerne » =====
+    // Trois choix exclusifs, rangés dans les colonnes existantes :
+    //  PROJET : projet obligatoire, site vide, poulailler facultatif occupé par ce projet ;
+    //  SITE   : site obligatoire, ni projet ni poulailler (dépense commune d'un site, listée
+    //           sous ce site dans « Dépenses par rattachement ») ;
+    //  FERME  : rien (dépense commune à toute la ferme).
+    // Le champ `rattachement` (nouveaux clients) est contrôlé strictement : toute combinaison
+    // contradictoire est refusée. Sans lui (APK 1.32 à 1.35 en service, anciens formulaires
+    // web, import Excel), l'ancien format est NORMALISÉ, jamais refusé pour incohérence :
+    //  - projet (non commun, ou commun avec un seul projet concerné) -> PROJET, site ignoré,
+    //    poulailler gardé seulement s'il est occupé par ce projet ;
+    //  - commun avec 2 projets concernés ou plus -> ancien rattachement multi-projet conservé
+    //    tel quel (projets concernés, site, poulailler) ;
+    //  - commun + site (avec ou sans poulailler) -> SITE, poulailler ignoré ;
+    //  - commun + poulailler seul -> PROJET du projet qui l'occupe s'il est le seul, sinon FERME ;
+    //  - rien -> FERME.
+    static final String RATTACHEMENT_PROJET = "PROJET";
+    static final String RATTACHEMENT_SITE = "SITE";
+    static final String RATTACHEMENT_FERME = "FERME";
+
+    record RattachementResolu(Projets projet, List<Projets> projetsConcernes,
+                              com.diafarms.ml.models.Site site, com.diafarms.ml.models.Batiment batiment) {
+        static RattachementResolu ferme() {
+            return new RattachementResolu(null, new java.util.ArrayList<>(), null, null);
+        }
+    }
+
+    private static boolean rempli(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    /**
+     * @param messageProjetObligatoire non null = la catégorie impose le Projet (Santé /
+     *        Vétérinaire) : message d'erreur si aucun projet n'est donné.
+     */
+    RattachementResolu normaliserRattachement(String rattachement, Boolean commun, String projetUniqueId,
+                                              List<String> projetsConcernesUniqueIds, String siteUniqueId,
+                                              String batimentUniqueId, String messageProjetObligatoire) {
+        Utilisateurs u = getCurrentUserSafe();
+        boolean aProjet = rempli(projetUniqueId);
+        List<String> concernes = projetsConcernesUniqueIds == null ? List.of()
+                : projetsConcernesUniqueIds.stream().filter(TransactionServiceImpl::rempli).distinct().toList();
+        boolean aSite = rempli(siteUniqueId);
+        boolean aBatiment = rempli(batimentUniqueId);
+
+        if (rempli(rattachement)) {
+            String mode = rattachement.trim().toUpperCase();
+            if (!mode.equals(RATTACHEMENT_PROJET) && !mode.equals(RATTACHEMENT_SITE) && !mode.equals(RATTACHEMENT_FERME)) {
+                throw new IllegalArgumentException("Rattachement inconnu : " + rattachement + " (attendu PROJET, SITE ou FERME).");
+            }
+            if (messageProjetObligatoire != null && !mode.equals(RATTACHEMENT_PROJET)) {
+                throw new IllegalArgumentException(messageProjetObligatoire);
+            }
+            switch (mode) {
+                case RATTACHEMENT_PROJET -> {
+                    if (Boolean.TRUE.equals(commun) || !concernes.isEmpty()) {
+                        throw new IllegalArgumentException("Une dépense du Projet ne peut pas être aussi commune ni concerner d'autres projets.");
+                    }
+                    if (!aProjet) {
+                        throw new IllegalArgumentException(messageProjetObligatoire != null ? messageProjetObligatoire
+                                : "Choisissez le projet concerné par cette dépense.");
+                    }
+                    if (aSite) {
+                        throw new IllegalArgumentException("Une dépense du Projet ne prend pas de site : choisissez « Un site » pour une dépense de tout un site.");
+                    }
+                    Projets projet = resoudreProjet(projetUniqueId, u);
+                    return new RattachementResolu(projet, new java.util.ArrayList<>(), null,
+                            aBatiment ? poulaillerDuProjet(projet, batimentUniqueId, true) : null);
+                }
+                case RATTACHEMENT_SITE -> {
+                    if (aProjet || !concernes.isEmpty() || Boolean.FALSE.equals(commun)) {
+                        throw new IllegalArgumentException("Une dépense d'un site ne concerne aucun projet : choisissez « Le Projet » pour une dépense de la bande.");
+                    }
+                    if (aBatiment) {
+                        throw new IllegalArgumentException("Une dépense d'un site ne précise pas de poulailler : le poulailler se choisit avec « Le Projet ».");
+                    }
+                    if (!aSite) {
+                        throw new IllegalArgumentException("Choisissez le site concerné par cette dépense.");
+                    }
+                    return new RattachementResolu(null, new java.util.ArrayList<>(), resoudreSite(siteUniqueId, u), null);
+                }
+                default -> {
+                    if (aProjet || !concernes.isEmpty() || aSite || aBatiment || Boolean.FALSE.equals(commun)) {
+                        throw new IllegalArgumentException("Une dépense de toute la ferme ne précise ni projet, ni site, ni poulailler.");
+                    }
+                    return RattachementResolu.ferme();
+                }
+            }
+        }
+
+        // Ancien format : normalisé (voir plus haut).
+        String projetChoisi = aProjet && !Boolean.TRUE.equals(commun) ? projetUniqueId : null;
+        if (projetChoisi == null && concernes.size() == 1) projetChoisi = concernes.get(0);
+        if (projetChoisi == null && Boolean.FALSE.equals(commun)) {
+            throw new IllegalArgumentException(messageProjetObligatoire != null ? messageProjetObligatoire
+                    : "Un projet doit être sélectionné si la transaction n'est pas commune.");
+        }
+        if (projetChoisi == null && messageProjetObligatoire != null) {
+            throw new IllegalArgumentException(messageProjetObligatoire);
+        }
+        if (projetChoisi != null) {
+            Projets projet = resoudreProjet(projetChoisi, u);
+            return new RattachementResolu(projet, new java.util.ArrayList<>(), null,
+                    aBatiment ? poulaillerDuProjet(projet, batimentUniqueId, false) : null);
+        }
+        if (concernes.size() >= 2) {
+            return new RattachementResolu(null, projetsDeLaFerme(concernes),
+                    resoudreSite(siteUniqueId, u), resoudreBatiment(batimentUniqueId, u));
+        }
+        if (aSite) {
+            return new RattachementResolu(null, new java.util.ArrayList<>(), resoudreSite(siteUniqueId, u), null);
+        }
+        if (aBatiment) {
+            com.diafarms.ml.models.Batiment batiment = resoudreBatiment(batimentUniqueId, u);
+            Projets occupant = occupantUnique(batiment, u);
+            if (occupant != null) {
+                return new RattachementResolu(occupant, new java.util.ArrayList<>(), null, batiment);
+            }
+        }
+        return RattachementResolu.ferme();
+    }
+
+    private Projets resoudreProjet(String uniqueId, Utilisateurs u) {
+        return projetsRepo.findByUniqueId(uniqueId)
+                .filter(x -> memeFerme(x.getFarm(), u))
+                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + uniqueId));
+    }
+
+    /** Poulailler occupé (ou déjà occupé : saisie antidatée) par le projet. strict = refus
+     * s'il ne l'est pas ; sinon (ancien format) il est simplement ignoré. */
+    private com.diafarms.ml.models.Batiment poulaillerDuProjet(Projets projet, String batimentUniqueId, boolean strict) {
+        com.diafarms.ml.models.Batiment b = occupationBatimentRepo.findBatimentsByProjetId(projet.getId()).stream()
+                .filter(x -> batimentUniqueId.equals(x.getUniqueId()))
+                .filter(x -> x.getInitialisation() == null || !Boolean.TRUE.equals(x.getInitialisation().getRemoved()))
+                .findFirst().orElse(null);
+        if (b == null && strict) {
+            throw new IllegalArgumentException("Ce poulailler n'est pas occupé par ce projet.");
+        }
+        return b;
+    }
+
+    /** Seul projet occupant aujourd'hui le poulailler (null s'il est vide ou partagé). */
+    private Projets occupantUnique(com.diafarms.ml.models.Batiment batiment, Utilisateurs u) {
+        List<Projets> occupants = occupationBatimentRepo.findActiveByBatimentId(batiment.getId()).stream()
+                .map(com.diafarms.ml.models.OccupationBatiment::getProjet)
+                .filter(p -> p != null && memeFerme(p.getFarm(), u)
+                        && (p.getInitialisation() == null || !Boolean.TRUE.equals(p.getInitialisation().getRemoved())))
+                .distinct().toList();
+        return occupants.size() == 1 ? occupants.get(0) : null;
+    }
+
+    private void appliquerRattachement(Transaction t, RattachementResolu r) {
+        t.setProjet(r.projet());
+        t.setProjetsConcernes(r.projetsConcernes());
+        t.setSite(r.site());
+        t.setBatiment(r.batiment());
+    }
+
     private boolean memeFerme(Farm farm, Utilisateurs currentUser) {
         return farm != null && currentUser != null && currentUser.getFarm() != null
                 && farm.getId().equals(currentUser.getFarm().getId());
@@ -399,22 +558,13 @@ public class TransactionServiceImpl implements TransactionService {
             throw new IllegalArgumentException(MESSAGE_ACHAT_MEDICAMENT_MANUEL);
         }
         boolean santeCreation = "SORTIE".equalsIgnoreCase(data.getType()) && estCategorieSante(data.getCategorie());
-        if (santeCreation) {
-            // « Commune » avec un seul projet concerné = ce projet.
-            if ((data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank())
-                    && data.getProjetsConcernesUniqueIds() != null && data.getProjetsConcernesUniqueIds().size() == 1) {
-                data.setProjetUniqueId(data.getProjetsConcernesUniqueIds().get(0));
-            }
-            if (data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank()) {
-                throw new IllegalArgumentException(MESSAGE_SANTE_SANS_PROJET);
-            }
-            data.setCommun(false);
-            data.setProjetsConcernesUniqueIds(null);
-            data.setSiteUniqueId(null); // lié au projet (son poulailler au besoin), pas à un site
-            // Saisie manuelle = service de santé (consultation, visite...) : quantité (nombre
-            // de jours) facultative. Un achat de médicament passe par /medicaments/create
-            // (dépense + stock).
-        }
+        // Santé / Vétérinaire : toujours rattachée au Projet (poulailler du projet facultatif).
+        // Saisie manuelle = service de santé (consultation, visite...) : quantité (nombre de
+        // jours) facultative. Un achat de médicament passe par /medicaments/create.
+        // Rattachement résolu AVANT toute écriture : une incohérence n'enregistre rien.
+        RattachementResolu rattachement = normaliserRattachement(data.getRattachement(), data.getCommun(),
+                data.getProjetUniqueId(), data.getProjetsConcernesUniqueIds(), data.getSiteUniqueId(),
+                data.getBatimentUniqueId(), santeCreation ? MESSAGE_SANTE_SANS_PROJET : null);
         Utilisateurs currentUser = getCurrentUserSafe();
 
         Transaction t = new Transaction();
@@ -455,20 +605,7 @@ public class TransactionServiceImpl implements TransactionService {
             t.setClient(client);
         }
 
-        boolean commun = !Boolean.FALSE.equals(data.getCommun())
-                && (Boolean.TRUE.equals(data.getCommun()) || data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank());
-
-        if (!commun) {
-            Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
-                    .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
-                    .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
-            t.setProjet(projet);
-        } else if (data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()) {
-            t.setProjetsConcernes(projetsDeLaFerme(data.getProjetsConcernesUniqueIds()));
-        }
-
-        t.setSite(resoudreSite(data.getSiteUniqueId(), currentUser));
-        t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), currentUser));
+        appliquerRattachement(t, rattachement);
 
         if (currentUser != null) {
             t.setFarm(currentUser.getFarm());
@@ -687,6 +824,17 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
+    public void updateProjetBySource(String sourceUniqueId, Projets projet) {
+        transactionRepo.findBySourceUniqueId(sourceUniqueId).ifPresent(t -> {
+            t.setProjet(projet);
+            t.setProjetsConcernes(new java.util.ArrayList<>());
+            t.getInitialisation().setUpdatedAt(LocalDateTime.now());
+            transactionRepo.save(t);
+        });
+    }
+
+    @Override
+    @Transactional
     public TransactionDTO update(String uniqueId, TransactionUpdate data) {
         Transaction t = transactionRepo.findByUniqueId(uniqueId)
                 .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
@@ -727,30 +875,35 @@ public class TransactionServiceImpl implements TransactionService {
             throw new IllegalArgumentException(MESSAGE_ACHAT_MEDICAMENT_MANUEL);
         }
         boolean santeApres = t.getType() == TypeTransaction.SORTIE && estCategorieSante(t.getCategorie());
-        if (Boolean.TRUE.equals(data.getCommun())) {
-            t.setProjet(null);
-            t.setProjetsConcernes(data.getProjetsConcernesUniqueIds() != null && !data.getProjetsConcernesUniqueIds().isEmpty()
-                    ? projetsDeLaFerme(data.getProjetsConcernesUniqueIds())
-                    : new java.util.ArrayList<>());
-        } else if (Boolean.FALSE.equals(data.getCommun())) {
-            if (data.getProjetUniqueId() == null || data.getProjetUniqueId().isBlank()) {
+        // Rattachement : nouveau format (`rattachement`) = remplacement complet, contrôlé
+        // strictement ; ancien format = état actuel + champs envoyés, puis normalisé (voir
+        // normaliserRattachement). Rien d'envoyé = rattachement inchangé.
+        boolean toucheRattachement = rempli(data.getRattachement()) || data.getCommun() != null
+                || data.getSiteUniqueId() != null || data.getBatimentUniqueId() != null
+                || data.getProjetsConcernesUniqueIds() != null;
+        String messageProjet = santeApres ? MESSAGE_SANTE_SANS_PROJET : null;
+        if (rempli(data.getRattachement())) {
+            appliquerRattachement(t, normaliserRattachement(data.getRattachement(), data.getCommun(),
+                    data.getProjetUniqueId(), data.getProjetsConcernesUniqueIds(), data.getSiteUniqueId(),
+                    data.getBatimentUniqueId(), messageProjet));
+        } else if (toucheRattachement) {
+            if (Boolean.FALSE.equals(data.getCommun()) && !rempli(data.getProjetUniqueId())) {
                 throw new IllegalArgumentException("Un projet doit être sélectionné si la transaction n'est pas commune.");
             }
-            Projets projet = projetsRepo.findByUniqueId(data.getProjetUniqueId())
-                    .filter(x -> memeFerme(x.getFarm(), getCurrentUserSafe()))
-                    .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + data.getProjetUniqueId()));
-            t.setProjet(projet);
-            t.setProjetsConcernes(new java.util.ArrayList<>());
-        }
-        // Rattachements facultatifs : null = inchangé, "" = retiré, valeur = défini.
-        Utilisateurs utilisateurCourant = getCurrentUserSafe();
-        if (data.getSiteUniqueId() != null) {
-            t.setSite(resoudreSite(data.getSiteUniqueId(), utilisateurCourant));
-        }
-        if (data.getBatimentUniqueId() != null) {
-            t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), utilisateurCourant));
+            Boolean commun = data.getCommun() != null ? data.getCommun() : t.getProjet() == null;
+            String projetUid = Boolean.FALSE.equals(data.getCommun()) ? data.getProjetUniqueId()
+                    : data.getCommun() == null && t.getProjet() != null ? t.getProjet().getUniqueId() : null;
+            List<String> concernes = Boolean.TRUE.equals(data.getCommun()) ? data.getProjetsConcernesUniqueIds()
+                    : data.getCommun() == null && t.getProjetsConcernes() != null
+                            ? t.getProjetsConcernes().stream().map(Projets::getUniqueId).toList() : null;
+            String siteUid = data.getSiteUniqueId() != null ? data.getSiteUniqueId()
+                    : t.getSite() != null ? t.getSite().getUniqueId() : null;
+            String batimentUid = data.getBatimentUniqueId() != null ? data.getBatimentUniqueId()
+                    : t.getBatiment() != null ? t.getBatiment().getUniqueId() : null;
+            appliquerRattachement(t, normaliserRattachement(null, commun, projetUid, concernes, siteUid, batimentUid, messageProjet));
         }
         if (santeApres) {
+            // Rattachement non modifié : ancienne Santé « commune » à un seul projet = ce projet.
             if (t.getProjet() == null && t.getProjetsConcernes() != null && t.getProjetsConcernes().size() == 1) {
                 t.setProjet(t.getProjetsConcernes().get(0));
                 t.setProjetsConcernes(new java.util.ArrayList<>());
@@ -811,18 +964,33 @@ public class TransactionServiceImpl implements TransactionService {
             if (t.getProjetsConcernes() != null) t.getProjetsConcernes().forEach(p -> actuels.add(p.getUniqueId()));
             if (!actuels.equals(new java.util.HashSet<>(data.getProjetsConcernesUniqueIds()))) changes.add("projets concernés");
         }
+        if (rempli(data.getRattachement()) && projetActuel != null
+                && !RATTACHEMENT_PROJET.equalsIgnoreCase(data.getRattachement().trim())) changes.add("projet");
         if (!changes.isEmpty()) {
             throw new IllegalArgumentException("Cette transaction est générée automatiquement par "
                     + TransactionDTO.saisieSourceGeneree(t.getSourceType())
                     + " : modifiez cette saisie à la place (" + String.join(", ", new java.util.LinkedHashSet<>(changes))
-                    + "). Ici, seuls le site et le poulailler se corrigent.");
+                    + "). Ici, seul le " + (projetActuel != null ? "poulailler du projet se précise." : "site ou le poulailler se corrige."));
         }
         Utilisateurs utilisateurCourant = getCurrentUserSafe();
-        if (data.getSiteUniqueId() != null) {
-            t.setSite(resoudreSite(data.getSiteUniqueId(), utilisateurCourant));
-        }
-        if (data.getBatimentUniqueId() != null) {
-            t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), utilisateurCourant));
+        if (t.getProjet() != null) {
+            // Dépense d'un projet (soin, vaccination, démarrage du projet) : rattachement
+            // « Le Projet », seul le poulailler (occupé par ce projet) se précise.
+            if (rempli(data.getSiteUniqueId())) {
+                throw new IllegalArgumentException("Cette dépense est rattachée à son projet : seul le poulailler du projet se précise ici, pas de site.");
+            }
+            if (data.getSiteUniqueId() != null) t.setSite(null);
+            if (data.getBatimentUniqueId() != null) {
+                t.setBatiment(rempli(data.getBatimentUniqueId())
+                        ? poulaillerDuProjet(t.getProjet(), data.getBatimentUniqueId(), true) : null);
+            }
+        } else {
+            if (data.getSiteUniqueId() != null) {
+                t.setSite(resoudreSite(data.getSiteUniqueId(), utilisateurCourant));
+            }
+            if (data.getBatimentUniqueId() != null) {
+                t.setBatiment(resoudreBatiment(data.getBatimentUniqueId(), utilisateurCourant));
+            }
         }
         if (t.getInitialisation() != null) {
             t.getInitialisation().setUpdatedAt(LocalDateTime.now());
