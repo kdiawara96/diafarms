@@ -71,8 +71,10 @@ public class Reforme {
     @JoinColumn(name = "magasin_stockage_id")
     private Magasin magasinStockage;
 
-    // ANCIEN (2 octobre 2026, avant la règle du magasin de stockage) : point de vente où
-    // les réformés étaient envoyés directement. Conservé pour ces lignes, plus écrit.
+    // Point de vente où se trouvent maintenant les sujets de cette réforme (celui de son
+    // transfert lié actif, tenu à jour par ReformeStockage) ; null s'ils sont encore au
+    // magasin de stockage. Pour les réformes du 2 octobre 2026 (envoi direct), c'est le
+    // point de vente choisi alors.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_vente_id")
     private Magasin magasinVente;

@@ -238,9 +238,15 @@ public class ReformeStockage {
         int q1 = q0;
         boolean a1 = a0;
         boolean creer = false;
-        if (existe && !changeStockage) {
+        if (existe && !changeStockage && q0 == 0 && !a0) {
+            // Transfert lié « garé » (réforme déplacée vers un magasin sans point de vente
+            // par défaut) : il reste garé, les sujets ajoutés restent au magasin de stockage.
+            q1 = 0;
+            a1 = false;
+        } else if (existe && !changeStockage) {
             // Même magasin : le transfert lié suit l'écart (il peut couvrir moins que la
-            // réforme pour une réforme ancienne).
+            // réforme pour une réforme ancienne). Une réforme supprimée avec un transfert
+            // actif (q0 > 0) le retrouve à la restauration.
             q1 = Math.max(0, q0 + (apres.nombre() - avant.nombre()));
             a1 = apres.actif() && q1 > 0;
         } else if (changeStockage) {
@@ -285,6 +291,10 @@ public class ReformeStockage {
                     throw new IllegalArgumentException("Impossible de " + action + " : des réformés de ce projet ont déjà été "
                             + "transférés depuis le magasin de stockage « " + x.getNom() + " » vers un point de vente (il n'en reste que "
                             + Math.max(0, stockAvant) + " sujet(s) au magasin, il en faudrait " + (contribAvant - contribApres) + ").");
+                }
+                if (changeStockage) {
+                    throw new IllegalArgumentException("Ces réformés sont déjà au point de vente (transfert manuel) : le magasin de "
+                            + "stockage ne peut plus être changé ; modifiez seulement le nombre ou la cause.");
                 }
                 throw new IllegalArgumentException("Impossible de " + action + " : des sujets de cette réforme ont déjà été "
                         + "transférés à la main vers un point de vente (" + (-stockApres) + " sujet(s) de trop) ; retirez d'abord ce transfert.");

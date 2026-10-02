@@ -260,6 +260,11 @@ check "R3 déplacée de S2 vers S1 (sans point de vente par défaut) : 200" "cod
 egal "transfert de R3 retiré de B" "Boutique B $SUF|Stockage 1 $SUF|0|true" "$(lie "$R3")"
 egal "B = 8" "8" "$(stock "$B")"
 egal "S1 = 10" "10" "$(stock_s "$S1")"
+api PUT "/reformes/update/$R3" '{"nombreSujets":7}'
+check "R3 dans S1 (sans point de vente par défaut) : 5 -> 7, 200" "code == 200 and d['data']['magasinVenteUniqueId'] is None"
+egal "transfert de R3 reste garé (0, supprimé)" "Boutique B $SUF|Stockage 1 $SUF|0|true" "$(lie "$R3")"
+egal "B inchangé = 8" "8" "$(stock "$B")"
+egal "S1 = 10 + 2 = 12" "12" "$(stock_s "$S1")"
 api PUT "/reformes/update/$R3" "{\"magasinStockageUniqueId\":\"$S2\",\"nombreSujets\":6}"
 check "R3 revient dans S2 avec 6 sujets : 200, passée à B" "code == 200 and d['data']['magasinVenteUniqueId'] == '$B'"
 egal "transfert de R3 : 6 vers B" "Boutique B $SUF|Stockage 2 $SUF|6|false" "$(lie "$R3")"
@@ -323,7 +328,7 @@ check_sql "aucun transfert de plus" "SELECT count(*) FROM magasin_transferts WHE
 api PUT "/reformes/update/reft-legacy1-$SUF" '{"nombreSujets":2}'
 check "L1 7 -> 2 alors que 7 sont partis à la main : 400" "code == 400 and 'transférés à la main' in err"
 api PUT "/reformes/update/reft-legacy1-$SUF" "{\"magasinStockageUniqueId\":\"$S1\"}"
-check "L1 (déjà au point de vente) vers un magasin de stockage : 400" "code == 400 and 'transférés à la main' in err"
+check "L1 (déjà au point de vente) vers un magasin de stockage : 400" "code == 400 and 'déjà au point de vente (transfert manuel)' in err and 'modifiez seulement le nombre ou la cause' in err"
 
 TOKEN="$ADMIN_TOKEN"
 api POST "/admin/reformes/transferts-manquants?farmUniqueId=$FARM_UID" ""

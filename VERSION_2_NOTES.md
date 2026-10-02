@@ -912,5 +912,5 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   pas couvertes par un transfert manuel ancien (celles-là restent telles quelles, « laisses ») ;
   transfert automatique si ce magasin a un point de vente par défaut. Simulation par défaut,
   idempotent. Vérification SQL en lecture seule : `reformes-stockage-check.sql` (scratchpad).
-- Tests : `scripts/scenarios-reforme-transfert.sh` réécrit (105 assertions) ; reforme-kilo (67),
+- Tests : `scripts/scenarios-reforme-transfert.sh` réécrit (109 assertions ; transfert lié garé qui reste garé) ; reforme-kilo (67),
   stock-sécurité (51), idempotence (60), cohérence (86), rattachement (85) OK.
