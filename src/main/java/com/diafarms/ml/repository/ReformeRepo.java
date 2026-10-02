@@ -60,6 +60,12 @@ public interface ReformeRepo extends JpaRepository<Reforme, Long> {
         + "AND r.initialisation.removed = false AND r.date <= :jusqua GROUP BY r.projet.id")
     java.util.List<Object[]> sumSujetsParProjetJusqua(@Param("farmId") Long farmId, @Param("jusqua") java.time.LocalDate jusqua);
 
+    // Réformés du projet sans compter une réforme donnée (sa nouvelle valeur est ajoutée
+    // par l'appelant : indépendant de l'état, enregistré ou non, de l'entité modifiée).
+    @Query("SELECT COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
+        "WHERE r.projet.id = :projetId AND r.id <> :reformeId AND r.initialisation.removed = false")
+    Integer sumSujetsByProjetIdHors(@Param("projetId") Long projetId, @Param("reformeId") Long reformeId);
+
     // Reprise des transferts automatiques (ReformeTransfertsManquantsService) : projets
     // de la ferme ayant au moins une réforme active.
     @Query("SELECT DISTINCT r.projet.id FROM Reforme r WHERE r.projet.farm.id = :farmId AND r.initialisation.removed = false")

@@ -147,6 +147,25 @@ public class VenteReformeImpl implements VenteReformeService {
         }
     }
 
+    /** Avant toute écriture : chaque part de la vente supprimée doit tenir dans le stock
+     * actuel de son projet au point de vente (point de vente verrouillé). */
+    private void verifierStockPourRestauration(VenteReforme v) {
+        if (v.getMagasin() == null) return; // ancienne vente farm-wide, pas de stock par magasin
+        magasinRepo.verrouillerParId(v.getMagasin().getId());
+        Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin());
+        for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(v.getUniqueId())) {
+            if (r.getProjet() == null) continue;
+            int besoin = nz(r.getNombreSujetsAttribue());
+            int libre = disponible.getOrDefault(r.getProjet().getId(), 0);
+            if (besoin > libre) {
+                throw new IllegalArgumentException("Impossible de restaurer cette vente : stock de réformés insuffisant au point de vente « "
+                        + v.getMagasin().getNom() + " » pour le projet " + r.getProjet().getCode()
+                        + " (" + libre + " sujet(s) disponible(s), il en faut " + besoin + ").");
+            }
+            disponible.put(r.getProjet().getId(), libre - besoin);
+        }
+    }
+
     private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin) {
         Map<Long, Integer> disponible = new LinkedHashMap<>();
         List<Long> projetIds = magasinTransfertRepo.findDistinctProjetIdsByMagasinAndType(magasin.getId(), TypeStockMagasin.REFORME);
@@ -252,6 +271,9 @@ public class VenteReformeImpl implements VenteReformeService {
             throw new IllegalArgumentException("On ne peut vendre que depuis un magasin de type VENTE.");
         }
 
+        // Verrou du point de vente : sérialise avec les autres ventes et avec les baisses de
+        // réformes (ReformePointDeVente.verifierRetrait) qui puisent dans le même stock.
+        magasinRepo.verrouillerParId(magasin.getId());
         int restant = disponibleParProjetDansMagasin(magasin).values().stream().mapToInt(Integer::intValue).sum();
         if (data.getNombreSujets() > restant) {
             throw new IllegalArgumentException(
@@ -431,6 +453,7 @@ public class VenteReformeImpl implements VenteReformeService {
             if (v.getMagasin() == null) {
                 throw new IllegalArgumentException("Cette vente n'est rattachée à aucun magasin (ancienne vente farm-wide) : quantité non modifiable.");
             }
+            magasinRepo.verrouillerParId(v.getMagasin().getId());
             Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin());
             int restantHorsCetteVente = disponible.values().stream().mapToInt(Integer::intValue).sum() + nz(v.getNombreSujets());
             if (data.getNombreSujets() > restantHorsCetteVente) {
@@ -568,6 +591,9 @@ public class VenteReformeImpl implements VenteReformeService {
         // Restaurer une livraison : la commande doit pouvoir la reprendre (voir
         // LivraisonCommandeService), vérifié avant toute écriture.
         if (!removed) livraisonCommandeService.verifierRestauration(v.getCommande(), v.getNombreSujets());
+        // Restaurer une vente remet ses sujets en vente : chaque part (projet) doit encore
+        // être en stock au point de vente (la réforme a pu baisser entre-temps).
+        if (!removed) verifierStockPourRestauration(v);
         // Verrou client avant de toucher aux imputations (voir CompteClientService.verrouiller).
         compteClientService.verrouiller(v.getClient());
         v.getInitialisation().setRemoved(removed);

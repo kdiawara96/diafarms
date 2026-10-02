@@ -878,3 +878,10 @@ un remboursement ancien non couvert par des paiements repris reste visible au co
   enregistrement TERMINE non 2xx est supprimé à la lecture (plus jamais rejoué).
 - Tests : `scripts/scenarios-reforme-transfert.sh` (64 assertions) ; idempotence (60),
   reforme-kilo (66), stock-sécurité (51), cohérence (86), rattachement (85) OK.
+- **Revue** : restaurer une vente réforme (ou d'œufs) est refusé si chaque part ne tient plus dans
+  le stock de son projet au magasin (400 « Impossible de restaurer cette vente »). Verrou FOR NO KEY
+  UPDATE du point de vente (`MagasinRepo.verrouillerParId`) dans vente réforme create/update/
+  restauration et dans les baisses de réforme. Ancienne réforme sans transfert lié : un nouveau
+  point de vente n'est noté que si des sujets y sont transférés (sinon 400) ; jamais plus de sujets
+  transférés que réformés pour un projet (baisse/suppression refusée si elle crée un excédent). La
+  reprise garde le point de vente déjà noté d'une réforme. Script : 88 assertions.

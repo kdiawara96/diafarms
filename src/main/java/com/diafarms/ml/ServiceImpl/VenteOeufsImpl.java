@@ -149,6 +149,25 @@ public class VenteOeufsImpl implements VenteOeufsService {
     /** Stock (bon OU cassé selon typeOeuf) restant DANS ce magasin, projet par projet
      * (ceux qui y ont transféré du stock) — sert de poids pour la répartition
      * proportionnelle d'une vente entre les projets contributeurs de CE magasin précis. */
+    /** Avant toute écriture : chaque part de la vente supprimée doit tenir dans le stock
+     * actuel de son projet au magasin (magasin verrouillé). */
+    private void verifierStockPourRestauration(VenteOeufs v) {
+        if (v.getMagasin() == null) return; // ancienne vente farm-wide, pas de stock par magasin
+        magasinRepo.verrouillerParId(v.getMagasin().getId());
+        Map<Long, Integer> disponible = disponibleParProjetDansMagasin(v.getMagasin(), v.getTypeOeuf());
+        for (VenteOeufsRepartition r : repartitionRepo.findByVenteOeufs_UniqueId(v.getUniqueId())) {
+            if (r.getProjet() == null) continue;
+            int besoin = nz(r.getQuantiteAttribuee());
+            int libre = disponible.getOrDefault(r.getProjet().getId(), 0);
+            if (besoin > libre) {
+                throw new IllegalArgumentException("Impossible de restaurer cette vente : stock d'œufs insuffisant au magasin « "
+                        + v.getMagasin().getNom() + " » pour le projet " + r.getProjet().getCode()
+                        + " (" + libre + " œuf(s) disponible(s), il en faut " + besoin + ").");
+            }
+            disponible.put(r.getProjet().getId(), libre - besoin);
+        }
+    }
+
     private Map<Long, Integer> disponibleParProjetDansMagasin(Magasin magasin, TypeVenteOeufs typeOeuf) {
         TypeStockMagasin type = typeStock(typeOeuf);
         Map<Long, Integer> disponible = new LinkedHashMap<>();
@@ -620,6 +639,9 @@ public class VenteOeufsImpl implements VenteOeufsService {
         // Restaurer une livraison : la commande doit pouvoir la reprendre (voir
         // LivraisonCommandeService), vérifié avant toute écriture.
         if (!removed) livraisonCommandeService.verifierRestauration(v.getCommande(), v.getQuantiteOeufs());
+        // Restaurer une vente remet ses œufs en vente : chaque part (projet) doit encore être
+        // en stock au magasin (bon ou cassé selon la vente).
+        if (!removed) verifierStockPourRestauration(v);
         // Verrou client avant de toucher aux imputations (voir CompteClientService.verrouiller).
         compteClientService.verrouiller(v.getClient());
         v.getInitialisation().setRemoved(removed);

@@ -16,6 +16,7 @@ import com.diafarms.ml.models.Reforme;
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.MagasinRepo;
 import com.diafarms.ml.repository.MagasinTransfertRepo;
+import com.diafarms.ml.repository.ReformeRepo;
 import com.diafarms.ml.repository.VenteReformeRepartitionRepo;
 
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class ReformePointDeVente {
     private final MagasinRepo magasinRepo;
     private final MagasinTransfertRepo magasinTransfertRepo;
     private final VenteReformeRepartitionRepo repartitionRepo;
+    private final ReformeRepo reformeRepo;
 
     private static int nz(Integer v) {
         return v == null ? 0 : v;
@@ -110,6 +112,9 @@ public class ReformePointDeVente {
     // en stock (déjà vendus).
     private void verifierRetrait(Magasin magasin, Long projetId, int retrait, String action) {
         if (retrait <= 0) return;
+        // Verrou du point de vente : une vente simultanée (VenteReformeImpl) ne doit pas
+        // puiser dans les sujets qu'on retire ici.
+        magasinRepo.verrouillerParId(magasin.getId());
         int libre = Math.max(0, libreAuPointDeVente(magasin, projetId));
         if (retrait > libre) {
             throw new IllegalArgumentException("Impossible de " + action + " : les réformés de ce projet ont déjà été vendus "
@@ -139,6 +144,29 @@ public class ReformePointDeVente {
         magasinTransfertRepo.save(nouveau(r, magasin, r.getNombreSujets(), user));
     }
 
+    private int reformesProjetHors(Reforme r) {
+        return nz(reformeRepo.sumSujetsByProjetIdHors(r.getProjet().getId(), r.getId()));
+    }
+
+    private int transferesProjet(Reforme r) {
+        return nz(magasinTransfertRepo.sumQuantiteByProjetIdAndType(r.getProjet().getId(), TypeStockMagasin.REFORME));
+    }
+
+    // Jamais plus de sujets transférés que de sujets réformés pour le projet (des transferts
+    // manuels peuvent couvrir une ancienne réforme) : refusé si la modification crée ou
+    // aggrave un tel excédent. Avant/après = réformés (hors cette réforme + sa valeur) et
+    // transferts du projet, le transfert lié comptant pour sa valeur avant/après.
+    private void verifierTransfertsCouverts(Reforme r, int reformeAvant, int reformeApres, int lieAvant, int lieApres) {
+        int hors = reformesProjetHors(r);
+        int transferesHorsLie = transferesProjet(r) - lieAvant;
+        int excedentAvant = transferesHorsLie + lieAvant - (hors + reformeAvant);
+        int excedentApres = transferesHorsLie + lieApres - (hors + reformeApres);
+        if (excedentApres > 0 && excedentApres > excedentAvant) {
+            throw new IllegalArgumentException("Impossible : des sujets de cette réforme ont déjà été transférés à la main "
+                    + "vers un point de vente (" + excedentApres + " sujet(s) de trop) ; retirez d'abord ce transfert.");
+        }
+    }
+
     /** Modification : à appeler AVANT d'enregistrer la nouvelle valeur (ancienNombre =
      * valeur en base). `cible` = point de vente demandé, ou null pour garder l'actuel. */
     public void apresModification(Reforme r, int ancienNombre, int nouveauNombre, Magasin cible, Utilisateurs user) {
@@ -146,28 +174,44 @@ public class ReformePointDeVente {
         int ecart = nouveauNombre - ancienNombre;
         boolean reformeActive = r.getInitialisation() == null || !Boolean.TRUE.equals(r.getInitialisation().getRemoved());
         if (t == null) {
-            // Réforme antérieure au transfert automatique : seul un ajout est transféré
-            // (une baisse ne touche pas des transferts manuels qu'on ne sait pas relier).
-            if (ecart > 0 && reformeActive) {
+            // Réforme antérieure au transfert automatique (aucun transfert lié) : on ne
+            // transfère que des sujets encore « nulle part » pour le projet (pas couverts
+            // par un transfert manuel) : l'ajout, ou toute la réforme si on lui donne un
+            // point de vente. Le point de vente n'est noté que si des sujets y vont.
+            if (!reformeActive) {
+                if (cible != null) throw new IllegalArgumentException("Restaurez d'abord cette réforme avant de changer son point de vente.");
+                return;
+            }
+            int libreProjet = Math.max(0, reformesProjetHors(r) + nouveauNombre - transferesProjet(r));
+            int voulu = cible != null ? nouveauNombre : Math.max(0, ecart);
+            int q = Math.min(voulu, libreProjet);
+            if (q > 0) {
                 Magasin m = cible != null ? cible : (r.getMagasinVente() != null ? r.getMagasinVente() : resoudre(r.getProjet().getFarm(), null));
                 if (m != null) {
-                    magasinTransfertRepo.save(nouveau(r, m, ecart, user));
+                    magasinTransfertRepo.save(nouveau(r, m, q, user));
                     r.setMagasinVente(m);
                 }
-            } else if (cible != null) {
-                r.setMagasinVente(cible);
+            } else if (cible != null && (r.getMagasinVente() == null || !Objects.equals(r.getMagasinVente().getId(), cible.getId()))) {
+                throw new IllegalArgumentException("Les sujets de cette ancienne réforme ont déjà été placés à la main dans un point "
+                        + "de vente : son point de vente ne peut pas être changé ici (faites un transfert depuis Magasins).");
             }
+            if (ecart < 0) verifierTransfertsCouverts(r, ancienNombre, nouveauNombre, 0, 0);
             return;
         }
         Magasin ancien = t.getMagasin();
         Magasin nouveauMagasin = cible != null ? cible : ancien;
         int ancienneQuantite = t.getQuantite() == null ? 0 : t.getQuantite();
         int nouvelleQuantite = Math.max(0, ancienneQuantite + ecart);
-        if (actif(t)) {
+        boolean lieActif = actif(t);
+        if (lieActif) {
             boolean memeMagasin = Objects.equals(ancien.getId(), nouveauMagasin.getId());
             int retrait = ancienneQuantite - (memeMagasin ? nouvelleQuantite : 0);
             verifierRetrait(ancien, r.getProjet().getId(), retrait,
                     memeMagasin ? "réduire cette réforme" : "changer le point de vente de cette réforme");
+        }
+        if (reformeActive) {
+            verifierTransfertsCouverts(r, ancienNombre, nouveauNombre,
+                    lieActif ? ancienneQuantite : 0, nouvelleQuantite);
         }
         t.setMagasin(nouveauMagasin);
         t.setQuantite(nouvelleQuantite);
@@ -182,6 +226,12 @@ public class ReformePointDeVente {
     /** Suppression (supprimee=true) ou restauration de la réforme. */
     public void apresSuppressionOuRestauration(Reforme r, boolean supprimee) {
         MagasinTransfert t = transfertLie(r);
+        if (supprimee) {
+            // Suppression : la réforme sort des réformés du projet ; ses transferts (lié et
+            // manuels) ne doivent pas dépasser ce qui reste.
+            int lie = actif(t) ? nz(t.getQuantite()) : 0;
+            verifierTransfertsCouverts(r, nz(r.getNombreSujets()), 0, lie, 0);
+        }
         if (t == null || t.getInitialisation() == null) return;
         if (supprimee) {
             if (!actif(t)) return;

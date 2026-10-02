@@ -16,6 +16,13 @@ public interface MagasinRepo extends JpaRepository<Magasin, Long> {
 
     Optional<Magasin> findByUniqueId(String uniqueId);
 
+    // Sérialise les mouvements de stock d'un même point de vente (vente/restauration de
+    // vente, baisse/suppression/déplacement d'une réforme) : deux opérations simultanées ne
+    // doivent pas passer chacune le contrôle sur le même reste. FOR NO KEY UPDATE comme
+    // ProjetsRepo.verrouillerParId (n'empêche pas les insertions qui référencent le magasin).
+    @Query(value = "SELECT id FROM magasins_vente WHERE id = :id FOR NO KEY UPDATE", nativeQuery = true)
+    Optional<Long> verrouillerParId(@Param("id") Long id);
+
     @Query("SELECT m FROM Magasin m WHERE m.farm.id = :farmId AND m.initialisation.removed = false ORDER BY m.nom")
     List<Magasin> findAllActiveByFarm(@Param("farmId") Long farmId);
 

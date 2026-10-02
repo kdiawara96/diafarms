@@ -78,7 +78,9 @@ public class VenteOeufsControllers {
             return ApiResponse.createResponse("Opération réussie", HttpStatus.OK,
                     service.deleteOrRecover(uniqueId, request != null ? request.getMotif() : null), null);
         } catch (IllegalArgumentException e) {
-            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
+            // Introuvable -> 404 ; refus métier (stock insuffisant pour restaurer...) -> 400.
+            HttpStatus statut = e.getMessage() != null && e.getMessage().contains("introuvable") ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+            return ApiResponse.createResponse(e.getMessage(), statut, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

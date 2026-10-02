@@ -16,6 +16,9 @@
 #    passage sans effet, droits (autre ferme 403, COMPTABLE 403, SUPER_ADMIN).
 # 6. Idempotence : un 400 (stock insuffisant) n'est pas mémorisé ; même clé après ajout
 #    de stock -> 201 exécuté ; ancien 400 mémorisé (avant la règle) -> ré-exécuté.
+# 7. Restauration d'une vente (réforme, œufs) refusée si le stock ne la couvre plus ;
+#    anciennes réformes : reprise vers leur point de vente, jamais plus transféré que
+#    réformé, point de vente noté seulement si des sujets y vont.
 #
 # Pré-requis : Postgres + backend démarrés, base seedée par scenarios-circuit-client.sh.
 # Variables : BASE, PGHOST, PGPORT (55432), PGUSER (postgres), PGDATABASE (diafarms_scen),
@@ -320,6 +323,76 @@ check_sql "clé désormais mémorisée avec le succès" "SELECT statut || '|' ||
 CLE3="$(uuid)"
 reforme 1 "" "$AUJ" "$CLE3"
 check "réforme sans point de vente (2 points de vente, B désigné) : 201" "code == 201"
+
+# ---------------------------------------------------------------------------
+echo "== 7. Restauration de vente, anciennes réformes, verrous de cohérence"
+api POST /magasins/create "{\"nom\":\"Boutique C $SUF\",\"type\":\"VENTE\"}"
+C="$(jval "d['data']['uniqueId']")"
+reforme 10 "$C"
+R7="$(jval "d['data']['uniqueId']")"
+api POST /ventes-reforme/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$C\",\"nombreSujets\":8,\"prixUnitaire\":2500,\"montant\":20000,\"montantRapporte\":20000}"
+V7="$(jval "d['data']['uniqueId']")"
+check "réforme 10 vers C puis vente de 8 : 201" "code == 201"
+api PUT "/ventes-reforme/deleteOrRecover/$V7" '{"motif":"erreur de saisie"}'
+check "suppression de la vente : 200" "code == 200"
+api PUT "/reformes/update/$R7" '{"nombreSujets":2}'
+check "réforme ramenée à 2 (vente supprimée, rien de vendu) : 200" "code == 200"
+api PUT "/ventes-reforme/deleteOrRecover/$V7" '{}'
+check "restauration de la vente de 8 avec 2 en stock : 400 clair" "code == 400 and 'Impossible de restaurer cette vente' in err and 'Boutique C $SUF' in err"
+check_sql "vente toujours supprimée" "SELECT removed FROM ventes_reforme WHERE unique_id = '$V7'" "t"
+[ "$(stock "$C")" = "2" ] && ok "stock de C = 2 (jamais négatif)" || echec "stock de C = 2"
+api PUT "/reformes/update/$R7" '{"nombreSujets":9}'
+api PUT "/ventes-reforme/deleteOrRecover/$V7" '{}'
+check "réforme remontée à 9 : restauration acceptée" "code == 200"
+[ "$(stock "$C")" = "1" ] && ok "stock de C = 1" || echec "stock de C = 1"
+
+# Vente d'œufs : même contrôle à la restauration (stock du magasin réduit par SQL).
+api POST /collectes-oeufs/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"reft-bat-$SUF\",\"magasinStockageUniqueId\":\"$(psql_run "SELECT unique_id FROM magasins_vente WHERE farm_id = $F AND type = 'STOCKAGE' LIMIT 1")\",\"date\":\"$AUJ\",\"oeufsCollectes\":30,\"oeufsCasses\":0,\"oeufsNonUtilisables\":0}"
+check "collecte de 30 œufs (transfert automatique vers B)" "code == 201"
+api POST /ventes-oeufs/create "{\"date\":\"$AUJ\",\"magasinUniqueId\":\"$B\",\"quantiteOeufs\":20,\"prixUnitaire\":100,\"montant\":2000,\"montantRapporte\":2000}"
+VO="$(jval "d['data']['uniqueId']")"
+check "vente de 20 œufs depuis B : 201" "code == 201"
+api PUT "/ventes-oeufs/deleteOrRecover/$VO" '{"motif":"erreur de saisie"}'
+psql_run "UPDATE magasin_transferts SET quantite = 5 WHERE magasin_id = (SELECT id FROM magasins_vente WHERE unique_id = '$B') AND type = 'OEUFS' AND projet_id = $PROJET_ID" >/dev/null
+api PUT "/ventes-oeufs/deleteOrRecover/$VO" '{}'
+check "restauration de la vente de 20 œufs avec 5 en stock : 400" "code == 400 and 'Impossible de restaurer cette vente' in err"
+check_sql "vente d'œufs toujours supprimée" "SELECT removed FROM ventes_oeufs WHERE unique_id = '$VO'" "t"
+
+# Anciennes réformes (sans transfert lié) : L3 de 6 couverte à moitié par un transfert
+# manuel de 4 vers C, L4 de 3 déjà rattachée à B sans transfert.
+psql_run "INSERT INTO reformes (unique_id, date, nombre_sujets, projet_id, farm_id, batiment_id, removed, archive, created_at)
+  SELECT 'reft-l3-$SUF', DATE '2026-05-01', 6, $PROJET_ID, $F, b.id, false, false, now() FROM batiments b WHERE b.unique_id = 'reft-bat-$SUF'" >/dev/null
+psql_run "INSERT INTO reformes (unique_id, date, nombre_sujets, projet_id, farm_id, batiment_id, removed, archive, created_at, magasin_vente_id)
+  SELECT 'reft-l4-$SUF', DATE '2026-05-02', 3, $PROJET_ID, $F, b.id, false, false, now(), (SELECT id FROM magasins_vente WHERE unique_id = '$B')
+  FROM batiments b WHERE b.unique_id = 'reft-bat-$SUF'" >/dev/null
+api POST /magasin-transferts/create "{\"magasinUniqueId\":\"$C\",\"projetUniqueId\":\"$PROJET\",\"type\":\"REFORME\",\"quantite\":4,\"date\":\"$AUJ\"}"
+check "transfert manuel de 4 vers C" "code in (200, 201)"
+api POST "/admin/reformes/transferts-manquants?executer=true&magasinVenteUniqueId=$C" ""
+check "reprise : 5 sujets (3 pour L4, 2 pour L3)" "code == 200 and d['data']['totalTransfere'] == 5"
+check_sql "L4 reprise vers son point de vente B (pas vers C demandé)" "SELECT m.unique_id || '|' || t.quantite FROM magasin_transferts t JOIN magasins_vente m ON m.id = t.magasin_id JOIN reformes r ON r.id = t.reforme_id WHERE r.unique_id = 'reft-l4-$SUF'" "$B|3"
+check_sql "L3 liée pour 2 vers C" "SELECT t.quantite FROM magasin_transferts t JOIN reformes r ON r.id = t.reforme_id WHERE r.unique_id = 'reft-l3-$SUF'" "2"
+api PUT "/reformes/update/reft-l3-$SUF" '{"nombreSujets":1}'
+check "L3 6 -> 1 alors que 4 sujets sont transférés à la main : 400" "code == 400 and 'transférés à la main' in err"
+check_sql "L3 inchangée" "SELECT r.nombre_sujets || '|' || t.quantite FROM magasin_transferts t JOIN reformes r ON r.id = t.reforme_id WHERE r.unique_id = 'reft-l3-$SUF'" "6|2"
+api PUT "/reformes/update/reft-l3-$SUF" '{"nombreSujets":4}'
+check "L3 6 -> 4 (transfert lié ramené à 0, 4 manuels) : 200" "code == 200"
+check_sql "projet : jamais plus transféré que réformé" \
+  "SELECT (SELECT SUM(quantite) FROM magasin_transferts WHERE projet_id = $PROJET_ID AND type = 'REFORME' AND removed = false) <= (SELECT SUM(nombre_sujets) FROM reformes WHERE projet_id = $PROJET_ID AND removed = false)" "t"
+
+# Ancienne réforme sans transfert, couverte entièrement par un transfert manuel : changer
+# son point de vente ne doit rien noter sans déplacer de sujets.
+psql_run "INSERT INTO reformes (unique_id, date, nombre_sujets, projet_id, farm_id, batiment_id, removed, archive, created_at)
+  SELECT 'reft-l5-$SUF', DATE '2026-05-03', 2, $PROJET_ID, $F, b.id, false, false, now() FROM batiments b WHERE b.unique_id = 'reft-bat-$SUF'" >/dev/null
+api POST /magasin-transferts/create "{\"magasinUniqueId\":\"$A\",\"projetUniqueId\":\"$PROJET\",\"type\":\"REFORME\",\"quantite\":2,\"date\":\"$AUJ\"}"
+api PUT "/reformes/update/reft-l5-$SUF" "{\"magasinVenteUniqueId\":\"$C\"}"
+check "ancienne réforme déjà placée à la main : changement de point de vente refusé" "code == 400 and 'déjà été placés' in err"
+check_sql "point de vente de L5 inchangé (vide)" "SELECT COALESCE(magasin_vente_id::text, 'vide') FROM reformes WHERE unique_id = 'reft-l5-$SUF'" "vide"
+# Ancienne réforme jamais placée : lui donner un point de vente y transfère ses sujets.
+psql_run "INSERT INTO reformes (unique_id, date, nombre_sujets, projet_id, farm_id, batiment_id, removed, archive, created_at)
+  SELECT 'reft-l6-$SUF', DATE '2026-05-04', 3, $PROJET_ID, $F, b.id, false, false, now() FROM batiments b WHERE b.unique_id = 'reft-bat-$SUF'" >/dev/null
+api PUT "/reformes/update/reft-l6-$SUF" "{\"magasinVenteUniqueId\":\"$C\"}"
+check "ancienne réforme jamais placée : point de vente C accepté" "code == 200 and d['data']['magasinVenteUniqueId'] == '$C'"
+check_sql "transfert lié de 3 vers C créé" "SELECT m.unique_id || '|' || t.quantite FROM magasin_transferts t JOIN magasins_vente m ON m.id = t.magasin_id JOIN reformes r ON r.id = t.reforme_id WHERE r.unique_id = 'reft-l6-$SUF'" "$C|3"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

@@ -59,7 +59,9 @@ public class ReformeTransfertsManquantsService {
             rapport.setPointDeVenteUniqueId(cible.getUniqueId());
             rapport.setPointDeVenteNom(cible.getNom());
         }
-        boolean ecrire = executer && cible != null;
+        // Une réforme qui a déjà un point de vente (choisi avant) y reste ; les autres vont
+        // au point de vente demandé ou par défaut (cible).
+        boolean ecrire = executer;
 
         for (Long projetId : reformeRepo.findDistinctProjetIdsByFarmId(farm.getId())) {
             Projets projet = projetsRepo.findById(projetId).orElse(null);
@@ -78,7 +80,11 @@ public class ReformeTransfertsManquantsService {
                 if (reste <= 0) break;
                 int q = Math.min(reste, nz(r.getNombreSujets()));
                 if (q <= 0) continue;
-                pointDeVente.reprise(r, cible, q, user);
+                Magasin m = r.getMagasinVente() != null && r.getMagasinVente().getType() == Magasin.TypeMagasin.VENTE
+                        && (r.getMagasinVente().getInitialisation() == null || !Boolean.TRUE.equals(r.getMagasinVente().getInitialisation().getRemoved()))
+                        ? r.getMagasinVente() : cible;
+                if (m == null) continue;
+                pointDeVente.reprise(r, m, q, user);
                 reformeRepo.save(r);
                 reste -= q;
                 ligne.setTransferes(ligne.getTransferes() + q);
@@ -90,8 +96,8 @@ public class ReformeTransfertsManquantsService {
 
         if (ecrire && rapport.getTransfertsCrees() > 0 && user != null) {
             logs.addLogs(user.getId(), null, "MagasinTransfert",
-                    "Reprise : " + rapport.getTotalTransfere() + " sujet(s) réformé(s) transféré(s) vers le point de vente "
-                            + cible.getNom() + " (" + rapport.getTransfertsCrees() + " transfert(s))");
+                    "Reprise : " + rapport.getTotalTransfere() + " sujet(s) réformé(s) transféré(s) vers "
+                            + (cible != null ? "le point de vente " + cible.getNom() : "leur point de vente") + " (" + rapport.getTransfertsCrees() + " transfert(s))");
         }
         return rapport;
     }
