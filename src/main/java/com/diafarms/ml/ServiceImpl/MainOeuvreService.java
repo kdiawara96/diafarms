@@ -196,7 +196,7 @@ public class MainOeuvreService {
     // clôture (date de libération de ses poulaillers, posée à la clôture, voir
     // ProjetImpl.libererOccupationsActives), à défaut à sa fin prévue ; un projet NON
     // clôturé est toujours en cours, même au-delà de sa fin prévue (null = pas de fin).
-    private static LocalDate finEffective(Projets p) {
+    static LocalDate finEffective(Projets p) {
         boolean cloture = p.getInitialisation() != null && Boolean.TRUE.equals(p.getInitialisation().getArchive());
         if (!cloture) return null;
         LocalDate liberation = p.getOccupations() == null ? null : p.getOccupations().stream()
@@ -223,6 +223,87 @@ public class MainOeuvreService {
         return poids;
     }
 
+    // Part d'UN projet dans UN salaire payé (règle unique, voir l'en-tête de la classe) :
+    // [partAffectation, partProrata, pourcentageProrata, joursCible, joursDuMois].
+    // null : période du paiement illisible ou montant nul.
+    private double[] partSalaire(PaiementSalaire p, Long cibleId, Long farmId,
+                                 Map<Long, List<AffectationPersonnel>> affParEmploye,
+                                 List<Projets> projets, Map<YearMonth, Map<Long, Double>> cache) {
+        YearMonth ym;
+        try {
+            ym = YearMonth.parse(p.getPeriode());
+        } catch (Exception e) {
+            return null;
+        }
+        double montant = p.getMontantPaye() == null ? 0 : p.getMontantPaye();
+        if (montant <= 0) return null;
+        LocalDate d1 = ym.atDay(1);
+        LocalDate d2 = ym.atEndOfMonth();
+        int joursMois = ym.lengthOfMonth();
+        int joursAffectesTotal = 0;
+        int joursCible = 0;
+        for (AffectationPersonnel a : affParEmploye.getOrDefault(p.getSalaire().getEmploye().getId(), List.of())) {
+            LocalDate debut = a.getDateDebut().isAfter(d1) ? a.getDateDebut() : d1;
+            LocalDate fin = a.getDateFin() == null || a.getDateFin().isAfter(d2) ? d2 : a.getDateFin();
+            int jours = fin.isBefore(debut) ? 0 : (int) ChronoUnit.DAYS.between(debut, fin) + 1;
+            joursAffectesTotal += jours;
+            if (a.getProjet().getId().equals(cibleId)) joursCible += jours;
+        }
+        joursAffectesTotal = Math.min(joursAffectesTotal, joursMois);
+        double partAffectation = montant * joursCible / joursMois;
+        double reste = montant * (joursMois - joursAffectesTotal) / joursMois;
+        double partProrata = 0;
+        double pourcentage = 0;
+        if (reste > 0.005) {
+            Map<Long, Double> poids = cache.computeIfAbsent(ym, m -> poidsDuMois(farmId, projets, m));
+            double total = poids.values().stream().mapToDouble(Double::doubleValue).sum();
+            if (total > 0 && poids.containsKey(cibleId)) {
+                pourcentage = poids.get(cibleId) / total * 100;
+                partProrata = reste * poids.get(cibleId) / total;
+            }
+        }
+        return new double[] { partAffectation, partProrata, pourcentage, joursCible, joursMois };
+    }
+
+    /** Main-d'œuvre de chaque projet de la ferme pour les salaires PAYÉS entre deux dates
+     * (date de paiement, comme la sortie « Salaires » de la Comptabilité) : mêmes règles
+     * et même arrondi par ligne que coutProjet, donc sur toutes les dates la somme d'un
+     * projet vaut exactement le total de sa fiche. Clé = id du projet, puis date du
+     * paiement. Pour le Reporting (ReportingService) ; les droits sont vérifiés par
+     * l'appelant. */
+    @Transactional(readOnly = true)
+    public Map<Long, Map<LocalDate, Double>> coutParProjet(Long farmId, LocalDate debut, LocalDate fin) {
+        Map<Long, Map<LocalDate, Double>> out = new HashMap<>();
+        if (farmId == null) return out;
+        Map<Long, List<AffectationPersonnel>> affParEmploye = affectationRepo.findActivesByFarmId(farmId).stream()
+                .collect(Collectors.groupingBy(a -> a.getPersonnel().getId()));
+        List<Projets> projets = projetsRepo.findAllActiveByFarm(farmId);
+        Map<YearMonth, Map<Long, Double>> cache = new HashMap<>();
+        for (PaiementSalaire p : paiementRepo.findActifsByFarmId(farmId)) {
+            LocalDate date = datePaiement(p);
+            if (date == null || date.isBefore(debut) || date.isAfter(fin)) continue;
+            for (Projets cible : projets) {
+                double[] l = partSalaire(p, cible.getId(), farmId, affParEmploye, projets, cache);
+                if (l == null) break;
+                double totalLigne = l[0] + l[1];
+                if (totalLigne < 0.5) continue;
+                out.computeIfAbsent(cible.getId(), k -> new HashMap<>())
+                        .merge(date, (double) Math.round(totalLigne), Double::sum);
+            }
+        }
+        return out;
+    }
+
+    // Date du paiement ; à défaut (ancien paiement), fin du mois payé.
+    private static LocalDate datePaiement(PaiementSalaire p) {
+        if (p.getDatePaiement() != null) return p.getDatePaiement();
+        try {
+            return YearMonth.parse(p.getPeriode()).atEndOfMonth();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Transactional(readOnly = true)
     public CoutMainOeuvreDTO coutProjet(String projetUniqueId) {
         // Détail par employé et par mois des salaires payés : même population que les salaires.
@@ -236,48 +317,20 @@ public class MainOeuvreService {
         List<CoutMainOeuvreDTO.Ligne> lignes = new ArrayList<>();
 
         for (PaiementSalaire p : paiementRepo.findActifsByFarmId(farmId)) {
-            YearMonth ym;
-            try {
-                ym = YearMonth.parse(p.getPeriode());
-            } catch (Exception e) {
-                continue;
-            }
-            double montant = p.getMontantPaye() == null ? 0 : p.getMontantPaye();
-            if (montant <= 0) continue;
-            LocalDate d1 = ym.atDay(1);
-            LocalDate d2 = ym.atEndOfMonth();
-            int joursMois = ym.lengthOfMonth();
-            int joursAffectesTotal = 0;
-            int joursCible = 0;
-            for (AffectationPersonnel a : affParEmploye.getOrDefault(p.getSalaire().getEmploye().getId(), List.of())) {
-                LocalDate debut = a.getDateDebut().isAfter(d1) ? a.getDateDebut() : d1;
-                LocalDate fin = a.getDateFin() == null || a.getDateFin().isAfter(d2) ? d2 : a.getDateFin();
-                int jours = fin.isBefore(debut) ? 0 : (int) ChronoUnit.DAYS.between(debut, fin) + 1;
-                joursAffectesTotal += jours;
-                if (a.getProjet().getId().equals(cible.getId())) joursCible += jours;
-            }
-            joursAffectesTotal = Math.min(joursAffectesTotal, joursMois);
-            double partAffectation = montant * joursCible / joursMois;
-            double reste = montant * (joursMois - joursAffectesTotal) / joursMois;
-            double partProrata = 0;
-            double pourcentage = 0;
-            if (reste > 0.005) {
-                Map<Long, Double> poids = cache.computeIfAbsent(ym, m -> poidsDuMois(farmId, projets, m));
-                double total = poids.values().stream().mapToDouble(Double::doubleValue).sum();
-                if (total > 0 && poids.containsKey(cible.getId())) {
-                    pourcentage = poids.get(cible.getId()) / total * 100;
-                    partProrata = reste * poids.get(cible.getId()) / total;
-                }
-            }
+            double[] l = partSalaire(p, cible.getId(), farmId, affParEmploye, projets, cache);
+            if (l == null) continue;
+            double partAffectation = l[0];
+            double partProrata = l[1];
+            double pourcentage = l[2];
             double totalLigne = partAffectation + partProrata;
             if (totalLigne < 0.5) continue;
             lignes.add(CoutMainOeuvreDTO.Ligne.builder()
                     .periode(p.getPeriode())
                     .employeNom(p.getSalaire().getEmploye().getNom())
-                    .montantPaye(montant)
+                    .montantPaye(p.getMontantPaye())
                     .partAffectation(Math.round(partAffectation))
-                    .joursAffectes(joursCible)
-                    .joursDuMois(joursMois)
+                    .joursAffectes((int) l[3])
+                    .joursDuMois((int) l[4])
                     .partProrata(Math.round(partProrata))
                     .pourcentageProrata(Math.round(pourcentage * 10) / 10.0)
                     .total(Math.round(totalLigne))

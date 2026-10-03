@@ -226,7 +226,9 @@ verifier "B. ligne acompte : part $PA_CODE" "$ENC_A" "$(part_projet "$LIGNE" "$P
 verifier "B. ligne acompte : part $PB_CODE" "$ENC_B" "$(part_projet "$LIGNE" "$PB")"
 verifier "B. ligne acompte : premier Projet = $PA_CODE" "$PA_CODE" "$(jpath "$LIGNE" repartitionProjets.0.code)"
 verifier "B. ligne acompte : plus rien en attente" "0" "$(jpath "$LIGNE" montantNonAttribue)"
-call GET "/ventes/list"
+# Ventes du jour seulement : la liste complète d'une base de test qui a déjà servi dépasse
+# la taille maximale d'un argument de python3 (« Liste d'arguments trop longue »).
+call GET "/ventes/list?dateDebut=$AUJ&dateFin=$AUJ"
 VLIGNE=$(python3 -c "
 import json, sys
 for v in json.loads(sys.argv[1]).get('data') or []:
