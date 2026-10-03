@@ -180,7 +180,7 @@ public class ModesPaiementService {
                 if (libelle.isEmpty()) throw new IllegalArgumentException("Donnez un nom au mode de paiement ajouté.");
                 if (libelle.length() > LIBELLE_MAX)
                     throw new IllegalArgumentException("Nom de mode de paiement trop long (" + LIBELLE_MAX + " caractères au plus) : " + libelle);
-                if (code.isEmpty() || !code.startsWith("PERSO_")) code = codePerso(libelle);
+                if (!code.matches("PERSO_[A-Z0-9_]{1,28}")) code = codePerso(libelle);
             }
             String base = code;
             for (int i = 2; codes.contains(code); i++) code = tronquer(base, 36) + "_" + i;
@@ -200,8 +200,8 @@ public class ModesPaiementService {
         repo.supprimerPourFerme(f.getId());
         repo.flush();
         repo.saveAll(nouveaux);
-        logs.addLogs(u.getId(), f.getId(), "ModePaiementFerme", "Modes de paiement : " + String.join(", ",
-                nouveaux.stream().filter(m -> Boolean.TRUE.equals(m.getActif())).map(ModePaiementFerme::getLibelle).toList()));
+        logs.addLogs(u.getId(), f.getId(), "ModePaiementFerme", tronquer("Modes de paiement : " + String.join(", ",
+                nouveaux.stream().filter(m -> Boolean.TRUE.equals(m.getActif())).map(ModePaiementFerme::getLibelle).toList()), 480));
         return configuration(f);
     }
 

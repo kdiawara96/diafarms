@@ -58,6 +58,7 @@ public class RepriseAcompteReserveService {
         RepriseAcompteReserveRapportDTO rapport = new RepriseAcompteReserveRapportDTO();
         rapport.setExecute(executer);
         for (Farm farm : farms) {
+            Devise.definir(farm.getDevise()); // devise de la ferme traitée, pas celle du super-admin
             String nomFerme = farm.getNom() != null && !farm.getNom().isBlank() ? farm.getNom() : farm.getUniqueId();
             RepriseAcompteReserveRapportDTO partiel = new RepriseAcompteReserveRapportDTO();
             try {

@@ -84,6 +84,7 @@ public class RepriseCircuitClientService {
         rapport.setExecute(executer);
         boolean plusieurs = farms.size() > 1;
         for (Farm farm : farms) {
+            Devise.definir(farm.getDevise()); // devise de la ferme traitée, pas celle du super-admin
             Long farmId = farm.getId();
             String nomFerme = farm.getNom() != null && !farm.getNom().isBlank() ? farm.getNom() : farm.getUniqueId();
             String prefixe = plusieurs ? "[" + nomFerme + "] " : "";

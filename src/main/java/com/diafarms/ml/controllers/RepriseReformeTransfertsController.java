@@ -1,5 +1,6 @@
 package com.diafarms.ml.controllers;
 
+import com.diafarms.ml.commons.Devise;
 import java.util.List;
 import java.util.Objects;
 
@@ -58,6 +59,7 @@ public class RepriseReformeTransfertsController {
                 return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null,
                         List.of("Réservé à l'administrateur de la ferme ou au super-administrateur."));
             }
+            Devise.definir(farm.getDevise()); // devise de la ferme traitée, pas celle du super-admin
             RepriseReformeTransfertsDTO rapport = service.lancer(farm, executer, magasinStockageUniqueId, u);
             String msg = rapport.getErreur() != null ? rapport.getErreur()
                     : executer ? "Réformes anciennes affectées au magasin de stockage" : "Simulation (rien n'a été écrit)";
