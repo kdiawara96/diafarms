@@ -234,7 +234,9 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
                 if (CATEGORIES_SANTE.contains(cat.toLowerCase(Locale.ROOT))) depensesSante += m;
             }
         }
-        double resultatNet = recettesReelles - depensesTotal;
+        // Même règle que la fiche Projet et le Reporting : le résultat compte tout ce qui est
+        // vendu (payé ou non) ; le reste à encaisser est affiché à côté.
+        double resultatNet = recettesTheoriques - depensesTotal;
         Double amortissement = null;
         try { amortissement = investissementService.getCoutAmortissementProjet(projetUniqueId); } catch (Exception ignored) { }
 
@@ -346,10 +348,11 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
             // --- Finances ---
             document.add(section("Finances (transactions validées du projet)"));
             document.add(kv(new String[][]{
-                    {"Recettes encaissées", fcfa(recettesReelles)},
-                    {"Recettes théoriques (valeur des ventes)", fcfa(recettesTheoriques)},
+                    {"Vendu et autres entrées (payé ou non)", fcfa(recettesTheoriques)},
+                    {"Dont encaissé", fcfa(recettesReelles)},
+                    {"Reste à encaisser", fcfa(Math.max(0, recettesTheoriques - recettesReelles))},
                     {"Dépenses", fcfa(depensesTotal)},
-                    {"Résultat net (recettes encaissées moins dépenses)", (resultatNet >= 0 ? "+" : "-") + fcfa(Math.abs(resultatNet))},
+                    {"Résultat net (vendu et autres entrées moins dépenses)", (resultatNet >= 0 ? "+" : "-") + fcfa(Math.abs(resultatNet))},
             }));
             if (!depensesParCategorie.isEmpty()) {
                 Paragraph sous = new Paragraph("Dépenses par catégorie", PdfStyle.bold());

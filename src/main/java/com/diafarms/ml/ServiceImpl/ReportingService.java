@@ -107,7 +107,7 @@ public class ReportingService {
             u = null;
         }
         if (u == null || u.getFarm() == null) throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
-        if (seulementRoles(u, ROLES_SANS_REPORTING)) {
+        if (seulementRoles(u, ROLES_SANS_REPORTING) || !aRole(u, Set.of("ADMIN", "SUPER_ADMIN", "RESPONSABLE"))) {
             throw new IllegalArgumentException("Le Reporting n'est pas ouvert à votre rôle.");
         }
         LocalDate deb = dateDebut != null ? dateDebut : LocalDate.now().withDayOfMonth(1);
