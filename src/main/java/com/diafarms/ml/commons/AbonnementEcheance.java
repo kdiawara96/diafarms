@@ -118,10 +118,10 @@ public final class AbonnementEcheance {
 
     public static String sujetEmail(Etat e) {
         if (e.enGrace()) {
-            return (e.estEssai() ? "Votre période d'essai DiaFarms est terminée" : "Votre abonnement DiaFarms est terminé")
+            return (e.estEssai() ? "Votre période d'essai Cocorico est terminée" : "Votre abonnement Cocorico est terminé")
                     + " : il vous reste " + jours(e.joursGraceRestants());
         }
-        return (e.estEssai() ? "Votre période d'essai DiaFarms se termine le " : "Votre abonnement DiaFarms se termine le ")
+        return (e.estEssai() ? "Votre période d'essai Cocorico se termine le " : "Votre abonnement Cocorico se termine le ")
                 + date(e.dateFin());
     }
 
@@ -153,8 +153,9 @@ public final class AbonnementEcheance {
                 sb.append("Prix : ").append(fcfa(config.getPrixMensuel())).append(" par mois, ou ")
                   .append(fcfa(config.getPrixAnnuel())).append(" par an.\n\n");
             }
-            sb.append("Pour renouveler : payez l'abonnement, puis ouvrez la page Abonnement dans DiaFarms et "
-                    + "cliquez sur « J'ai payé ». Votre paiement sera vérifié puis validé.\n\n");
+            sb.append("Pour renouveler : envoyez le montant par mobile money au +223 83 91 86 99, puis ouvrez la page "
+                    + "Abonnement dans Cocorico et cliquez sur « J'ai payé ». Votre paiement sera vérifié puis validé.\n"
+                    + "Une question ? Écrivez-nous sur WhatsApp au +223 83 91 86 99.\n\n");
         }
         if (!e.enGrace() && e.delaiGraceJours() > 0) {
             sb.append("Après cette date, vous aurez encore ").append(jours(e.delaiGraceJours()))

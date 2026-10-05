@@ -249,11 +249,12 @@ PAIEMENT="$(jval "d['data']['uniqueId']")"
 TOKEN="$TOKEN_SA"; api POST "/abonnements/$PAIEMENT/valider"
 ok_cree "validation du paiement de A"
 NOUVELLE_FIN="$(psql_run "select date_fin from abonnements where id=$ABO_A")"
-check_eq "renouvellement : nouvelle date de fin = aujourd'hui + 30" "$(psql_run "select current_date + 30")" "$NOUVELLE_FIN"
+# Payé pendant la grâce : on repart de l'échéance (hier), pas d'aujourd'hui.
+check_eq "renouvellement : nouvelle date de fin = échéance + 30" "$(psql_run "select current_date - 1 + 30")" "$NOUVELLE_FIN"
 TOKEN="$TOKEN_A"; api GET /notifications/list
 check "renouvellement : le rappel disparaît de la cloche" "not any(n['type'] == 'ABONNEMENT' for n in d['data'])"
 api GET /abonnements/moi
-check "renouvellement : ACTIF, plus en grâce" "d['data']['statutEffectif'] == 'ACTIF' and not d['data']['enGrace'] and d['data']['joursRestants'] == 30"
+check "renouvellement : ACTIF, plus en grâce" "d['data']['statutEffectif'] == 'ACTIF' and not d['data']['enGrace'] and d['data']['joursRestants'] == 29"
 # La nouvelle période arrive à son tour à J-7 (date de fin différente de la précédente) :
 fin "$ABO_A" 6
 rappels true

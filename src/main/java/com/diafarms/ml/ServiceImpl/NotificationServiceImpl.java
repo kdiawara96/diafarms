@@ -418,7 +418,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /**
-     * Rappel de fin d'abonnement (J-7, J-1, délai de grâce) : affiché aux ADMIN de la
+     * Rappel de fin d'abonnement (J-7, J-1, délai de grâce) : affiché aux ADMIN et RESPONSABLE de la
      * ferme dès que la tâche quotidienne l'a envoyé (ligne AbonnementRappel pour la
      * période en cours, voir AbonnementRappelService), avec un texte recalculé sur l'état
      * du jour. Disparaît tout seul au renouvellement (nouvelle dateFin, aucune ligne).
@@ -426,7 +426,7 @@ public class NotificationServiceImpl implements NotificationService {
      */
     private void addAbonnementNotification(List<NotificationDTO> result, Utilisateurs currentUser) {
         boolean admin = currentUser.getRoles() != null && currentUser.getRoles().stream()
-            .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()));
+            .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "RESPONSABLE".equalsIgnoreCase(r.getRole()));
         if (!admin) return;
         abonnementRepo.findByFarm_Id(currentUser.getFarm().getId()).ifPresent(a ->
             abonnementRappelRepo.findFirstByAbonnement_IdAndDateFinOrderByEnvoyeLeDesc(a.getId(), a.getDateFin())

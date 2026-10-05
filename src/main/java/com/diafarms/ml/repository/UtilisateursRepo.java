@@ -42,8 +42,8 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     List<Utilisateurs> findAllSuperAdmins();
 
     // Destinataires des rappels de fin d'abonnement (voir AbonnementRappelService) : les
-    // ADMIN actifs de la ferme, hors comptes en consultation seule (visiteurs de démo).
-    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND r.role = 'ADMIN' " +
+    // ADMIN et RESPONSABLE actifs de la ferme, hors comptes en consultation seule (visiteurs de démo).
+    @Query("SELECT DISTINCT u FROM Utilisateurs u JOIN u.roles r WHERE u.farm.id = :farmId AND r.role IN ('ADMIN', 'RESPONSABLE') " +
             "AND u.initialisation.removed = false AND u.initialisation.archive = false " +
             "AND (u.consultationSeule IS NULL OR u.consultationSeule = false) " +
             "AND (u.statut IS NULL OR u.statut = true)")

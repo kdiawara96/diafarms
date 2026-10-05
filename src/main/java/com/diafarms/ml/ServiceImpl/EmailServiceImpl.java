@@ -32,10 +32,10 @@ public class EmailServiceImpl implements EmailService {
             // plus souvent classés comme spam par les filtres.
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
-            helper.setSubject("Vos identifiants DiaFarms");
+            helper.setSubject("Vos identifiants Cocorico");
             helper.setText(buildPlainTextBody(fullName, username, password), buildHtmlBody(fullName, username, password));
             mailSender.send(message);
             return true;
@@ -50,10 +50,10 @@ public class EmailServiceImpl implements EmailService {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
-            helper.setSubject("Votre code de réinitialisation DiaFarms");
+            helper.setSubject("Votre code de réinitialisation Cocorico");
             helper.setText(buildResetPlainTextBody(fullName, code), buildResetHtmlBody(fullName, code));
             mailSender.send(message);
             return true;
@@ -68,10 +68,10 @@ public class EmailServiceImpl implements EmailService {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
-            helper.setSubject("Votre mot de passe DiaFarms a été réinitialisé");
+            helper.setSubject("Votre mot de passe Cocorico a été réinitialisé");
             helper.setText(buildAdminResetPlainTextBody(fullName, username, newPassword),
                     buildAdminResetHtmlBody(fullName, username, newPassword));
             mailSender.send(message);
@@ -88,7 +88,7 @@ public class EmailServiceImpl implements EmailService {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
             helper.setSubject("Abonnement à valider : " + farmNom);
@@ -108,10 +108,10 @@ public class EmailServiceImpl implements EmailService {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
-            helper.setSubject("Votre abonnement DiaFarms est activé");
+            helper.setSubject("Votre abonnement Cocorico est activé");
             helper.setText(
                     buildAbonnementValidePlainTextBody(fullName, farmNom, dateFin),
                     buildAbonnementValideHtmlBody(fullName, farmNom, dateFin));
@@ -127,7 +127,7 @@ public class EmailServiceImpl implements EmailService {
         return """
             Bonjour %s,
 
-            Un administrateur a réinitialisé votre mot de passe DiaFarms. Voici vos nouveaux identifiants :
+            Un administrateur a réinitialisé votre mot de passe Cocorico. Voici vos nouveaux identifiants :
 
             Identifiant : %s
             Nouveau mot de passe temporaire : %s
@@ -136,7 +136,7 @@ public class EmailServiceImpl implements EmailService {
 
             Si vous n'êtes pas à l'origine de cette demande, contactez votre administrateur.
 
-            L'équipe DiaFarms
+            L'équipe Cocorico
             """.formatted(fullName, username, newPassword);
     }
 
@@ -145,14 +145,14 @@ public class EmailServiceImpl implements EmailService {
             <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
               <h2 style="color: #15803d;">Mot de passe réinitialisé</h2>
               <p>Bonjour %s,</p>
-              <p>Un administrateur a réinitialisé votre mot de passe DiaFarms. Voici vos nouveaux identifiants :</p>
+              <p>Un administrateur a réinitialisé votre mot de passe Cocorico. Voici vos nouveaux identifiants :</p>
               <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="margin: 4px 0;"><strong>Identifiant :</strong> %s</p>
                 <p style="margin: 4px 0;"><strong>Nouveau mot de passe temporaire :</strong> %s</p>
               </div>
               <p>Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre prochaine connexion.</p>
               <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, contactez votre administrateur.</p>
-              <p>L'équipe DiaFarms</p>
+              <p>L'équipe Cocorico</p>
             </div>
             """.formatted(fullName, username, newPassword);
     }
@@ -167,7 +167,7 @@ public class EmailServiceImpl implements EmailService {
 
             Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre mot de passe restera inchangé.
 
-            L'équipe DiaFarms
+            L'équipe Cocorico
             """.formatted(fullName, code);
     }
 
@@ -182,7 +182,7 @@ public class EmailServiceImpl implements EmailService {
               </div>
               <p>Ce code est valable <strong>5 minutes</strong>.</p>
               <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre mot de passe restera inchangé.</p>
-              <p>L'équipe DiaFarms</p>
+              <p>L'équipe Cocorico</p>
             </div>
             """.formatted(fullName, code);
     }
@@ -191,7 +191,7 @@ public class EmailServiceImpl implements EmailService {
         return """
             Bonjour %s,
 
-            Votre espace DiaFarms a été créé avec succès. Voici vos identifiants de connexion :
+            Votre espace Cocorico a été créé avec succès. Voici vos identifiants de connexion :
 
             Identifiant : %s
             Mot de passe temporaire : %s
@@ -200,23 +200,23 @@ public class EmailServiceImpl implements EmailService {
 
             Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
 
-            L'équipe DiaFarms
+            L'équipe Cocorico
             """.formatted(fullName, username, password);
     }
 
     private String buildHtmlBody(String fullName, String username, String password) {
         return """
             <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
-              <h2 style="color: #15803d;">Bienvenue sur DiaFarms</h2>
+              <h2 style="color: #15803d;">Bienvenue sur Cocorico</h2>
               <p>Bonjour %s,</p>
-              <p>Votre espace DiaFarms a été créé avec succès. Voici vos identifiants de connexion :</p>
+              <p>Votre espace Cocorico a été créé avec succès. Voici vos identifiants de connexion :</p>
               <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="margin: 4px 0;"><strong>Identifiant :</strong> %s</p>
                 <p style="margin: 4px 0;"><strong>Mot de passe temporaire :</strong> %s</p>
               </div>
               <p>Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre première connexion.</p>
               <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
-              <p>L'équipe DiaFarms</p>
+              <p>L'équipe Cocorico</p>
             </div>
             """.formatted(fullName, username, password);
     }
@@ -226,7 +226,7 @@ public class EmailServiceImpl implements EmailService {
         return """
             Bonjour,
 
-            La ferme %s a déclaré avoir payé son abonnement DiaFarms.
+            La ferme %s a déclaré avoir payé son abonnement Cocorico.
 
             Montant : %.0f FCFA
             Périodicité : %s
@@ -235,7 +235,7 @@ public class EmailServiceImpl implements EmailService {
 
             Connecte-toi à ton portail SUPER_ADMIN pour vérifier le paiement et valider.
 
-            L'équipe DiaFarms
+            L'équipe Cocorico
             """.formatted(farmNom, montant, periodicite, moyenPaiement,
                     (reference == null || reference.isBlank()) ? "-" : reference);
     }
@@ -245,7 +245,7 @@ public class EmailServiceImpl implements EmailService {
         return """
             <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
               <h2 style="color: #15803d;">Abonnement à valider</h2>
-              <p>La ferme <strong>%s</strong> a déclaré avoir payé son abonnement DiaFarms.</p>
+              <p>La ferme <strong>%s</strong> a déclaré avoir payé son abonnement Cocorico.</p>
               <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="margin: 4px 0;"><strong>Montant :</strong> %.0f FCFA</p>
                 <p style="margin: 4px 0;"><strong>Périodicité :</strong> %s</p>
@@ -253,7 +253,7 @@ public class EmailServiceImpl implements EmailService {
                 <p style="margin: 4px 0;"><strong>Référence :</strong> %s</p>
               </div>
               <p>Connecte-toi à ton portail SUPER_ADMIN pour vérifier le paiement et valider.</p>
-              <p>L'équipe DiaFarms</p>
+              <p>L'équipe Cocorico</p>
             </div>
             """.formatted(farmNom, montant, periodicite, moyenPaiement,
                     (reference == null || reference.isBlank()) ? "-" : reference);
@@ -263,13 +263,13 @@ public class EmailServiceImpl implements EmailService {
         return """
             Bonjour %s,
 
-            Le paiement de l'abonnement DiaFarms de %s a été validé.
+            Le paiement de l'abonnement Cocorico de %s a été validé.
 
             Votre abonnement est actif jusqu'au %s.
 
             Merci de votre confiance.
 
-            L'équipe DiaFarms
+            L'équipe Cocorico
             """.formatted(fullName, farmNom, dateFin);
     }
 
@@ -278,12 +278,12 @@ public class EmailServiceImpl implements EmailService {
             <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;">
               <h2 style="color: #15803d;">Abonnement activé</h2>
               <p>Bonjour %s,</p>
-              <p>Le paiement de l'abonnement DiaFarms de <strong>%s</strong> a été validé.</p>
+              <p>Le paiement de l'abonnement Cocorico de <strong>%s</strong> a été validé.</p>
               <div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="margin: 4px 0;">Abonnement actif jusqu'au <strong>%s</strong>.</p>
               </div>
               <p>Merci de votre confiance.</p>
-              <p>L'équipe DiaFarms</p>
+              <p>L'équipe Cocorico</p>
             </div>
             """.formatted(fullName, farmNom, dateFin);
     }
@@ -293,12 +293,12 @@ public class EmailServiceImpl implements EmailService {
         try {
             MimeMessage mime = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
-            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);
             helper.setSubject(sujet);
             String bonjour = "Bonjour " + (fullName != null ? fullName : "") + ",";
-            String texte = bonjour + "\n\n" + message + "\n\nL'équipe DiaFarms\n";
+            String texte = bonjour + "\n\n" + message + "\n\nL'équipe Cocorico\n";
             StringBuilder html = new StringBuilder()
                     .append("<div style=\"font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;\">")
                     .append("<h2 style=\"color: #b45309;\">Abonnement</h2>")
@@ -306,7 +306,7 @@ public class EmailServiceImpl implements EmailService {
             for (String paragraphe : message.split("\n\n")) {
                 html.append("<p>").append(escapeHtml(paragraphe).replace("\n", "<br>")).append("</p>");
             }
-            html.append("<p>L'équipe DiaFarms</p></div>");
+            html.append("<p>L'équipe Cocorico</p></div>");
             helper.setText(texte, html.toString());
             mailSender.send(mime);
             return true;
