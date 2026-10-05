@@ -53,6 +53,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     private final EmailService emailService;
     private final OtherService otherService;
     private final LogsServices logs;
+    private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
@@ -354,6 +355,7 @@ public class AbonnementServiceImpl implements AbonnementService {
         abonnement.setPeriodicite(paiement.getPeriodicite());
         abonnement.setStatut(StatutAbonnement.ACTIF);
         abonnementRepo.save(abonnement);
+        accesMobile.invaliderApresCommit(abonnement.getFarm().getId()); // lectures mobiles rétablies tout de suite
 
         paiement.setStatut(StatutPaiementAbonnement.VALIDE);
         paiement.setDateValidation(LocalDateTime.now());

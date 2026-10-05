@@ -128,10 +128,15 @@ public class SecurityConfiguration {
         @Bean
         @Order(2)
         public SecurityFilterChain filterChain(HttpSecurity httpSecurity, com.diafarms.ml.repository.UtilisateursRepo utilisateursRepo,
-                                               com.diafarms.ml.commons.IdempotenceStore idempotenceStore) throws Exception {
+                                               com.diafarms.ml.commons.IdempotenceStore idempotenceStore,
+                                               com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile) throws Exception {
             httpSecurity
                 // Après la lecture du JWT : refuse toute écriture pour un compte en consultation seule.
                 .addFilterAfter(new ConsultationSeuleFilter(utilisateursRepo),
+                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
+                // Ferme suspendue ou expirée après la grâce : lectures de l'appli mobile
+                // refusées, envois de saisies toujours acceptés. Voir MobileAbonnementFilter.
+                .addFilterAfter(new MobileAbonnementFilter(abonnementAccesMobile),
                         org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
                 // Idempotency-Key (appli mobile) : un renvoi de la même saisie rejoue la
                 // première réponse au lieu de créer un doublon. Voir IdempotenceFilter.

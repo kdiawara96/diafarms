@@ -89,6 +89,7 @@ public class AdminConsoleService {
     private final LogsServices logs;
     private final com.diafarms.ml.repository.UtilisateursRepo utilisateursRepo;
     private final com.diafarms.ml.services.EmailService emailService;
+    private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
 
     // ------------------------------------------------------------------ sécurité
 
@@ -456,6 +457,8 @@ public class AdminConsoleService {
     // deux actions simultanées (console, validation d'un paiement) ne peuvent ni perdre une
     // prolongation ni annuler une suspension. Créé d'abord s'il n'existe pas encore.
     private Abonnement abonnementVerrouille(Farm f) {
+        // L'abonnement va changer : les téléphones de la ferme voient le nouvel état sans attendre.
+        accesMobile.invaliderApresCommit(f.getId());
         return abonnementRepo.verrouillerParFerme(f.getId()).orElseGet(() -> {
             abonnementService.abonnementDeLaFerme(f);
             return abonnementRepo.verrouillerParFerme(f.getId())

@@ -24,6 +24,9 @@
 #     nouveau QR et scan serveur refusés ; tout revient au renouvellement ;
 #   - comptes : aucune action sur un compte d'une autre ferme (404) ; même ferme, seul
 #     l'ADMIN agit (403 sinon) ; soi-même pour la page Profil ; jamais le rôle SUPER_ADMIN ;
+#   - option A (si AES_SECRET_KEY ou ENV_FILE) : téléphone d'une ferme bloquée, avec le vrai
+#     jeton de QR : lectures refusées (403 + message), alertes = le message, saisies
+#     acceptées et enregistrées ; grâce et web inchangés ; suspension ; réactivation ;
 #   - tableau de bord : +2 fermes, +2 nouvelles ce mois, +480 sujets vivants, +1 essai ;
 #   - liste des fermes : propriétaire, utilisateurs, projets en cours, sujets vivants,
 #     dernière activité, statut ;
@@ -618,6 +621,92 @@ if [ -n "$PERS_X" ]; then
   TOKEN="$TOKEN_Y"; api PUT "/personnel/update/$PERS_X" '{"nom":"Pirate"}'
   check "ADMIN de Y : modifier un employé de X refusé" "code >= 400"
   check_eq "employé de X intact" "Employé X" "$(psql_run "select nom from personnel where unique_id='$PERS_X'")"
+fi
+
+echo "--- option A : téléphone déjà connecté d'une ferme bloquée"
+# Le téléphone (APK 1.34) utilise le jeton de son QR (claim type = QR_CODE) et n'envoie pas
+# d'en-tête X-Client-Type. On déchiffre un vrai QR (clé AES_SECRET_KEY, ou ENV_FILE) pour
+# envoyer exactement ce jeton.
+AES_KEY="${AES_SECRET_KEY:-}"
+if [ -z "$AES_KEY" ] && [ -n "${ENV_FILE:-}" ] && [ -f "$ENV_FILE" ]; then
+  AES_KEY="$(grep -E '^AES_SECRET_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"'"'"'\r')"
+fi
+qr_jeton() { # $1=QR chiffré -> jeton JWT du QR
+  AES_KEY="$AES_KEY" python3 - "$1" <<'PY'
+import base64, json, os, sys
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+k = os.environ["AES_KEY"].strip().encode()
+k = (k + b"\0" * 32)[:32]
+raw = base64.b64decode(sys.argv[1])
+d = Cipher(algorithms.AES(k), modes.CBC(raw[:16])).decryptor()
+p = d.update(raw[16:]) + d.finalize()
+u = padding.PKCS7(128).unpadder()
+print(json.loads((u.update(p) + u.finalize()).decode())["token"])
+PY
+}
+mob() { # $1=METHOD $2=chemin $3=jeton $4=JSON ; appel « téléphone » : jeton QR, sans X-Client-Type
+  curl -s -o "$TMP/body" -w '%{http_code}' -X "$1" "$BASE$2" -H "Authorization: Bearer $3" \
+    -H 'Content-Type: application/json' -H "Idempotency-Key: opta-$SUFFIXE-$RANDOM$RANDOM" ${4:+-d "$4"} > "$TMP/code"
+}
+if [ -z "$AES_KEY" ]; then
+  echo "(AES_SECRET_KEY ou ENV_FILE non défini : vérifications de l'option A ignorées)"
+else
+  TOKEN="$TOKEN_Y"; api POST /qrcode/generate "{\"uniqueId\":\"$UID_COMPTA_Y\",\"duration\":\"30d\"}"
+  ok_cree "QR du COMPTABLE de Y"
+  JWT_QR_COMPTA="$(qr_jeton "$(jval "d['data']['encryptedQr']")")"
+  api POST /qrcode/generate "{\"uniqueId\":\"$UID_ADMIN_Y\",\"duration\":\"30d\"}"
+  ok_cree "QR de l'ADMIN de Y"
+  JWT_QR_ADMIN="$(qr_jeton "$(jval "d['data']['encryptedQr']")")"
+  python3 -c "import base64,json,sys; p=sys.argv[1].split('.')[1]; p+='='*(-len(p)%4); sys.exit(0 if json.loads(base64.urlsafe_b64decode(p)).get('type')=='QR_CODE' else 1)" "$JWT_QR_COMPTA" \
+    && check_eq "le jeton déchiffré est bien un jeton de QR" "ok" "ok" || check_eq "le jeton déchiffré est bien un jeton de QR" "ok" "non"
+
+  # Grâce : tout fonctionne (ADMIN de Y, jamais lu par le téléphone avant : pas de cache).
+  if [ "$GRACE" -ge 1 ]; then
+    psql_run "update abonnements set date_fin = current_date - 1 where farm_id=$FARM_Y" >/dev/null
+    mob GET /projets/select "$JWT_QR_ADMIN"; check "grâce : lecture du téléphone OK" "code == 200"
+    mob GET /notifications/list "$JWT_QR_ADMIN"; check "grâce : alertes normales (pas de message de blocage)" "code == 200 and 'plus mises à jour' not in str(d)"
+  fi
+
+  # Expirée après la grâce (le COMPTABLE n'a encore rien lu : pas de cache).
+  psql_run "update abonnements set date_fin = current_date - $((GRACE + 1)) where farm_id=$FARM_Y" >/dev/null
+  for g in /projets/select /farm-settings /clients/select /ventes-oeufs/stock /magasins/list?type=VENTE /auth/me; do
+    mob GET "$g" "$JWT_QR_COMPTA"
+    check "expirée : lecture $g refusée (403) avec le message" "code == 403 and 'plus mises à jour' in d['errors'][0] and 'consultation seule' not in str(d).lower()"
+  done
+  mob GET /notifications/list "$JWT_QR_COMPTA"
+  check "expirée : /notifications/list = une alerte CRITIQUE avec le message" \
+    "code == 200 and len(d['data']) == 1 and d['data'][0]['level'] == 'CRITIQUE' and d['data'][0]['read'] is False and 'rien n\\'est perdu' in d['data'][0]['message']"
+  mob GET "/notifications/projet/xyz" "$JWT_QR_COMPTA"
+  check "expirée : alertes d'un projet = la même alerte (carte de l'accueil)" "code == 200 and d['data'][0]['key'].startswith('abonnement-bloque-')"
+  mob GET /abonnements/moi "$JWT_QR_COMPTA"; check "expirée : /abonnements/moi reste lisible" "code == 200"
+  NB_CLIENTS_AVANT="$(psql_run "select count(*) from clients where farm_id=$FARM_Y")"
+  mob POST /clients/create "$JWT_QR_ADMIN" "{\"nom\":\"Client tel $LETTRES\",\"telephone\":\"66$(python3 -c 'import random; print(random.randint(100000, 999999))')\"}"
+  check "expirée : saisie client du téléphone acceptée" "code in (200, 201)"
+  check_eq "expirée : client enregistré" "$((NB_CLIENTS_AVANT + 1))" "$(psql_run "select count(*) from clients where farm_id=$FARM_Y")"
+  mob POST /transactions/create "$JWT_QR_COMPTA" "{\"type\":\"ENTREE\",\"commun\":true,\"categorie\":\"Don\",\"description\":\"Saisie téléphone $SUFFIXE\",\"montant\":500,\"date\":\"$AUJ\"}"
+  check "expirée : saisie de transaction du téléphone acceptée" "code in (200, 201)"
+  check_eq "expirée : transaction enregistrée" "1" "$(psql_run "select count(*) from transactions where description='Saisie téléphone $SUFFIXE'")"
+  mob PUT "/notifications/abonnement-bloque-$AUJ/read" "$JWT_QR_COMPTA"
+  check "expirée : marquer l'alerte comme lue accepté" "code == 200"
+  curl -s -o "$TMP/body" -w '%{http_code}' "$BASE/projets/select" -H "Authorization: Bearer $TOKEN_COMPTA_Y" -H 'X-Client-Type: mobile' > "$TMP/code"
+  check "expirée : jeton de connexion + X-Client-Type mobile, lecture refusée aussi" "code == 403"
+  TOKEN="$TOKEN_Y"; api GET /projets/select
+  check "expirée : application web non touchée par ce filtre" "code == 200"
+
+  # Suspension (console : état mis à jour tout de suite pour les téléphones).
+  TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_Y/suspendre" '{"motif":"Option A"}'
+  psql_run "update abonnements set date_fin = current_date + 20 where farm_id=$FARM_Y" >/dev/null
+  mob GET /projets/select "$JWT_QR_ADMIN"
+  check "suspendue : lecture refusée avec le message de suspension" "code == 403 and 'suspendu' in d['errors'][0]"
+  mob POST /clients/create "$JWT_QR_ADMIN" "{\"nom\":\"Client susp $LETTRES\",\"telephone\":\"67$(python3 -c 'import random; print(random.randint(100000, 999999))')\"}"
+  check "suspendue : saisie du téléphone acceptée" "code in (200, 201)"
+
+  # Renouvellement : lectures rétablies tout de suite (cache vidé par la console).
+  api POST "/admin/fermes/$UID_Y/reactiver"
+  mob GET /projets/select "$JWT_QR_ADMIN"; check "réactivée : lecture du téléphone rétablie tout de suite" "code == 200"
+  mob GET /projets/select "$JWT_QR_COMPTA"; check "réactivée : lecture rétablie aussi pour le COMPTABLE" "code == 200"
+  mob GET /notifications/list "$JWT_QR_COMPTA"; check "réactivée : plus d'alerte de blocage" "code == 200 and 'plus mises à jour' not in str(d)"
 fi
 
 echo
