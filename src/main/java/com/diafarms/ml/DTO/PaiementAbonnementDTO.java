@@ -34,6 +34,10 @@ public class PaiementAbonnementDTO {
     // directement par le SUPER_ADMIN) plutôt que déclaré par la ferme.
     private String farmUniqueId;
     private boolean horsApplication;
+    // Montant attendu et poules comptées au moment de la déclaration (null avant le prix
+    // par poule, et pour un paiement saisi par le SUPER_ADMIN).
+    private Double montantAttendu;
+    private Integer poulesComptees;
 
     // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
     // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
@@ -71,6 +75,8 @@ public class PaiementAbonnementDTO {
                 .farmUniqueId(p.getAbonnement() != null && p.getAbonnement().getFarm() != null
                         ? p.getAbonnement().getFarm().getUniqueId() : null)
                 .horsApplication(Boolean.TRUE.equals(p.getHorsApplication()))
+                .montantAttendu(p.getMontantAttendu())
+                .poulesComptees(p.getPoulesComptees())
                 .build();
     }
 }

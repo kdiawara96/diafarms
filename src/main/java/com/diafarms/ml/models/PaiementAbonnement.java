@@ -90,6 +90,16 @@ public class PaiementAbonnement {
     @Column(name = "hors_application")
     private Boolean horsApplication;
 
+    // Montant attendu au moment de la déclaration (tarif de la ferme ce jour-là, voir
+    // AbonnementTarifService) et poules comptées utilisées pour ce calcul : l'équipe voit
+    // ce que la ferme devait payer. Nullables : null pour les paiements d'avant le prix
+    // par poule et pour ceux saisis par le SUPER_ADMIN.
+    @Column(name = "montant_attendu")
+    private Double montantAttendu;
+
+    @Column(name = "poules_comptees")
+    private Integer poulesComptees;
+
     @Embedded
     private Initialisation initialisation;
 }

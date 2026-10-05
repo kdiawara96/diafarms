@@ -203,7 +203,14 @@ public class MainOeuvreService {
                 .map(com.diafarms.ml.models.OccupationBatiment::getDateSortie)
                 .filter(java.util.Objects::nonNull)
                 .max(LocalDate::compareTo).orElse(null);
-        return liberation != null ? liberation : p.getFinPrevue();
+        return finEffective(true, liberation, p.getFinPrevue());
+    }
+
+    // Même règle à partir de valeurs déjà lues en SQL (AbonnementTarifService, toutes
+    // les fermes en une requête).
+    static LocalDate finEffective(boolean cloture, LocalDate liberation, LocalDate finPrevue) {
+        if (!cloture) return null;
+        return liberation != null ? liberation : finPrevue;
     }
 
     // Poids de chaque projet en cours sur le mois : ses sujets vivants à la fin du mois.

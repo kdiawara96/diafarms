@@ -38,7 +38,13 @@ public final class AdminConsoleDTO {
             LocalDateTime derniereActivite,
             double totalPaye,
             boolean paiementEnAttente,
-            boolean exclureStatistiques) {}
+            boolean exclureStatistiques,
+            // Tarif actuel (voir AbonnementTarifService) : poules comptées sur 30 jours, prix
+            // du mois et de l'an, tarif spécial ou non.
+            int poulesComptees,
+            double prixMensuel,
+            double prixAnnuel,
+            boolean prixFixe) {}
 
     public record MoisValeur(String mois, double montant, long nombre) {}
 
@@ -97,7 +103,9 @@ public final class AdminConsoleDTO {
             List<PaiementAbonnementDTO> paiements,
             List<RappelEnvoye> rappels,
             List<Note> notes,
-            List<JournalEntree> journal) {}
+            List<JournalEntree> journal,
+            // Détail du calcul du prix et tarif spécial éventuel.
+            AbonnementTarifDTO tarif) {}
 
     public record Finances(
             int annee,

@@ -100,6 +100,14 @@ public class AdminConsoleController {
         return repondre("Statistiques mises à jour", () -> service.statistiques(farmUniqueId, request));
     }
 
+    // Tarif spécial (prix fixe par mois) : {"prixMensuelFixe": 7500, "motif": "..."} ;
+    // {"prixMensuelFixe": null} pour revenir au prix par poule.
+    @PostMapping("/fermes/{farmUniqueId}/prix-fixe")
+    public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> prixFixe(@PathVariable String farmUniqueId,
+            @RequestBody(required = false) com.diafarms.ml.request.others.AdminPrixFixeRequest request) {
+        return repondre("Tarif mis à jour", () -> service.prixFixe(farmUniqueId, request));
+    }
+
     @GetMapping("/finances")
     public ResponseEntity<ApiResponse<AdminConsoleDTO.Finances>> finances(@RequestParam(required = false) Integer annee) {
         return repondre("Finances", () -> service.finances(annee));

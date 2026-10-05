@@ -70,6 +70,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final CollecteOeufsRepo collecteOeufsRepo;
     private final com.diafarms.ml.repository.AbonnementRepo abonnementRepo;
     private final com.diafarms.ml.repository.AbonnementConfigRepo abonnementConfigRepo;
+    private final AbonnementTarifService abonnementTarifService;
     private final com.diafarms.ml.repository.AbonnementRappelRepo abonnementRappelRepo;
 
     // Un rôle est son SEUL rôle (pas de cumul) : un compte qui cumule les rôles garde
@@ -431,14 +432,20 @@ public class NotificationServiceImpl implements NotificationService {
         abonnementRepo.findByFarm_Id(currentUser.getFarm().getId()).ifPresent(a ->
             abonnementRappelRepo.findFirstByAbonnement_IdAndDateFinOrderByEnvoyeLeDesc(a.getId(), a.getDateFin())
                 .ifPresent(rappel -> {
+                    com.diafarms.ml.models.AbonnementConfig config = abonnementConfigRepo.findFirstByOrderByIdAsc();
                     com.diafarms.ml.commons.AbonnementEcheance.Etat etat = com.diafarms.ml.commons.AbonnementEcheance
-                        .calculer(a, abonnementConfigRepo.findFirstByOrderByIdAsc(), LocalDate.now());
+                        .calculer(a, config, LocalDate.now());
                     if (etat.bloque()) return; // le web est bloqué (expiré ou suspendu), l'écran de blocage suffit
+                    // Montant du renouvellement (prix par poule ou tarif spécial ; minimum si le
+                    // calcul échoue, voir AbonnementTarifService).
+                    com.diafarms.ml.DTO.AbonnementTarifDTO tarif = abonnementTarifService.tarifFerme(
+                        currentUser.getFarm().getId(), a, config);
                     result.add(NotificationDTO.builder()
                         .key("abonnement-" + rappel.getType().toLowerCase() + "-" + a.getDateFin())
                         .type("ABONNEMENT")
                         .level(etat.enGrace() ? "CRITIQUE" : "WARNING")
-                        .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat))
+                        .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat) + " "
+                            + com.diafarms.ml.commons.AbonnementTarif.phraseMontant(tarif))
                         .actionPath("/abonnement")
                         .build());
                 }));

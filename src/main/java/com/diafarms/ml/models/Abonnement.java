@@ -82,6 +82,18 @@ public class Abonnement {
     @Column(name = "suspendu_le")
     private java.time.LocalDateTime suspenduLe;
 
+    // Tarif spécial (prix fixe par mois) décidé par le SUPER_ADMIN depuis la console, par
+    // exemple pour garder un premier client à son prix : remplace la règle par poule (voir
+    // commons/AbonnementTarif). Colonnes nullables : null = prix par poule normal.
+    @Column(name = "prix_mensuel_fixe")
+    private Double prixMensuelFixe;
+
+    @Column(name = "motif_prix_fixe", length = 300)
+    private String motifPrixFixe;
+
+    @Column(name = "prix_fixe_le")
+    private java.time.LocalDateTime prixFixeLe;
+
     @Embedded
     private Initialisation initialisation;
 

@@ -41,6 +41,9 @@ public class AbonnementDTO {
     private boolean suspendu;
     private String motifSuspension;
     private java.time.LocalDateTime suspenduLe;
+    // Prix de la ferme (prix par poule, ou tarif spécial) : ce qu'elle paiera au prochain
+    // renouvellement. Voir AbonnementTarifService. Champ ajouté, rien n'a été retiré.
+    private AbonnementTarifDTO tarif;
 
     public static AbonnementDTO of(Abonnement a, AbonnementEcheance.Etat etat, PaiementAbonnementDTO paiementEnAttente) {
         AbonnementDTO dto = of(a, etat.statut(), etat.enGrace(), etat.joursRestants(), paiementEnAttente);

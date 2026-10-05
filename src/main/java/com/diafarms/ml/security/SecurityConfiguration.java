@@ -115,6 +115,8 @@ public class SecurityConfiguration {
                     "/diafarms/api/v1/auth/verify-reset-code",
                     "/diafarms/api/v1/auth/reset-password",
                     "/diafarms/api/v1/users/create",
+                    // Simulation du prix d'abonnement (page d'inscription, FAQ) : aucune donnée de ferme.
+                    "/diafarms/api/v1/abonnements/tarif-simulation",
                     "/diafarms/api/v1/test"
                 )
                 .csrf(AbstractHttpConfigurer::disable)

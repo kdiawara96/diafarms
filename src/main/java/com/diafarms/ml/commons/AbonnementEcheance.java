@@ -108,10 +108,14 @@ public final class AbonnementEcheance {
 
     // Prix de l'abonnement : toujours en FCFA (jamais la devise de la ferme).
     public static String fcfa(Double montant) {
+        return nombre(montant == null ? 0 : Math.round(montant)) + " FCFA";
+    }
+
+    // 1350 -> "1 350". Espace normale (et non l'espace fine insécable du format
+    // français), lisible partout, y compris dans les emails en texte brut.
+    public static String nombre(long n) {
         NumberFormat nf = NumberFormat.getIntegerInstance(Locale.FRANCE);
-        // Espace normale (et non l'espace fine insécable du format français), lisible
-        // partout, y compris dans les emails en texte brut.
-        return nf.format(montant == null ? 0 : Math.round(montant)).replace(' ', ' ').replace(' ', ' ') + " FCFA";
+        return nf.format(n).replace('\u202f', ' ').replace('\u00a0', ' ');
     }
 
     private static String jours(long n) {
@@ -148,7 +152,9 @@ public final class AbonnementEcheance {
     // Corps complet (email) : quand, combien, comment renouveler. Pas de paiement en
     // ligne pour l'instant : on déclare le paiement sur la page Abonnement (« J'ai
     // payé »), il est ensuite validé par l'équipe.
-    public static String messageComplet(Etat e, String farmNom, AbonnementConfig config, boolean paiementEnAttente) {
+    // tarif : prix du renouvellement (AbonnementTarifService), null = pas de ligne de prix.
+    public static String messageComplet(Etat e, String farmNom, com.diafarms.ml.DTO.AbonnementTarifDTO tarif,
+            boolean paiementEnAttente) {
         StringBuilder sb = new StringBuilder();
         String sujet = e.estEssai() ? "La période d'essai de la ferme " + farmNom
                 : "L'abonnement de la ferme " + farmNom;
@@ -169,9 +175,8 @@ public final class AbonnementEcheance {
             sb.append("Vous avez déjà déclaré un paiement : il est en cours de vérification. "
                     + "Vous n'avez rien d'autre à faire.\n\n");
         } else {
-            if (config != null && config.getPrixMensuel() != null && config.getPrixAnnuel() != null) {
-                sb.append("Prix : ").append(fcfa(config.getPrixMensuel())).append(" par mois, ou ")
-                  .append(fcfa(config.getPrixAnnuel())).append(" par an.\n\n");
+            if (tarif != null) {
+                sb.append(AbonnementTarif.phraseMontant(tarif)).append("\n\n");
             }
             sb.append("Pour renouveler : envoyez le montant par mobile money au +223 83 91 86 99, puis ouvrez la page "
                     + "Abonnement dans Cocorico et cliquez sur « J'ai payé ». Votre paiement sera vérifié puis validé.\n"

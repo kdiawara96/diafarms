@@ -11,4 +11,9 @@ public class AbonnementConfigUpdateRequest {
     private Integer dureeEssaiJours;
     private Integer dureeGraceHeures; // historique, plus utilisé pour le calcul
     private Integer delaiGraceJours;
+    // Prix par poule (voir commons/AbonnementTarif).
+    private Double prixParPoule;
+    private Double prixMinimumMensuel;
+    private Integer moisOffertsAnnuel;
+    private Integer arrondi;
 }

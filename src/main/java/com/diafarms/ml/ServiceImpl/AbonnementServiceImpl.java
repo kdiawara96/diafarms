@@ -54,6 +54,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     private final OtherService otherService;
     private final LogsServices logs;
     private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
+    private final AbonnementTarifService tarifService;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
@@ -214,7 +215,9 @@ public class AbonnementServiceImpl implements AbonnementService {
                 .findByAbonnement_IdAndStatut(abonnement.getId(), StatutPaiementAbonnement.EN_ATTENTE)
                 .orElse(null);
 
-        return AbonnementDTO.of(abonnement, effectif, PaiementAbonnementDTO.fromEntity(enAttente));
+        AbonnementDTO dto = AbonnementDTO.of(abonnement, effectif, PaiementAbonnementDTO.fromEntity(enAttente));
+        dto.setTarif(tarifService.tarifFerme(farm.getId(), abonnement, config));
+        return dto;
     }
 
     @Override
@@ -229,9 +232,18 @@ public class AbonnementServiceImpl implements AbonnementService {
         for (PaiementAbonnement p : paiementAbonnementRepo.findAllAvecFermeParStatut(StatutPaiementAbonnement.EN_ATTENTE)) {
             enAttente.putIfAbsent(p.getAbonnement().getId(), p);
         }
-        return abonnementRepo.findAllAvecFerme().stream()
-                .map(a -> AbonnementDTO.of(a, AbonnementEcheance.calculer(a, config, aujourdHui),
-                        PaiementAbonnementDTO.fromEntity(enAttente.get(a.getId()))))
+        List<Abonnement> abonnements = abonnementRepo.findAllAvecFerme();
+        java.util.Map<Long, Abonnement> parFerme = new java.util.HashMap<>();
+        for (Abonnement a : abonnements) parFerme.put(a.getFarm().getId(), a);
+        // Tarifs de toutes les fermes en une fois (voir AbonnementTarifService).
+        java.util.Map<Long, com.diafarms.ml.DTO.AbonnementTarifDTO> tarifs = tarifService.tarifsFermes(null, parFerme, config);
+        return abonnements.stream()
+                .map(a -> {
+                    AbonnementDTO dto = AbonnementDTO.of(a, AbonnementEcheance.calculer(a, config, aujourdHui),
+                            PaiementAbonnementDTO.fromEntity(enAttente.get(a.getId())));
+                    dto.setTarif(tarifs.get(a.getFarm().getId()));
+                    return dto;
+                })
                 .toList();
     }
 
@@ -278,13 +290,19 @@ public class AbonnementServiceImpl implements AbonnementService {
             throw new IllegalArgumentException("Une déclaration de paiement est déjà en attente de validation.");
         }
 
+        // Montant = tarif de la ferme AUJOURD'HUI (prix par poule ou tarif spécial), jamais
+        // saisi par la ferme : la période déjà payée garde son prix, le nouveau prix ne
+        // s'applique qu'à ce renouvellement.
         AbonnementConfig config = getOuCreerConfig();
-        double montant = periodicite == Periodicite.ANNUEL ? config.getPrixAnnuel() : config.getPrixMensuel();
+        com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(currentUser.getFarm().getId(), abonnement, config);
+        double montant = periodicite == Periodicite.ANNUEL ? tarif.prixAnnuel() : tarif.prixMensuel();
 
         PaiementAbonnement paiement = new PaiementAbonnement();
         paiement.setUniqueId(UUID.randomUUID().toString());
         paiement.setAbonnement(abonnement);
         paiement.setMontant(montant);
+        paiement.setMontantAttendu(montant);
+        paiement.setPoulesComptees(tarif.poulesComptees());
         paiement.setPeriodicite(periodicite);
         paiement.setMoyenPaiement(request.getMoyenPaiement());
         paiement.setReference(request.getReference());
@@ -424,6 +442,23 @@ public class AbonnementServiceImpl implements AbonnementService {
             }
             config.setDelaiGraceJours(request.getDelaiGraceJours());
         }
+        // Prix par poule : toutes les vérifications avant la moindre modification.
+        if (request.getPrixParPoule() != null && (request.getPrixParPoule() <= 0 || request.getPrixParPoule() > 10000)) {
+            throw new IllegalArgumentException("Le prix par poule doit être supérieur à 0 et au plus 10 000 FCFA.");
+        }
+        if (request.getPrixMinimumMensuel() != null && (request.getPrixMinimumMensuel() < 0 || request.getPrixMinimumMensuel() > 10_000_000)) {
+            throw new IllegalArgumentException("Le prix minimum par mois doit être compris entre 0 et 10 000 000 FCFA.");
+        }
+        if (request.getMoisOffertsAnnuel() != null && (request.getMoisOffertsAnnuel() < 0 || request.getMoisOffertsAnnuel() > 11)) {
+            throw new IllegalArgumentException("Les mois offerts sur l'année doivent être compris entre 0 et 11.");
+        }
+        if (request.getArrondi() != null && (request.getArrondi() < 1 || request.getArrondi() > 100_000)) {
+            throw new IllegalArgumentException("L'arrondi doit être compris entre 1 et 100 000 FCFA.");
+        }
+        if (request.getPrixParPoule() != null) config.setPrixParPoule(request.getPrixParPoule());
+        if (request.getPrixMinimumMensuel() != null) config.setPrixMinimumMensuel(request.getPrixMinimumMensuel());
+        if (request.getMoisOffertsAnnuel() != null) config.setMoisOffertsAnnuel(request.getMoisOffertsAnnuel());
+        if (request.getArrondi() != null) config.setArrondi(request.getArrondi());
         AbonnementConfig saved = configRepo.save(config);
         logs.addLogs(currentUser.getId(), saved.getId(), "AbonnementConfig", "Mise à jour de la configuration des abonnements");
         return AbonnementConfigDTO.fromEntity(saved);

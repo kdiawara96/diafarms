@@ -169,7 +169,7 @@ grace 5
 fin "$ABO_A" 7
 rappels false
 check "simulation : rappel J7 prévu pour A" "code == 200 and [r['type'] for r in ($R)('$UID_A')] == ['J7'] and not ($R)('$UID_A')[0]['envoye']"
-check "simulation : message du rappel J7 (date, prix, page Abonnement)" "'se termine le' in ($R)('$UID_A')[0]['message'] and '15 000 FCFA par mois' in ($R)('$UID_A')[0]['message'] and 'J\\'ai payé' in ($R)('$UID_A')[0]['message'] and '5 jours pour renouveler' in ($R)('$UID_A')[0]['message']"
+check "simulation : message du rappel J7 (date, prix par poule, page Abonnement)" "'se termine le' in ($R)('$UID_A')[0]['message'] and 'Montant : 5 000 FCFA par mois (0 poule, prix minimum) ou 50 000 FCFA par an.' in ($R)('$UID_A')[0]['message'] and 'J\\'ai payé' in ($R)('$UID_A')[0]['message'] and '5 jours pour renouveler' in ($R)('$UID_A')[0]['message']"
 check "simulation : destinataire = l'ADMIN de A seulement" "($R)('$UID_A')[0]['destinataires'] == ['$EMAIL_A']"
 check "simulation : rien pour la ferme témoin B" "($R)('$UID_B') == []"
 check_eq "simulation : rien enregistré" "0" "$(nb_rappels "$ABO_A")"

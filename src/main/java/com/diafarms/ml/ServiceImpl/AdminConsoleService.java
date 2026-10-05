@@ -90,6 +90,7 @@ public class AdminConsoleService {
     private final com.diafarms.ml.repository.UtilisateursRepo utilisateursRepo;
     private final com.diafarms.ml.services.EmailService emailService;
     private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
+    private final AbonnementTarifService tarifService;
 
     // ------------------------------------------------------------------ sécurité
 
@@ -235,7 +236,8 @@ public class AdminConsoleService {
     }
 
     // Une ligne par ferme, avec son abonnement (et son état du jour) s'il existe.
-    private record Ligne(Farm farm, Abonnement abonnement, AbonnementEcheance.Etat etat, AdminConsoleDTO.Ferme dto) {}
+    private record Ligne(Farm farm, Abonnement abonnement, AbonnementEcheance.Etat etat, AdminConsoleDTO.Ferme dto,
+            com.diafarms.ml.DTO.AbonnementTarifDTO tarif) {}
 
     private List<Ligne> lignes() {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
@@ -243,16 +245,21 @@ public class AdminConsoleService {
         Map<Long, Abonnement> parFerme = new HashMap<>();
         for (Abonnement a : abonnementRepo.findAllAvecFerme()) parFerme.put(a.getFarm().getId(), a);
         Agregats ag = agregats(null);
+        // Tarif de toutes les fermes : 2 requêtes au total (voir AbonnementTarifService).
+        Map<Long, com.diafarms.ml.DTO.AbonnementTarifDTO> tarifs = tarifService.tarifsFermes(null, parFerme, config);
         List<Ligne> res = new ArrayList<>();
         for (Farm f : farmsRepo.findAll()) {
             Abonnement a = parFerme.get(f.getId());
             AbonnementEcheance.Etat etat = a != null ? AbonnementEcheance.calculer(a, config, auj) : null;
-            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag)));
+            com.diafarms.ml.DTO.AbonnementTarifDTO t = tarifs.get(f.getId());
+            if (t == null) t = tarifService.tarifSansPoule(a, config);
+            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag, t), t));
         }
         return res;
     }
 
-    private AdminConsoleDTO.Ferme versDto(Farm f, Abonnement a, AbonnementEcheance.Etat etat, Agregats ag) {
+    private AdminConsoleDTO.Ferme versDto(Farm f, Abonnement a, AbonnementEcheance.Etat etat, Agregats ag,
+            com.diafarms.ml.DTO.AbonnementTarifDTO tarif) {
         Long id = f.getId();
         Proprio p = ag.proprios().get(id);
         LocalDateTime inscription = ag.premiereInscription().get(id);
@@ -283,7 +290,11 @@ public class AdminConsoleService {
                 max(ag.dernierLog().get(id), ag.derniereConnexion().get(id)),
                 ag.totalPaye().getOrDefault(id, 0.0),
                 Boolean.TRUE.equals(ag.enAttente().get(id)),
-                exclue(f));
+                exclue(f),
+                tarif.poulesComptees(),
+                tarif.prixMensuel(),
+                tarif.prixAnnuel(),
+                tarif.prixFixe());
     }
 
     // ------------------------------------------------------------------ lecture
@@ -369,26 +380,16 @@ public class AdminConsoleService {
             if (e.getKey().startsWith(String.valueOf(auj.getYear()))) revAnnee += e.getValue()[0];
         }
 
-        // Revenu mensuel estimé : fermes payantes non bloquées (actives ou en grâce), au
-        // montant de leur dernier paiement validé (annuel / 12), à défaut au prix actuel.
-        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
-        Map<Long, double[]> dernierPaiement = new HashMap<>(); // abonnement_id -> [montant, annuel?1:0]
-        jdbc.query("SELECT DISTINCT ON (abonnement_id) abonnement_id, montant, periodicite FROM paiements_abonnement "
-                + "WHERE statut = 'VALIDE' ORDER BY abonnement_id, date_validation DESC NULLS LAST, id DESC", rs -> {
-                    dernierPaiement.put(rs.getLong(1), new double[] { rs.getDouble(2), "ANNUEL".equals(rs.getString(3)) ? 1 : 0 });
-                });
+        // Revenu mensuel estimé : fermes payantes non bloquées (actives ou en grâce), chacune
+        // à son tarif ACTUEL (prix par poule ou tarif spécial, voir AbonnementTarifService),
+        // formule annuelle comptée / 12.
         double mrr = 0;
         for (Ligne li : lignes) {
             String st = li.dto().statut();
             if (li.abonnement() == null || !("ACTIF".equals(st) || "GRACE".equals(st)) || li.etat().estEssai()) continue;
-            double[] dp = dernierPaiement.get(li.abonnement().getId());
-            if (dp != null && dp[0] > 0) {
-                mrr += dp[1] == 1 ? dp[0] / 12.0 : dp[0];
-            } else if (config != null) {
-                mrr += li.abonnement().getPeriodicite() == Periodicite.ANNUEL
-                        ? (config.getPrixAnnuel() == null ? 0 : config.getPrixAnnuel() / 12.0)
-                        : (config.getPrixMensuel() == null ? 0 : config.getPrixMensuel());
-            }
+            mrr += li.abonnement().getPeriodicite() == Periodicite.ANNUEL
+                    ? li.tarif().prixAnnuel() / 12.0
+                    : li.tarif().prixMensuel();
         }
 
         Long attente = jdbc.queryForObject("SELECT COUNT(*) FROM paiements_abonnement WHERE statut = 'EN_ATTENTE'", Long.class);
@@ -409,9 +410,10 @@ public class AdminConsoleService {
         superAdmin();
         Farm f = fermeOu400(farmUniqueId);
         Abonnement a = abonnementRepo.findByFarm_Id(f.getId()).orElse(null);
-        AbonnementEcheance.Etat etat = a != null
-                ? AbonnementEcheance.calculer(a, configRepo.findFirstByOrderByIdAsc(), LocalDate.now()) : null;
-        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats(f.getId()));
+        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
+        AbonnementEcheance.Etat etat = a != null ? AbonnementEcheance.calculer(a, config, LocalDate.now()) : null;
+        com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(f.getId(), a, config);
+        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats(f.getId()), tarif);
 
         // Utilisateurs de la ferme, rôles groupés en une requête.
         Map<Long, AdminConsoleDTO.Utilisateur> users = new LinkedHashMap<>();
@@ -447,7 +449,7 @@ public class AdminConsoleService {
 
         List<AdminConsoleDTO.JournalEntree> journal = journal(null, null, null, f.getUniqueId(), 0, 50).data();
 
-        return new AdminConsoleDTO.FermeDetail(dto, new ArrayList<>(users.values()), paiements, rappels, notes, journal);
+        return new AdminConsoleDTO.FermeDetail(dto, new ArrayList<>(users.values()), paiements, rappels, notes, journal, tarif);
     }
 
     // ------------------------------------------------------------------ actions
@@ -703,6 +705,35 @@ public class AdminConsoleService {
         return detailFerme(farmUniqueId);
     }
 
+    // Tarif spécial (prix fixe par mois) d'une ferme, ou son retrait (prixMensuelFixe null).
+    // Remplace le prix par poule à partir du prochain renouvellement : la période déjà
+    // payée ne change pas. Journalisé sans le montant ni le motif (voir journaliser).
+    @Transactional
+    public AdminConsoleDTO.FermeDetail prixFixe(String farmUniqueId, com.diafarms.ml.request.others.AdminPrixFixeRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        Double prix = req == null ? null : req.getPrixMensuelFixe();
+        String motif = req == null || req.getMotif() == null ? "" : req.getMotif().trim();
+        if (prix != null) {
+            if (prix.isNaN() || prix <= 0 || prix > 10_000_000) {
+                throw new IllegalArgumentException("Le prix fixe doit être supérieur à 0 et au plus 10 000 000 FCFA par mois.");
+            }
+            if (motif.isEmpty()) throw new IllegalArgumentException("Indiquez la raison du tarif spécial.");
+            if (motif.length() > 300) throw new IllegalArgumentException("Raison trop longue (300 caractères au plus).");
+        }
+        Abonnement a = abonnementVerrouille(f);
+        if (prix == null && a.getPrixMensuelFixe() == null) {
+            throw new IllegalArgumentException("Cette ferme n'a pas de tarif spécial.");
+        }
+        a.setPrixMensuelFixe(prix == null ? null : (double) Math.round(prix));
+        a.setMotifPrixFixe(prix == null ? null : motif);
+        a.setPrixFixeLe(prix == null ? null : LocalDateTime.now());
+        abonnementRepo.save(a);
+        journaliser(sa, f, prix == null ? "Tarif spécial retiré pour la ferme " + nom(f) + " (retour au prix par poule)"
+                : "Tarif spécial fixé pour la ferme " + nom(f));
+        return detailFerme(farmUniqueId);
+    }
+
     // Exclure une ferme des statistiques (ou l'y réintégrer). Journalisé, sans e-mail.
     @Transactional
     public AdminConsoleDTO.FermeDetail statistiques(String farmUniqueId, com.diafarms.ml.request.others.AdminStatistiquesRequest req) {
@@ -867,6 +898,7 @@ public class AdminConsoleService {
             + "WHEN l.action LIKE 'Prolongation de l''essai%' THEN 'ESSAI' "
             + "WHEN l.action LIKE 'Note interne%' THEN 'NOTE' "
             + "WHEN l.action LIKE 'Ferme % statistiques' THEN 'STATISTIQUES' "
+            + "WHEN l.action LIKE 'Tarif spécial%' THEN 'TARIF' "
             + "ELSE 'AUTRE' END";
 
     @Transactional(readOnly = true)

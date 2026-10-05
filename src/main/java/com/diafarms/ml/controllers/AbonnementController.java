@@ -26,6 +26,27 @@ public class AbonnementController {
 
     private final AbonnementService service;
     private final AbonnementRappelService rappelService;
+    private final com.diafarms.ml.ServiceImpl.AbonnementTarifService tarifService;
+
+    public static final int POULES_MAX_SIMULATION = 1_000_000;
+
+    // PUBLIC (sans connexion, voir SecurityConfiguration) : prix pour N poules avec les
+    // réglages actuels. Utilisé par la page d'inscription et la FAQ. N de 0 à 1 000 000.
+    @GetMapping("/tarif-simulation")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.AbonnementTarifDTO>> simulation(
+            @RequestParam(required = false) String poules) {
+        String brut = poules == null ? "" : poules.trim();
+        if (!brut.matches("\\d{1,7}") || Integer.parseInt(brut) > POULES_MAX_SIMULATION) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null,
+                    List.of("Indiquez un nombre de poules entre 0 et 1 000 000."));
+        }
+        try {
+            return ApiResponse.createResponse("Simulation du prix", HttpStatus.OK,
+                    tarifService.simulation(Integer.parseInt(brut)), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
 
     // SUPER_ADMIN : abonnement de chaque ferme (statut effectif, délai de grâce).
     @GetMapping("/fermes")

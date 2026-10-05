@@ -50,12 +50,15 @@ public class AbonnementRappelService {
     private final TransactionTemplate tx;
     private final TransactionTemplate txLecture;
     private final com.diafarms.ml.services.LogsServices logs;
+    private final AbonnementTarifService tarifService;
 
     public AbonnementRappelService(AbonnementRepo abonnementRepo, AbonnementConfigRepo configRepo,
             AbonnementRappelRepo rappelRepo, PaiementAbonnementRepo paiementAbonnementRepo,
             UtilisateursRepo utilisateursRepo, EmailService emailService, OtherService otherService,
-            PlatformTransactionManager transactionManager, com.diafarms.ml.services.LogsServices logs) {
+            PlatformTransactionManager transactionManager, com.diafarms.ml.services.LogsServices logs,
+            AbonnementTarifService tarifService) {
         this.logs = logs;
+        this.tarifService = tarifService;
         this.abonnementRepo = abonnementRepo;
         this.configRepo = configRepo;
         this.rappelRepo = rappelRepo;
@@ -84,6 +87,11 @@ public class AbonnementRappelService {
 
     private record Candidat(Long abonnementId, String farmUniqueId, String farmNom, String type,
             LocalDate dateFin, String sujet, String messageComplet, List<Destinataire> admins) {}
+
+    // Candidat lu en base, avant le calcul de son prix (fait ensuite pour tous en une fois).
+    private record Lu(Long abonnementId, Long farmId, String farmUniqueId, String farmNom, String type,
+            LocalDate dateFin, AbonnementEcheance.Etat etat, boolean paiementEnAttente, Double prixMensuelFixe,
+            String motifPrixFixe, List<Destinataire> admins) {}
 
     // Tous les jours à 8 h, heure de Bamako (= UTC).
     @Scheduled(cron = "${abonnement.rappels.cron:0 0 8 * * *}", zone = "Africa/Bamako")
@@ -122,7 +130,8 @@ public class AbonnementRappelService {
 
     public List<RappelDTO> executer(boolean envoyer) {
         LocalDate aujourdHui = LocalDate.now();
-        List<Candidat> candidats = txLecture.execute(status -> listerCandidats(aujourdHui));
+        List<Lu> lus = txLecture.execute(status -> listerCandidats(aujourdHui));
+        List<Candidat> candidats = avecMontant(lus);
         List<RappelDTO> resultat = new ArrayList<>();
         for (Candidat c : candidats) {
             List<String> emails = c.admins().stream().map(Destinataire::email).filter(e -> e != null && !e.isBlank()).toList();
@@ -162,9 +171,9 @@ public class AbonnementRappelService {
 
     // Lecture seule, dans une transaction : tout ce dont l'envoi a besoin est copié dans
     // des records (open-in-view=false, aucune entité paresseuse ne sort d'ici).
-    private List<Candidat> listerCandidats(LocalDate aujourdHui) {
+    private List<Lu> listerCandidats(LocalDate aujourdHui) {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
-        List<Candidat> candidats = new ArrayList<>();
+        List<Lu> candidats = new ArrayList<>();
         for (Abonnement a : abonnementRepo.findAllAvecFerme()) {
           try {
             AbonnementEcheance.Etat etat = AbonnementEcheance.calculer(a, config, aujourdHui);
@@ -179,9 +188,8 @@ public class AbonnementRappelService {
                             .findFirst().orElse("votre ferme");
             boolean paiementEnAttente = paiementAbonnementRepo
                     .findByAbonnement_IdAndStatut(a.getId(), StatutPaiementAbonnement.EN_ATTENTE).isPresent();
-            candidats.add(new Candidat(a.getId(), farm.getUniqueId(), farmNom, type, a.getDateFin(),
-                    AbonnementEcheance.sujetEmail(etat),
-                    AbonnementEcheance.messageComplet(etat, farmNom, config, paiementEnAttente),
+            candidats.add(new Lu(a.getId(), farm.getId(), farm.getUniqueId(), farmNom, type, a.getDateFin(), etat,
+                    paiementEnAttente, a.getPrixMensuelFixe(), a.getMotifPrixFixe(),
                     admins.stream().map(u -> new Destinataire(u.getFullName(), u.getEmail())).toList()));
           } catch (Exception e) {
             // Une ferme en erreur ne bloque pas les rappels des autres.
@@ -189,5 +197,41 @@ public class AbonnementRappelService {
           }
         }
         return candidats;
+    }
+
+    // Montant du renouvellement dans le message : tarif de chaque ferme (prix par poule ou
+    // tarif spécial), calculé pour toutes les fermes concernées en une fois. Un calcul en
+    // échec retombe sur le prix minimum : la tâche ne s'arrête jamais pour ça.
+    private List<Candidat> avecMontant(List<Lu> lus) {
+        if (lus == null || lus.isEmpty()) return List.of();
+        AbonnementConfig config = null;
+        java.util.Map<Long, com.diafarms.ml.DTO.AbonnementTarifDTO> tarifs = java.util.Map.of();
+        java.util.Map<Long, Abonnement> abos = new java.util.HashMap<>();
+        try {
+            config = configRepo.findFirstByOrderByIdAsc();
+            for (Lu l : lus) {
+                // Copie détachée : seul le prix fixe sert au calcul.
+                Abonnement a = new Abonnement();
+                a.setPrixMensuelFixe(l.prixMensuelFixe());
+                a.setMotifPrixFixe(l.motifPrixFixe());
+                abos.put(l.farmId(), a);
+            }
+            tarifs = tarifService.tarifsFermes(abos.keySet(), abos, config);
+        } catch (Exception e) {
+            log.error("Rappels d'abonnement : calcul des prix en échec, prix minimum utilisé : {}", e.getMessage(), e);
+        }
+        List<Candidat> res = new ArrayList<>();
+        for (Lu l : lus) {
+            com.diafarms.ml.DTO.AbonnementTarifDTO t = tarifs.get(l.farmId());
+            if (t == null) {
+                t = com.diafarms.ml.commons.AbonnementTarif.calculer(0, null, abos.get(l.farmId()),
+                        com.diafarms.ml.commons.AbonnementTarif.regles(config), true);
+            }
+            res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
+                    AbonnementEcheance.sujetEmail(l.etat()),
+                    AbonnementEcheance.messageComplet(l.etat(), l.farmNom(), t, l.paiementEnAttente()),
+                    l.admins()));
+        }
+        return res;
     }
 }

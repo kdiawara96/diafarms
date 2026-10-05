@@ -45,4 +45,20 @@ public class AbonnementConfig {
     // table existante) : null = AbonnementEcheance.DELAI_GRACE_JOURS_DEFAUT (5).
     @Column(name = "delai_grace_jours")
     private Integer delaiGraceJours;
+
+    // Prix par poule (décision du 2026-10-05, voir commons/AbonnementTarif). Colonnes
+    // nullables ajoutées par ddl-auto : null = valeur par défaut (6 FCFA par poule,
+    // minimum 5 000 FCFA par mois, 2 mois offerts sur l'année, arrondi à 100 FCFA).
+    // prixMensuel/prixAnnuel ci-dessus : ancien tarif fixe, plus utilisé pour les fermes.
+    @Column(name = "prix_par_poule")
+    private Double prixParPoule;
+
+    @Column(name = "prix_minimum_mensuel")
+    private Double prixMinimumMensuel;
+
+    @Column(name = "mois_offerts_annuel")
+    private Integer moisOffertsAnnuel;
+
+    @Column(name = "arrondi_prix")
+    private Integer arrondi;
 }

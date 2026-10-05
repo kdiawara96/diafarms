@@ -239,7 +239,13 @@ api GET /admin/tableau-de-bord
 cp "$TMP/body" "$TMP/tdb2"
 check_eq "revenu du mois : +123456" "123456.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuCeMois)"
 check_eq "revenu de l'année : +123456" "123456.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuCetteAnnee)"
-check_eq "revenu mensuel estimé : +10288 (annuel / 12)" "10288.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuMensuelEstime)"
+# Revenu mensuel estimé = tarif ACTUEL de la ferme (prix par poule, voir
+# scenarios-tarif-poules.sh), annuel / 12 : X a 500 poules (max des 30 jours), donc le
+# minimum 5 000 par mois, 50 000 par an, soit 4 166,67 par mois (totaux arrondis).
+ECART_MRR="$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuMensuelEstime)"
+api GET "/admin/fermes/$UID_X"
+check "revenu mensuel estimé : + tarif annuel de X / 12 ($ECART_MRR)" \
+  "d['data']['tarif']['poulesComptees'] == 500 and d['data']['tarif']['prixAnnuel'] == 50000 and abs($ECART_MRR - 50000 / 12) < 1"
 check_eq "fermes actives payantes : +1" "1" "$(ecart "$TMP/tdb1" "$TMP/tdb2" activesPayantes)"
 
 FIN_ACTUELLE="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
