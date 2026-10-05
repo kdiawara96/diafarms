@@ -117,6 +117,8 @@ public class AbonnementController {
     public ResponseEntity<ApiResponse<AbonnementConfigDTO>> updateConfig(@RequestBody AbonnementConfigUpdateRequest request) {
         try {
             return ApiResponse.createResponse("Configuration tarifaire mise à jour", HttpStatus.OK, service.updateConfig(request), null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

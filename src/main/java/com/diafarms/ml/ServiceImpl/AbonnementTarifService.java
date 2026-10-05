@@ -1,7 +1,6 @@
 package com.diafarms.ml.ServiceImpl;
 
 import java.sql.Date;
-import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -11,9 +10,6 @@ import java.util.Map;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import com.diafarms.ml.DTO.AbonnementTarifDTO;
 import com.diafarms.ml.commons.AbonnementTarif;
@@ -32,17 +28,26 @@ import lombok.extern.slf4j.Slf4j;
 // que le Reporting et la main-d'œuvre (ReportingService, MainOeuvreService) :
 //   - sujets vivants d'un Projet un jour J = sujets de départ - morts - réformés jusqu'à J
 //     inclus, jamais négatif ;
-//   - Projet en cours le jour J : commencé au plus tard J, et pas clôturé avant J (fin
-//     effective = MainOeuvreService.finEffective : libération des poulaillers, à défaut fin
-//     prévue). Projets supprimés ignorés.
+//   - Projet en cours le jour J : commencé au plus tard J, et pas terminé avant J (fin
+//     d'un Projet clôturé : voir plus bas). Projets supprimés ignorés.
 // Une ferme de chair vide entre deux bandes paie donc selon sa dernière bande pendant 30
 // jours, puis le minimum.
 //
+// Fin d'un Projet clôturé, pour le prix SEULEMENT (le Reporting et la main-d'œuvre gardent
+// MainOeuvreService.finEffective) : libération des poulaillers, sinon jour de la clôture
+// (Projets.dateCloture), sinon le plus tôt entre la fin prévue et la dernière modification
+// (anciens projets clôturés sans date). Un projet clôturé compte donc 30 jours après sa
+// clôture, puis plus du tout, même si sa fin prévue est plus tard.
+//
 // Performances : 2 requêtes SQL pour N fermes (projets, puis morts + réformes groupés par
-// Projet et par jour), jamais une requête par ferme. Le comptage tourne dans sa propre
-// transaction en lecture seule : s'il échoue, la transaction de l'appelant reste saine et
-// le tarif retombe sur le minimum (calculEnErreur = true), sans jamais faire planter la
-// page, la déclaration ou la tâche des rappels.
+// Projet et par jour), jamais une requête par ferme. Le comptage tourne sur la connexion
+// de la transaction en cours, derrière un point de sauvegarde JDBC (SAVEPOINT) : s'il
+// échoue, seul ce point est annulé, la transaction de l'appelant reste saine, et aucune
+// connexion de plus n'est prise. (PROPAGATION_NESTED n'est pas possible ici :
+// JpaTransactionManager refuse les points de sauvegarde avec Hibernate.) Hors
+// transaction, la connexion est en autocommit : rien à protéger. Le tarif est alors marqué
+// calculEnErreur. Les appelants ne
+// facturent jamais un tarif en erreur (déclaration refusée, montant absent des rappels).
 @Service
 @Slf4j
 public class AbonnementTarifService {
@@ -51,15 +56,10 @@ public class AbonnementTarifService {
 
     private final JdbcTemplate jdbc;
     private final AbonnementConfigRepo configRepo;
-    private final TransactionTemplate txIsolee;
 
-    public AbonnementTarifService(JdbcTemplate jdbc, AbonnementConfigRepo configRepo,
-            PlatformTransactionManager transactionManager) {
+    public AbonnementTarifService(JdbcTemplate jdbc, AbonnementConfigRepo configRepo) {
         this.jdbc = jdbc;
         this.configRepo = configRepo;
-        this.txIsolee = new TransactionTemplate(transactionManager);
-        this.txIsolee.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.txIsolee.setReadOnly(true);
     }
 
     public record Comptage(int poules, LocalDate dateMax) {}
@@ -127,7 +127,21 @@ public class AbonnementTarifService {
     private Map<Long, Comptage> compterSansRisque(Collection<Long> farmIds) {
         try {
             LocalDate auj = LocalDate.now();
-            return txIsolee.execute(s -> compterPoules(farmIds, auj));
+            return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Map<Long, Comptage>>) con -> {
+                // Toutes les requêtes sur CETTE connexion (aucune autre prise dans le pool).
+                JdbcTemplate meme = new JdbcTemplate(
+                        new org.springframework.jdbc.datasource.SingleConnectionDataSource(con, true));
+                if (con.getAutoCommit()) return compterPoules(meme, farmIds, auj);
+                java.sql.Savepoint sp = con.setSavepoint();
+                try {
+                    Map<Long, Comptage> r = compterPoules(meme, farmIds, auj);
+                    con.releaseSavepoint(sp);
+                    return r;
+                } catch (RuntimeException e) {
+                    con.rollback(sp);
+                    throw e;
+                }
+            });
         } catch (Exception e) {
             log.error("Comptage des poules pour le tarif d'abonnement en échec : {}", e.getMessage(), e);
             return null;
@@ -139,7 +153,7 @@ public class AbonnementTarifService {
     private record Projet(long id, long farmId, LocalDate debut, int nbSujets, LocalDate fin) {}
 
     // farmIds null : toutes les fermes ; vide : aucune.
-    Map<Long, Comptage> compterPoules(Collection<Long> farmIds, LocalDate aujourdHui) {
+    Map<Long, Comptage> compterPoules(JdbcTemplate jdbc, Collection<Long> farmIds, LocalDate aujourdHui) {
         Map<Long, Comptage> res = new HashMap<>();
         if (farmIds != null && farmIds.isEmpty()) return res;
         LocalDate deb = aujourdHui.minusDays(AbonnementTarif.FENETRE_JOURS - 1L);
@@ -152,8 +166,10 @@ public class AbonnementTarifService {
             args.add(Date.valueOf(aujourdHui));
             StringBuilder sql = new StringBuilder(
                     "SELECT p.id, p.farm_id, p.date_debut, COALESCE(p.nb_sujets, 0), COALESCE(p.archive, false), "
-                    + "p.date_fin_prevue, (SELECT MAX(o.date_sortie) FROM occupations_batiments o WHERE o.projet_id = p.id), "
-                    + "p.updated_at FROM projets p WHERE p.farm_id IS NOT NULL AND COALESCE(p.removed, false) = false "
+                    + "COALESCE(o.liberation, p.date_cloture, LEAST(p.date_fin_prevue, CAST(p.updated_at AS date))) "
+                    + "FROM projets p LEFT JOIN (SELECT projet_id, MAX(date_sortie) AS liberation "
+                    + "FROM occupations_batiments GROUP BY projet_id) o ON o.projet_id = p.id "
+                    + "WHERE p.farm_id IS NOT NULL AND COALESCE(p.removed, false) = false "
                     + "AND p.date_debut IS NOT NULL AND p.date_debut <= ?");
             if (paquet != null) {
                 sql.append(" AND p.farm_id IN (").append(marques(paquet.size())).append(")");
@@ -161,14 +177,11 @@ public class AbonnementTarifService {
             }
             jdbc.query(sql.toString(), rs -> {
                 boolean cloture = rs.getBoolean(5);
-                LocalDate finPrevue = date(rs.getDate(6));
-                LocalDate liberation = date(rs.getDate(7));
-                LocalDate fin = MainOeuvreService.finEffective(cloture, liberation, finPrevue);
-                if (cloture && fin == null) {
-                    // Clôturé sans aucune date (ni libération ni fin prévue) : on prend le jour
-                    // de la clôture plutôt que de le compter « en cours » pour toujours.
-                    Timestamp maj = rs.getTimestamp(8);
-                    fin = maj != null ? maj.toLocalDateTime().toLocalDate() : deb.minusDays(1);
+                LocalDate fin = null;
+                if (cloture) {
+                    fin = date(rs.getDate(6));
+                    // Clôturé sans aucune date : jamais compté « en cours » pour toujours.
+                    if (fin == null) fin = deb.minusDays(1);
                 }
                 if (fin != null && fin.isBefore(deb)) return; // terminé avant les 30 jours
                 projets.add(new Projet(rs.getLong(1), rs.getLong(2), date(rs.getDate(3)), rs.getInt(4), fin));

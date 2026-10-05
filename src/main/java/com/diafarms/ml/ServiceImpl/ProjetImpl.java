@@ -664,6 +664,7 @@ public class ProjetImpl implements ProjetServices {
         }
 
         projet.getInitialisation().setArchive(true);
+        projet.setDateCloture(LocalDate.now());
         projetsRepo.save(projet);
 
         List<InvestissementRepartition> repartitionsActives =
@@ -705,6 +706,7 @@ public class ProjetImpl implements ProjetServices {
         }
 
         projet.getInitialisation().setArchive(false);
+        projet.setDateCloture(null);
         projetsRepo.save(projet);
         logCloture(projet, "Réouverture");
 

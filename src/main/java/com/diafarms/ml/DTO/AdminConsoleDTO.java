@@ -71,7 +71,10 @@ public final class AdminConsoleDTO {
             long paiementsEnAttente,
             List<FermeCourte> essaisFinCetteSemaine,
             List<MoisValeur> revenusParMois,
-            List<MoisValeur> nouvellesFermesParMois) {}
+            List<MoisValeur> nouvellesFermesParMois,
+            // Fermes payantes dont le prix n'a pas pu être calculé (comptage des poules en
+            // échec) : revenuMensuelEstime les compte au minimum, il est alors incomplet.
+            long tarifsEnErreur) {}
 
     public record Utilisateur(
             String uniqueId,

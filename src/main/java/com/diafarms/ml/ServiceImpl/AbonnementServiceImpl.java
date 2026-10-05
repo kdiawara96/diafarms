@@ -216,7 +216,8 @@ public class AbonnementServiceImpl implements AbonnementService {
                 .orElse(null);
 
         AbonnementDTO dto = AbonnementDTO.of(abonnement, effectif, PaiementAbonnementDTO.fromEntity(enAttente));
-        dto.setTarif(tarifService.tarifFerme(farm.getId(), abonnement, config));
+        dto.setTarif(com.diafarms.ml.commons.AbonnementTarif.pourLaFerme(
+                tarifService.tarifFerme(farm.getId(), abonnement, config)));
         return dto;
     }
 
@@ -295,7 +296,14 @@ public class AbonnementServiceImpl implements AbonnementService {
         // s'applique qu'à ce renouvellement.
         AbonnementConfig config = getOuCreerConfig();
         com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(currentUser.getFarm().getId(), abonnement, config);
+        // Comptage des poules en échec : jamais le minimum enregistré en silence.
+        if (!com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)) {
+            throw new IllegalArgumentException("Le prix n'a pas pu être calculé, réessayez dans un instant.");
+        }
         double montant = periodicite == Periodicite.ANNUEL ? tarif.prixAnnuel() : tarif.prixMensuel();
+        if (request.getMontantAffiche() != null && Math.round(request.getMontantAffiche()) != Math.round(montant)) {
+            throw new IllegalArgumentException("Le prix a été mis à jour, rechargez la page.");
+        }
 
         PaiementAbonnement paiement = new PaiementAbonnement();
         paiement.setUniqueId(UUID.randomUUID().toString());
@@ -429,7 +437,10 @@ public class AbonnementServiceImpl implements AbonnementService {
     @Transactional
     public AbonnementConfigDTO updateConfig(AbonnementConfigUpdateRequest request) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        ensureSuperAdmin(currentUser);
+        if (!isSuperAdmin(currentUser)) {
+            // 403 (voir AbonnementController.updateConfig).
+            throw new org.springframework.security.access.AccessDeniedException("Seul un SUPER_ADMIN peut modifier les prix.");
+        }
 
         AbonnementConfig config = getOuCreerConfig();
         if (request.getPrixMensuel() != null) config.setPrixMensuel(request.getPrixMensuel());

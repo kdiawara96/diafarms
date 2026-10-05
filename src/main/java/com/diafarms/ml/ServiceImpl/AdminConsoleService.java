@@ -384,9 +384,11 @@ public class AdminConsoleService {
         // à son tarif ACTUEL (prix par poule ou tarif spécial, voir AbonnementTarifService),
         // formule annuelle comptée / 12.
         double mrr = 0;
+        long tarifsEnErreur = 0;
         for (Ligne li : lignes) {
             String st = li.dto().statut();
             if (li.abonnement() == null || !("ACTIF".equals(st) || "GRACE".equals(st)) || li.etat().estEssai()) continue;
+            if (!com.diafarms.ml.commons.AbonnementTarif.facturable(li.tarif())) tarifsEnErreur++;
             mrr += li.abonnement().getPeriodicite() == Periodicite.ANNUEL
                     ? li.tarif().prixAnnuel() / 12.0
                     : li.tarif().prixMensuel();
@@ -396,7 +398,7 @@ public class AdminConsoleService {
 
         return new AdminConsoleDTO.TableauDeBord(lignes.size(), essai, actives, grace, expirees, suspendues, aucun,
                 nouvelles, actives7, actives30, sujets, revMois, revPrec, revAnnee, Math.round(mrr),
-                attente == null ? 0 : attente, essaisFin, revenus12, nouvelles12);
+                attente == null ? 0 : attente, essaisFin, revenus12, nouvelles12, tarifsEnErreur);
     }
 
     private Farm fermeOu400(String farmUniqueId) {

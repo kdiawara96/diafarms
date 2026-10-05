@@ -71,6 +71,22 @@ public final class AbonnementTarif {
                 r.prixParPoule(), r.prixMinimumMensuel(), r.moisOffertsAnnuel(), r.arrondi(), calculEnErreur);
     }
 
+    // Tarif qu'on peut facturer ou annoncer : calcul réussi, ou prix fixe (qui ne dépend
+    // pas du comptage). Un tarif en erreur n'est jamais facturé ni écrit dans un rappel.
+    public static boolean facturable(AbonnementTarifDTO t) {
+        return t != null && (!t.calculEnErreur() || t.prixFixe());
+    }
+
+    // Version montrée à la ferme (/abonnements/moi) : sans la raison du tarif spécial,
+    // qui reste une information interne de l'équipe (console seulement).
+    public static AbonnementTarifDTO pourLaFerme(AbonnementTarifDTO t) {
+        if (t == null || t.motifPrixFixe() == null) return t;
+        return new AbonnementTarifDTO(t.poulesComptees(), t.dateMax(), t.fenetreJours(), t.prixMensuel(),
+                t.prixAnnuel(), t.montantParPoules(), t.montantArrondi(), t.minimumApplique(),
+                t.prixMensuelSelonPoules(), t.prixFixe(), t.prixMensuelFixe(), null, t.prixParPoule(),
+                t.prixMinimumMensuel(), t.moisOffertsAnnuel(), t.arrondi(), t.calculEnErreur());
+    }
+
     public static String poules(int n) {
         return AbonnementEcheance.nombre(n) + (n > 1 ? " poules" : " poule");
     }

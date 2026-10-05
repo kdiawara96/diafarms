@@ -280,7 +280,7 @@ check "réglage : délai de grâce passé à 2 jours" "code == 200 and d['data']
 api PUT /abonnements/config '{"delaiGraceJours":-1}'
 check "réglage : délai négatif refusé" "code == 400"
 TOKEN="$TOKEN_A"; api PUT /abonnements/config '{"delaiGraceJours":9}'
-check "réglage : refusé à un ADMIN de ferme" "code == 400"
+check "réglage : refusé à un ADMIN de ferme (403)" "code == 403"
 fin "$ABO_A" -2
 TOKEN="$TOKEN_A"; api GET /abonnements/moi
 check "grâce de 2 jours : J+2 encore ouvert" "d['data']['statutEffectif'] == 'ACTIF' and d['data']['enGrace'] and d['data']['joursGraceRestants'] == 1"

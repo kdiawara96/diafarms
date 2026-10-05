@@ -444,8 +444,9 @@ public class NotificationServiceImpl implements NotificationService {
                         .key("abonnement-" + rappel.getType().toLowerCase() + "-" + a.getDateFin())
                         .type("ABONNEMENT")
                         .level(etat.enGrace() ? "CRITIQUE" : "WARNING")
-                        .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat) + " "
-                            + com.diafarms.ml.commons.AbonnementTarif.phraseMontant(tarif))
+                        .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat)
+                            + (com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)
+                                ? " " + com.diafarms.ml.commons.AbonnementTarif.phraseMontant(tarif) : ""))
                         .actionPath("/abonnement")
                         .build());
                 }));

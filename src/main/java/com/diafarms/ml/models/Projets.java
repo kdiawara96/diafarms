@@ -44,6 +44,12 @@ public class Projets {
     @Column(name = "date_fin_prevue")
     private LocalDate finPrevue;
 
+    // Jour de la clôture (ProjetImpl.cloturerProjet), remis à null à la réouverture.
+    // Nullable : null pour les projets clôturés avant l'ajout de la colonne. Sert au prix
+    // de l'abonnement (AbonnementTarifService) pour savoir jusqu'à quand le projet compte.
+    @Column(name = "date_cloture")
+    private LocalDate dateCloture;
+
     @Column(name = "nb_sujets")
     private Integer nbSujets;
 

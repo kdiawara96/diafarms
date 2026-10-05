@@ -2,7 +2,6 @@ package com.diafarms.ml.commons;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 
 import java.util.List;
@@ -10,8 +9,6 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
-import org.springframework.transaction.PlatformTransactionManager;
 
 import com.diafarms.ml.DTO.AbonnementTarifDTO;
 import com.diafarms.ml.ServiceImpl.AbonnementTarifService;
@@ -78,9 +75,9 @@ class AbonnementTarifTest {
     void comptageEnEchecDonneLeMinimum() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         org.mockito.Mockito.doThrow(new RuntimeException("base indisponible"))
-                .when(jdbc).query(anyString(), any(RowCallbackHandler.class), any(Object[].class));
+                .when(jdbc).execute(any(org.springframework.jdbc.core.ConnectionCallback.class));
         AbonnementConfigRepo repo = mock(AbonnementConfigRepo.class);
-        AbonnementTarifService service = new AbonnementTarifService(jdbc, repo, mock(PlatformTransactionManager.class));
+        AbonnementTarifService service = new AbonnementTarifService(jdbc, repo);
 
         AbonnementTarifDTO t = service.tarifFerme(1L, null, null);
         assertTrue(t.calculEnErreur());

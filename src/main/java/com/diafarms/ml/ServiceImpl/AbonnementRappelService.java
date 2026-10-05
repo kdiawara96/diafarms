@@ -207,15 +207,15 @@ public class AbonnementRappelService {
         AbonnementConfig config = null;
         java.util.Map<Long, com.diafarms.ml.DTO.AbonnementTarifDTO> tarifs = java.util.Map.of();
         java.util.Map<Long, Abonnement> abos = new java.util.HashMap<>();
+        for (Lu l : lus) {
+            // Copie détachée : seul le prix fixe sert au calcul.
+            Abonnement a = new Abonnement();
+            a.setPrixMensuelFixe(l.prixMensuelFixe());
+            a.setMotifPrixFixe(l.motifPrixFixe());
+            abos.put(l.farmId(), a);
+        }
         try {
             config = configRepo.findFirstByOrderByIdAsc();
-            for (Lu l : lus) {
-                // Copie détachée : seul le prix fixe sert au calcul.
-                Abonnement a = new Abonnement();
-                a.setPrixMensuelFixe(l.prixMensuelFixe());
-                a.setMotifPrixFixe(l.motifPrixFixe());
-                abos.put(l.farmId(), a);
-            }
             tarifs = tarifService.tarifsFermes(abos.keySet(), abos, config);
         } catch (Exception e) {
             log.error("Rappels d'abonnement : calcul des prix en échec, prix minimum utilisé : {}", e.getMessage(), e);
@@ -224,9 +224,12 @@ public class AbonnementRappelService {
         for (Lu l : lus) {
             com.diafarms.ml.DTO.AbonnementTarifDTO t = tarifs.get(l.farmId());
             if (t == null) {
+                // Échec : le prix fixe reste connu, le prix par poule non.
                 t = com.diafarms.ml.commons.AbonnementTarif.calculer(0, null, abos.get(l.farmId()),
                         com.diafarms.ml.commons.AbonnementTarif.regles(config), true);
             }
+            // Tarif en erreur (sans prix fixe) : pas de ligne de montant plutôt qu'un faux prix.
+            if (!com.diafarms.ml.commons.AbonnementTarif.facturable(t)) t = null;
             res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
                     AbonnementEcheance.sujetEmail(l.etat()),
                     AbonnementEcheance.messageComplet(l.etat(), l.farmNom(), t, l.paiementEnAttente()),

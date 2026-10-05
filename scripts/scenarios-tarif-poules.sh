@@ -20,7 +20,13 @@
 #   - montant attendu et poules enregistrés à la déclaration, inchangés ensuite ;
 #   - rappels : le message contient le montant ; cloche aussi ;
 #   - un compte qui n'est pas SUPER_ADMIN est refusé (réglages, tarif spécial) ;
-#   - console : poules et prix dans la liste et la fiche, revenu mensuel estimé = tarifs.
+#   - console : poules et prix dans la liste et la fiche, revenu mensuel estimé = tarifs ;
+#   - revue du 2026-10-06 : Projet clôturé (date_cloture) compté 30 jours après la clôture,
+#     même avant sa fin prévue, et encore compté s'il est clôturé après sa fin prévue ;
+#     raison du tarif spécial absente de /abonnements/moi ; montant affiché différent du
+#     prix actuel refusé ; réglages refusés en 403 ; comptage en échec (colonne renommée
+#     quelques secondes) : page sans erreur, déclaration refusée, aucun montant dans les
+#     rappels ni la cloche, revenu estimé signalé incomplet, prix fixe toujours annoncé.
 #
 # Pré-requis : Postgres + backend démarrés, super-admin seedé (superadmin / change-me).
 # Variables : BASE (défaut http://localhost:9199/diafarms/api/v1), PGHOST, PGPORT (55432),
@@ -51,7 +57,12 @@ psql_run() {
 
 # Les réglages de prix sont GLOBAUX : remis tels qu'ils étaient en sortant.
 CONFIG_INITIALE="$(psql_run "select coalesce(prix_par_poule::text,'NULL')||','||coalesce(prix_minimum_mensuel::text,'NULL')||','||coalesce(mois_offerts_annuel::text,'NULL')||','||coalesce(arrondi_prix::text,'NULL') from abonnement_config order by id limit 1")"
+# Comptage en échec simulé en renommant une colonne : remise en place en sortant, quoi qu'il arrive.
+remettre_colonne() {
+  psql_run "do \$\$ begin if exists (select 1 from information_schema.columns where table_name='occupations_batiments' and column_name='date_sortie_essai_tarif') then alter table occupations_batiments rename column date_sortie_essai_tarif to date_sortie; end if; end \$\$" >/dev/null
+}
 restaurer() {
+  remettre_colonne
   if [ -n "$CONFIG_INITIALE" ]; then
     IFS=, read -r a b c e <<< "$CONFIG_INITIALE"
     psql_run "update abonnement_config set prix_par_poule=$a, prix_minimum_mensuel=$b, mois_offerts_annuel=$c, arrondi_prix=$e" >/dev/null
@@ -248,7 +259,7 @@ check "300 + 534 = 834 poules : 5 004 arrondi à 5 100" \
 
 echo "--- réglages du SUPER_ADMIN"
 TOKEN="$TOKEN_A"; api PUT /abonnements/config '{"prixParPoule":100}'
-check "réglages refusés à un ADMIN de ferme" "code == 400"
+check "réglages refusés à un ADMIN de ferme (403)" "code == 403"
 check_eq "réglages inchangés après le refus" "" "$(psql_run "select coalesce(prix_par_poule::text,'') from abonnement_config order by id limit 1")"
 TOKEN="$TOKEN_SA"
 api GET /abonnements/config
@@ -289,10 +300,17 @@ check "journal : « Tarif spécial fixé », sans montant ni raison" \
   "any(e['categorie'] == 'TARIF' and e['action'].startswith('Tarif spécial fixé') and '7000' not in e['action'] and '7 000' not in e['action'] and 'Premier' not in e['action'] for e in d['data']['journal'])"
 TOKEN="$TOKEN_A"; api GET /abonnements/moi
 check "la ferme voit son tarif spécial" "$T['prixFixe'] and $T['prixMensuel'] == 7000 and $T['poulesComptees'] == 1000"
+check "la raison du tarif spécial n'est PAS envoyée à la ferme (console seulement)" "$T['motifPrixFixe'] is None and 'Premier' not in json.dumps(d)"
+
+echo "--- montant affiché différent du prix actuel"
+api POST /abonnements/declarer-paiement '{"periodicite":"ANNUEL","moyenPaiement":"Orange Money","montantAffiche":60000}'
+check "montant affiché (60 000) différent du prix actuel (70 000) : refusé" \
+  "code == 400 and 'Le prix a été mis à jour, rechargez la page.' in str(d.get('errors'))"
+check_eq "rien d'enregistré après ce refus" "0" "$(psql_run "select count(*) from paiements_abonnement p join abonnements a on a.id=p.abonnement_id where a.farm_id=$FARM_A")"
 
 echo "--- déclaration : montant attendu enregistré"
-api POST /abonnements/declarer-paiement '{"periodicite":"ANNUEL","moyenPaiement":"Orange Money","reference":"TAR-1"}'
-ok_cree "déclaration annuelle de A (tarif spécial)"
+api POST /abonnements/declarer-paiement '{"periodicite":"ANNUEL","moyenPaiement":"Orange Money","reference":"TAR-1","montantAffiche":70000}'
+ok_cree "déclaration annuelle de A (tarif spécial, montant affiché identique)"
 check "déclaration : montant = 70 000 (an du tarif spécial), attendu enregistré" \
   "d['data']['montant'] == 70000 and d['data']['montantAttendu'] == 70000 and d['data']['poulesComptees'] == 1000"
 PAIEMENT_A="$(jval "d['data']['uniqueId']")"
@@ -364,6 +382,56 @@ fi
 TOKEN="$TOKEN_A"; api GET /notifications/list
 check "cloche de A : rappel avec le montant" \
   "any(n['type'] == 'ABONNEMENT' and 'Montant : 6 000 FCFA par mois (1 000 poules)' in n['message'] for n in d['data'])"
+
+echo "--- clôture d'un Projet (date_cloture)"
+nouvelle_ferme D; FARM_D="$FARM_ID"; UID_D="$FARM_UID"; TOKEN_D="$TOKEN_ADMIN"
+PD="$(projet "$FARM_D" 800 60 REFORME false -30)"   # fin prévue dans 30 jours
+PD_UID="$(psql_run "select unique_id from projets where id=$PD")"
+TOKEN="$TOKEN_D"; api PUT "/projets/cloturer/$PD_UID"
+check "clôture du Projet par l'API" "code == 200"
+check_eq "date_cloture posée au jour de la clôture" "$(date +%F)" "$(psql_run "select date_cloture from projets where id=$PD")"
+api GET /abonnements/moi
+check "Projet clôturé aujourd'hui : compté (800)" "$T['poulesComptees'] == 800"
+api PUT "/projets/rouvrir/$PD_UID"
+check_eq "réouverture : date_cloture remise à vide" "" "$(psql_run "select coalesce(date_cloture::text,'') from projets where id=$PD")"
+api PUT "/projets/cloturer/$PD_UID"
+psql_run "update projets set date_cloture = current_date - 31, updated_at = now() where id=$PD" >/dev/null
+api GET /abonnements/moi
+check "clôturé il y a 31 jours, sans poulailler, fin prévue dans 30 jours : plus compté (0)" "$T['poulesComptees'] == 0 and $T['prixMensuel'] == 5000"
+psql_run "update projets set date_cloture = current_date - 29 where id=$PD" >/dev/null
+api GET /abonnements/moi
+check "clôturé il y a 29 jours : encore compté (800)" "$T['poulesComptees'] == 800"
+psql_run "update projets set date_fin_prevue = current_date - 60, date_cloture = current_date - 10 where id=$PD" >/dev/null
+api GET /abonnements/moi
+check "clôturé il y a 10 jours APRÈS sa fin prévue (il y a 60 jours) : encore compté (800)" "$T['poulesComptees'] == 800"
+psql_run "update projets set date_cloture = null, date_fin_prevue = current_date + 30, updated_at = now() - interval '40 days' where id=$PD" >/dev/null
+api GET /abonnements/moi
+check "ancien Projet clôturé sans date_cloture : fin = la plus tôt entre fin prévue et dernière modification (0)" "$T['poulesComptees'] == 0"
+
+echo "--- comptage des poules en échec (colonne renommée quelques secondes)"
+TOKEN="$TOKEN_SA"; api GET /admin/tableau-de-bord
+check "tableau de bord : aucun tarif en erreur avant le test" "d['data']['tarifsEnErreur'] == 0"
+psql_run "alter table occupations_batiments rename column date_sortie to date_sortie_essai_tarif" >/dev/null
+TOKEN="$TOKEN_A"; api GET /abonnements/moi
+check "échec : /abonnements/moi répond quand même (point de sauvegarde), tarif marqué en erreur" \
+  "code == 200 and d['data']['statutEffectif'] in ('ACTIF','ESSAI') and $T['calculEnErreur'] and not $T['prixFixe']"
+api POST /abonnements/declarer-paiement '{"periodicite":"MENSUEL","moyenPaiement":"Wave"}'
+check "échec : déclaration refusée, jamais le minimum enregistré en silence" \
+  "code == 400 and \"Le prix n'a pas pu être calculé, réessayez dans un instant.\" in str(d.get('errors'))"
+api GET /notifications/list
+check "échec : la cloche garde le rappel, sans montant" \
+  "code == 200 and any(n['type'] == 'ABONNEMENT' for n in d['data']) and not any('Montant' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
+# Nouvelle période pour A et B (date de fin changée) : leur rappel J7 redevient prévu.
+psql_run "update abonnements set date_fin = current_date + 6 where farm_id in ($FARM_A, $FARM_B)" >/dev/null
+TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
+check "échec : rappel de A prévu, sans ligne de montant" "len(($R)('$UID_A')) == 1 and 'Montant' not in ($R)('$UID_A')[0]['message'] and 'J\\'ai payé' in ($R)('$UID_A')[0]['message']"
+check "échec : rappel de B (tarif spécial) garde son prix fixe" \
+  "'Montant : 4 000 FCFA par mois (tarif spécial) ou 40 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
+api GET /admin/tableau-de-bord
+check "échec : revenu mensuel estimé signalé incomplet" "code == 200 and d['data']['tarifsEnErreur'] >= 1"
+remettre_colonne
+TOKEN="$TOKEN_A"; api GET /abonnements/moi
+check "colonne remise : prix de nouveau calculé (6 000)" "not $T['calculEnErreur'] and $T['prixMensuel'] == 6000"
 
 echo "--- console SUPER_ADMIN"
 TOKEN="$TOKEN_SA"; api GET /admin/fermes
