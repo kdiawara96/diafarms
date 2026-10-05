@@ -170,9 +170,14 @@ public class UtilisateurImpl implements UtilisateursServices {
             throw new IllegalArgumentException("Le nom complet ne peut pas être vide.");
         }
 
-        String baseUsername = fullName.toLowerCase()
-                .replaceAll("[^a-z]", "")
-                .substring(0, Math.min(10, fullName.length()));
+        // Longueur prise sur le texte nettoyé (pas sur fullName) : un nom court avec
+        // espaces ou accents (« Ali Sow », « Aïssa Koné ») faisait planter l'inscription.
+        String lettres = java.text.Normalizer.normalize(fullName, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
+                .replaceAll("[^a-z]", "");
+        if (lettres.isEmpty()) lettres = "user";
+        String baseUsername = lettres.substring(0, Math.min(10, lettres.length()));
 
         SecureRandom random = new SecureRandom();
         String username;
