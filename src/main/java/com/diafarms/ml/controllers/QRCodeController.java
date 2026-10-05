@@ -35,6 +35,7 @@ public class QRCodeController {
     private final UtilisateursRepo utilisateursRepo;
     private final FarmAppSettingsRepo farmAppSettingsRepo;
     private final com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile;
+    private final com.diafarms.ml.commons.AccesCompte acces;
 
     private void ensureMobileAccessAllowed(Utilisateurs user) {
         if (user.getFarm() == null) return; // SUPER_ADMIN sans ferme : jamais restreint
@@ -55,8 +56,9 @@ public class QRCodeController {
     @PostMapping("/generate")
     public ResponseEntity<ApiResponse<Map<String, String>>> generateQRCode(@RequestBody QRCodeRequestDTO request) {
         try {
-            Utilisateurs user = utilisateursRepo.findByUniqueId(request.getUniqueId())
-                    .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable"));
+            // Un QR porte un JWT utilisable : seulement pour un compte de SA ferme, par un
+            // ADMIN de la ferme (ou un SUPER_ADMIN). Autre ferme : 404, sans rien révéler.
+            Utilisateurs user = acces.cible(request.getUniqueId(), false);
 
             ensureMobileAccessAllowed(user);
 
@@ -89,6 +91,10 @@ public class QRCodeController {
             Map<String, String> result = Map.of("encryptedQr", encryptedQr);
             return ApiResponse.createResponse("QR Code généré avec succès", HttpStatus.OK, result, null);
 
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse("Utilisateur introuvable", HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
@@ -144,9 +150,8 @@ public class QRCodeController {
    @PostMapping("/revoke/{uniqueId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> revokeQRCode(@PathVariable String uniqueId) { // 👈 Changé String en Object ici
         try {
-            Utilisateurs user = utilisateursRepo.findByUniqueId(uniqueId)
-                    .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable"));
-            
+            Utilisateurs user = acces.cible(uniqueId, false); // même règle que /generate
+
             user.setInfoQrcodeEncrypte(null);
             user.setQrExpiresAt(null);
             utilisateursRepo.save(user);
@@ -158,6 +163,10 @@ public class QRCodeController {
             );
             return ApiResponse.createResponse("QR Code révoqué avec succès", HttpStatus.OK, result, null);
 
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse("Utilisateur introuvable", HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

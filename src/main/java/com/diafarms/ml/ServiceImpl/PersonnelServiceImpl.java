@@ -57,9 +57,12 @@ public class PersonnelServiceImpl implements PersonnelService {
         }
     }
 
-    private Utilisateurs resolveCompte(String utilisateurCompteUniqueId) {
+    // Compte lié : uniquement un compte de la ferme de l'utilisateur courant.
+    private Utilisateurs resolveCompte(String utilisateurCompteUniqueId, Utilisateurs currentUser) {
         if (utilisateurCompteUniqueId == null || utilisateurCompteUniqueId.isBlank()) return null;
         return utilisateursRepo.findByUniqueId(utilisateurCompteUniqueId)
+                .filter(u -> com.diafarms.ml.commons.AccesCompte.estSuperAdmin(currentUser)
+                        || com.diafarms.ml.commons.FermeScope.memeFerme(u.getFarm(), currentUser))
                 .orElseThrow(() -> new IllegalArgumentException("Compte utilisateur introuvable : " + utilisateurCompteUniqueId));
     }
 
@@ -80,7 +83,7 @@ public class PersonnelServiceImpl implements PersonnelService {
         p.setNom(data.getNom().trim());
         p.setPoste(data.getPoste());
         p.setTelephone(data.getTelephone());
-        p.setUtilisateurCompte(resolveCompte(data.getUtilisateurCompteUniqueId()));
+        p.setUtilisateurCompte(resolveCompte(data.getUtilisateurCompteUniqueId(), currentUser));
         p.setFarm(currentUser.getFarm());
         p.setInitialisation(Initialisation.init());
 
@@ -96,7 +99,9 @@ public class PersonnelServiceImpl implements PersonnelService {
         ensureCanManage(currentUser);
 
         Personnel p = personnelRepo.findByUniqueId(uniqueId);
-        if (p == null) {
+        // Personnel d'une autre ferme : répond comme un personnel inexistant.
+        if (p == null || (!com.diafarms.ml.commons.AccesCompte.estSuperAdmin(currentUser)
+                && !com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), currentUser))) {
             throw new IllegalArgumentException("Personnel introuvable : " + uniqueId);
         }
 
@@ -104,7 +109,7 @@ public class PersonnelServiceImpl implements PersonnelService {
         if (data.getPoste() != null) p.setPoste(data.getPoste());
         if (data.getTelephone() != null) p.setTelephone(data.getTelephone());
         if (data.getUtilisateurCompteUniqueId() != null) {
-            p.setUtilisateurCompte(resolveCompte(data.getUtilisateurCompteUniqueId().isBlank() ? null : data.getUtilisateurCompteUniqueId()));
+            p.setUtilisateurCompte(resolveCompte(data.getUtilisateurCompteUniqueId().isBlank() ? null : data.getUtilisateurCompteUniqueId(), currentUser));
         }
         if (p.getInitialisation() != null) p.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
 
@@ -119,7 +124,9 @@ public class PersonnelServiceImpl implements PersonnelService {
         ensureCanManage(currentUser);
 
         Personnel p = personnelRepo.findByUniqueId(uniqueId);
-        if (p == null) {
+        // Personnel d'une autre ferme : répond comme un personnel inexistant.
+        if (p == null || (!com.diafarms.ml.commons.AccesCompte.estSuperAdmin(currentUser)
+                && !com.diafarms.ml.commons.FermeScope.memeFerme(p.getFarm(), currentUser))) {
             throw new IllegalArgumentException("Personnel introuvable : " + uniqueId);
         }
 

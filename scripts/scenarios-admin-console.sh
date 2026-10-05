@@ -22,6 +22,8 @@
 #   - connexion mobile refusée (403) pour une ferme expirée après la grâce ou suspendue,
 #     acceptée pendant la grâce ; web, refresh et token déjà émis toujours acceptés ;
 #     nouveau QR et scan serveur refusés ; tout revient au renouvellement ;
+#   - comptes : aucune action sur un compte d'une autre ferme (404) ; même ferme, seul
+#     l'ADMIN agit (403 sinon) ; soi-même pour la page Profil ; jamais le rôle SUPER_ADMIN ;
 #   - tableau de bord : +2 fermes, +2 nouvelles ce mois, +480 sujets vivants, +1 essai ;
 #   - liste des fermes : propriétaire, utilisateurs, projets en cours, sujets vivants,
 #     dernière activité, statut ;
@@ -552,6 +554,71 @@ auth mobile "$ADMIN_Y_EMAIL"
 check "Y renouvelée : connexion mobile de nouveau OK" "code == 200"
 curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/qrcode/scan" -H "Authorization: Bearer $TOKEN_SA" -H 'Content-Type: application/json' -d "{\"encryptedQr\":\"$QR_Y\"}" > "$TMP/code"
 check "Y renouvelée : scan du QR de nouveau accepté" "code == 200 and d['data']['valid']"
+
+echo "--- comptes : jamais d'action sur un compte d'une autre ferme"
+UID_ADMIN_X="$(psql_run "select unique_id from utilisateurs where email='$EMAIL_X'")"
+UID_ADMIN_Y="$(psql_run "select unique_id from utilisateurs where email='$ADMIN_Y_EMAIL'")"
+UID_COMPTA_Y="$(psql_run "select unique_id from utilisateurs where email='$COMPTA_Y_EMAIL'")"
+ETAT_X_AVANT="$(psql_run "select unique_id || '|' || password || '|' || coalesce(statut::text,'') || '|' || coalesce(info_qrcode_encrypte,'') || '|' || full_name || '|' || coalesce(archive::text,'') from utilisateurs where email='$EMAIL_X'")"
+TOKEN="$TOKEN_Y"
+api GET "/users/detail/$UID_ADMIN_X"; check "ADMIN de Y : fiche d'un compte de X refusée (404)" "code == 404"
+api PUT "/users/update-prod-finan/$UID_ADMIN_X" '{"fullName":"Pirate","telephone":"70000000","email":"pirate@t.local","roles":["ADMIN"]}'
+check "ADMIN de Y : modifier un compte de X refusé (404)" "code == 404"
+api POST "/users/reset-password/$UID_ADMIN_X"; check "ADMIN de Y : réinitialiser le mot de passe d'un compte de X refusé (404)" "code == 404"
+api POST "/users/regenerate-qr/$UID_ADMIN_X"; check "ADMIN de Y : régénérer l'identifiant d'un compte de X refusé (404)" "code == 404"
+api PUT "/users/revoke-prod-finan/$UID_ADMIN_X"; check "ADMIN de Y : désactiver un compte de X refusé (404)" "code == 404"
+api PUT "/users/delete-or-archive/$UID_ADMIN_X"; check "ADMIN de Y : supprimer un compte de X refusé (404)" "code == 404"
+api PUT "/users/restaurer/$UID_ADMIN_X"; check "ADMIN de Y : restaurer un compte de X refusé (404)" "code == 404"
+api POST /qrcode/generate "{\"uniqueId\":\"$UID_ADMIN_X\",\"duration\":\"30d\"}"
+check "ADMIN de Y : QR d'un compte de X refusé (404, pas de jeton)" "code == 404 and d.get('data') is None"
+api POST "/qrcode/revoke/$UID_ADMIN_X"; check "ADMIN de Y : révoquer le QR d'un compte de X refusé (404)" "code == 404"
+TOKEN="$TOKEN_COMPTA_Y"
+api POST /qrcode/generate "{\"uniqueId\":\"$UID_ADMIN_X\",\"duration\":\"30d\"}"
+check "COMPTABLE de Y : QR d'un compte de X refusé (404)" "code == 404"
+check_eq "compte de X inchangé (identifiant, mot de passe, statut, QR, nom, archive)" "$ETAT_X_AVANT" \
+  "$(psql_run "select unique_id || '|' || password || '|' || coalesce(statut::text,'') || '|' || coalesce(info_qrcode_encrypte,'') || '|' || full_name || '|' || coalesce(archive::text,'') from utilisateurs where email='$EMAIL_X'")"
+
+echo "--- comptes : même ferme, seul l'ADMIN agit"
+TOKEN="$TOKEN_COMPTA_Y"
+api POST /qrcode/generate "{\"uniqueId\":\"$UID_ADMIN_Y\",\"duration\":\"30d\"}"
+check "COMPTABLE de Y : QR de l'ADMIN de Y refusé (403)" "code == 403"
+api POST "/users/reset-password/$UID_ADMIN_Y"; check "COMPTABLE de Y : réinitialiser le mot de passe de l'ADMIN refusé (403)" "code == 403"
+api GET "/users/detail/$UID_ADMIN_Y"; check "COMPTABLE de Y : fiche de l'ADMIN refusée (403)" "code == 403"
+api PUT "/users/revoke-prod-finan/$UID_ADMIN_Y"; check "COMPTABLE de Y : désactiver l'ADMIN refusé (403)" "code == 403"
+api POST /users/create-pro-or-finance "{\"fullName\":\"Intrus $LETTRES\",\"email\":\"intrus-$SUFFIXE@t.local\",\"telephone\":\"65$(python3 -c 'import random; print(random.randint(100000, 999999))')\",\"roles\":[\"ADMIN\"]}"
+check "COMPTABLE de Y : créer un compte refusé (403)" "code == 403"
+api GET "/users/detail/$UID_COMPTA_Y"; check "COMPTABLE de Y : sa propre fiche (page Profil) OK" "code == 200"
+api PUT "/users/update-prod-finan/$UID_COMPTA_Y" "{\"fullName\":\"Comptable Profil $LETTRES\",\"telephone\":\"$(psql_run "select telephone from utilisateurs where email='$COMPTA_Y_EMAIL'")\",\"email\":\"$COMPTA_Y_EMAIL\"}"
+check "COMPTABLE de Y : modifier son propre profil sans rôles (page Profil) OK" "code == 200"
+api PUT "/users/update-prod-finan/$UID_COMPTA_Y" "{\"fullName\":\"Comptable Profil $LETTRES\",\"telephone\":\"$(psql_run "select telephone from utilisateurs where email='$COMPTA_Y_EMAIL'")\",\"email\":\"$COMPTA_Y_EMAIL\",\"roles\":[\"ADMIN\"]}"
+check "COMPTABLE de Y : se donner le rôle ADMIN refusé (403)" "code == 403"
+check_eq "COMPTABLE de Y toujours COMPTABLE seulement" "COMPTABLE" "$(psql_run "select string_agg(r.role, ',') from roles_users ru join roles r on r.id=ru.id_roles join utilisateurs u on u.id=ru.id_utilisateurs where u.email='$COMPTA_Y_EMAIL'")"
+TOKEN="$TOKEN_Y"
+api GET "/users/detail/$UID_COMPTA_Y"; check "ADMIN de Y : fiche de son COMPTABLE OK" "code == 200"
+api POST /qrcode/generate "{\"uniqueId\":\"$UID_COMPTA_Y\",\"duration\":\"30d\"}"
+check "ADMIN de Y : QR de son COMPTABLE OK (parcours web)" "code == 200 and d['data']['encryptedQr']"
+api POST "/qrcode/revoke/$UID_COMPTA_Y"; check "ADMIN de Y : révoquer le QR de son COMPTABLE OK" "code == 200"
+api PUT "/users/update-prod-finan/$UID_COMPTA_Y" "{\"fullName\":\"Comptable $LETTRES\",\"telephone\":\"$(psql_run "select telephone from utilisateurs where email='$COMPTA_Y_EMAIL'")\",\"email\":\"$COMPTA_Y_EMAIL\",\"roles\":[\"SUPER_ADMIN\"]}"
+check "ADMIN de Y : donner le rôle SUPER_ADMIN refusé (403)" "code == 403"
+api PUT "/users/update-prod-finan/$UID_COMPTA_Y" "{\"fullName\":\"Comptable $LETTRES\",\"telephone\":\"$(psql_run "select telephone from utilisateurs where email='$COMPTA_Y_EMAIL'")\",\"email\":\"$COMPTA_Y_EMAIL\",\"roles\":[\"COMPTABLE\"]}"
+check "ADMIN de Y : modifier son COMPTABLE (rôles) OK" "code == 200"
+api POST /users/create-pro-or-finance "{\"fullName\":\"Super $LETTRES\",\"email\":\"super-$SUFFIXE@t.local\",\"telephone\":\"64$(python3 -c 'import random; print(random.randint(100000, 999999))')\",\"roles\":[\"SUPER_ADMIN\"]}"
+check "ADMIN de Y : créer un SUPER_ADMIN refusé (403)" "code == 403"
+VENTE_ROLE="$(psql_run "select unique_id from roles where role='VENTE'")"
+api PUT "/roles/update/$VENTE_ROLE" '{"role":"PIRATE"}'
+check "ADMIN de Y : modifier un rôle global refusé (403)" "code == 403"
+check_eq "rôle VENTE intact" "VENTE" "$(psql_run "select role from roles where unique_id='$VENTE_ROLE'")"
+curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/users/create" -H 'Content-Type: application/json' \
+  -d "{\"fullName\":\"Inscrit $LETTRES\",\"email\":\"inscrit-sa-$SUFFIXE@t.local\",\"telephone\":\"63$(python3 -c 'import random; print(random.randint(100000, 999999))')\",\"farmName\":\"FermeIntrus$SUFFIXE\",\"roles\":[\"SUPER_ADMIN\"]}" > "$TMP/code"
+check "inscription publique avec le rôle SUPER_ADMIN refusée (403)" "code == 403"
+check_eq "aucun compte créé par cette inscription" "0" "$(psql_run "select count(*) from utilisateurs where email='inscrit-sa-$SUFFIXE@t.local'")"
+TOKEN="$TOKEN_X"; api POST /personnel/create '{"nom":"Employé X"}'
+PERS_X="$(psql_run "select unique_id from personnel where nom='Employé X' and farm_id=$FARM_X order by id desc limit 1" 2>/dev/null || true)"
+if [ -n "$PERS_X" ]; then
+  TOKEN="$TOKEN_Y"; api PUT "/personnel/update/$PERS_X" '{"nom":"Pirate"}'
+  check "ADMIN de Y : modifier un employé de X refusé" "code >= 400"
+  check_eq "employé de X intact" "Employé X" "$(psql_run "select nom from personnel where unique_id='$PERS_X'")"
+fi
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

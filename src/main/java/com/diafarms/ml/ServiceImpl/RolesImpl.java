@@ -31,8 +31,20 @@ public class RolesImpl implements RolesServices{
     private final RoleMapper roleMapper;
     private final OtherService OtherService;
 
+    // Les rôles sont une table GLOBALE (partagée par toutes les fermes) : seul un
+    // SUPER_ADMIN peut en créer, renommer, supprimer ou archiver (403 sinon). Le web ne
+    // s'en sert pas ; avant, n'importe quel compte connecté pouvait les modifier.
+    private void ensureSuperAdmin() {
+        com.diafarms.ml.models.Utilisateurs u = null;
+        try { u = OtherService.getCurrentUser(); } catch (Exception ignored) { }
+        if (!com.diafarms.ml.commons.AccesCompte.estSuperAdmin(u)) {
+            throw new org.springframework.security.access.AccessDeniedException("Seul un SUPER_ADMIN peut modifier les rôles.");
+        }
+    }
+
     @Override
     public RoleDTO create(Roles role) {
+        ensureSuperAdmin();
     
         if (repo.findByRoleAndInitialisationRemovedFalseAndInitialisationArchiveFalse(role.getRole().toUpperCase()) != null) {
             throw new RuntimeException("Le rôle existe déjà !");
@@ -58,6 +70,7 @@ public class RolesImpl implements RolesServices{
 
     @Override
     public RoleDTO update(Roles role, String uniqueIdRole) {
+        ensureSuperAdmin();
 
         Roles dbRole = repo.findByUniqueId(uniqueIdRole)
             .orElseThrow(() -> new RuntimeException("Le rôle avec ID '" + uniqueIdRole + "' n'existe pas !"));
@@ -89,6 +102,7 @@ public class RolesImpl implements RolesServices{
 
     @Override
     public String deleteOrRecover(String uniqueIdRole) {
+        ensureSuperAdmin();
 
         Roles dbRole = repo.findByUniqueId(uniqueIdRole)
             .orElseThrow(() -> new RuntimeException("Le rôle avec ID '" + uniqueIdRole + "' n'existe pas !"));
@@ -149,6 +163,7 @@ public class RolesImpl implements RolesServices{
 
     @Override
     public String archive(String uniqueIdRole) {
+        ensureSuperAdmin();
 
         Roles dbRole = repo.findByUniqueId(uniqueIdRole)
             .orElseThrow(() -> new RuntimeException("Le rôle avec ID '" + uniqueIdRole + "' n'existe pas !"));

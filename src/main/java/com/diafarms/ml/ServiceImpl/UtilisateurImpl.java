@@ -60,6 +60,8 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final OtherService OtherService;
     private final EmailService emailService;
     private final AbonnementService abonnementService;
+    // Contrôle d'accès aux comptes par uniqueId (même ferme, ADMIN), voir AccesCompte.
+    private final com.diafarms.ml.commons.AccesCompte acces;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // tenterSuppressionReelle passe par le proxy Spring (un appel this.xxx()
@@ -123,7 +125,11 @@ public class UtilisateurImpl implements UtilisateursServices {
         user.setPassword(encoder.encode(generatedPassword));
         user.setMustChangePassword(true);
 
-        // Assign roles
+        // Assign roles. Inscription publique : le rôle SUPER_ADMIN n'est jamais accepté
+        // (seul un SUPER_ADMIN connecté peut le donner).
+        Utilisateurs appelant = null;
+        try { appelant = OtherService.getCurrentUser(); } catch (Exception ignored) { }
+        com.diafarms.ml.commons.AccesCompte.verifierRolesAttribuables(appelant, data.getRoles());
         Set<Roles> rolesToAdd = new HashSet<>();
         if (data.getRoles() != null) {
             for (String role : data.getRoles()) {
@@ -344,8 +350,8 @@ public class UtilisateurImpl implements UtilisateursServices {
     @Override
     @Transactional(readOnly = true)
     public UtilisateursDTO getUtilisateurByUniqueId(String uniqueId) {
-        Utilisateurs utilisateur = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'ID: " + uniqueId));
+        // Soi-même, un ADMIN de la même ferme ou un SUPER_ADMIN (voir AccesCompte).
+        Utilisateurs utilisateur = acces.cible(uniqueId, true);
         return UtilisateursDTO.fromEntity(utilisateur);
     }
 
@@ -361,6 +367,13 @@ public class UtilisateurImpl implements UtilisateursServices {
             e.printStackTrace();
             throw new RuntimeException("Erreur lors de la récupération du contexte utilisateur.");
         }
+
+        // Seul un ADMIN de ferme (ou un SUPER_ADMIN) crée des comptes, jamais avec le rôle
+        // SUPER_ADMIN (sauf par un SUPER_ADMIN).
+        if (!isAdmin(currentUser)) {
+            throw new org.springframework.security.access.AccessDeniedException("Seul un administrateur peut créer un utilisateur.");
+        }
+        com.diafarms.ml.commons.AccesCompte.verifierRolesAttribuables(currentUser, dto.getRoles());
 
         // Validation des doublons de téléphone dans la même ferme
         if (currentUser != null && currentUser.getFarm() != null) {
@@ -439,9 +452,17 @@ public class UtilisateurImpl implements UtilisateursServices {
     @Override
     @Transactional
     public UtilisateursDTO updateUtilisateur(String uniqueId, UserUpdate dto) {
-        // 1. Recherche de l'utilisateur existant
-        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        // 1. Recherche de l'utilisateur existant : soi-même (page Profil), un ADMIN de la
+        // même ferme ou un SUPER_ADMIN ; jamais un compte d'une autre ferme (voir AccesCompte).
+        Utilisateurs courant = acces.courant();
+        Utilisateurs u = acces.cible(uniqueId, true);
+        // Rôles : seul un ADMIN (ou SUPER_ADMIN) les change, et jamais vers SUPER_ADMIN.
+        if (dto.getRoles() != null) {
+            if (!com.diafarms.ml.commons.AccesCompte.estAdmin(courant) && !com.diafarms.ml.commons.AccesCompte.estSuperAdmin(courant)) {
+                throw new org.springframework.security.access.AccessDeniedException("Seul un administrateur peut changer les rôles.");
+            }
+            com.diafarms.ml.commons.AccesCompte.verifierRolesAttribuables(courant, dto.getRoles());
+        }
 
         // 2. Validation optionnelle : Empêcher les doublons de téléphone avec un AUTRE utilisateur de la même ferme
         // (aucune vérification à faire pour un compte sans ferme, ex: SUPER_ADMIN)
@@ -497,8 +518,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     // 5. Régénérer l'identifiant unique (Révocation de l'ancien QR code mobile)
     @Transactional
     public UtilisateursDTO regenerateQRCodeToken(String uniqueId) {
-        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        Utilisateurs u = acces.cible(uniqueId, false);
         
         // En changeant le uniqueId, l'ancien QR code scanné par le mobile devient obsolète
         u.setUniqueId("USR-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
@@ -524,9 +544,8 @@ public class UtilisateurImpl implements UtilisateursServices {
             // (JWT obligatoire) aura de toute façon déjà bloqué l'appel en amont.
         }
 
-        // 1. Recherche de l'utilisateur
-        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        // 1. Recherche de l'utilisateur (ADMIN de la même ferme ou SUPER_ADMIN, voir AccesCompte)
+        Utilisateurs u = acces.cible(uniqueId, false);
 
         // 2. Révocation des accès
         u.setStatut(!u.getStatut()); // Le compte passe en suspendu/inactif
@@ -581,8 +600,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             // Pas d'utilisateur authentifié résolu — voir revoquerUtilisateur.
         }
 
-        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        Utilisateurs u = acces.cible(uniqueId, false);
 
         if (self.tenterSuppressionReelle(u.getId())) {
             return "Compte supprimé définitivement.";
@@ -603,8 +621,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     @Override
     @Transactional
     public UtilisateursDTO restaurerUtilisateur(String uniqueId) {
-        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        Utilisateurs u = acces.cible(uniqueId, false);
         if (u.getInitialisation() != null) {
             u.getInitialisation().setArchive(false);
             u.getInitialisation().setUpdatedAt(LocalDateTime.now());
@@ -686,11 +703,10 @@ public class UtilisateurImpl implements UtilisateursServices {
             currentUser = null;
         }
         if (!isAdmin(currentUser)) {
-            throw new RuntimeException("Seul un administrateur peut réinitialiser le mot de passe d'un utilisateur.");
+            throw new org.springframework.security.access.AccessDeniedException("Seul un administrateur peut réinitialiser le mot de passe d'un utilisateur.");
         }
 
-        Utilisateurs u = utilisateursRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+        Utilisateurs u = acces.cible(uniqueId, false);
 
         String newPassword = generateSecurePassword();
         u.setPassword(encoder.encode(newPassword));

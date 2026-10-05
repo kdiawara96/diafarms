@@ -51,6 +51,8 @@ public class RoleController {
                     null,
                     List.of(e.getMessage())
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     "Erreur",
@@ -86,6 +88,8 @@ public class RoleController {
                     null
             );
 
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     "Erreur de validation",
@@ -119,6 +123,8 @@ public class RoleController {
                     result,
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     "Erreur",
@@ -146,6 +152,8 @@ public class RoleController {
                     null
             );
 
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     "Erreur",

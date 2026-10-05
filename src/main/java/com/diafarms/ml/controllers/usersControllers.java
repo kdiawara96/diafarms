@@ -48,6 +48,10 @@ public class usersControllers {
                     dto,
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(
                     "Données invalides",
@@ -70,6 +74,10 @@ public class usersControllers {
         try {
             List<UtilisateursDTO> result = services.select();
             return ApiResponse.createResponse("Liste récupérée", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
@@ -80,6 +88,10 @@ public class usersControllers {
         try {
             List<UtilisateursDTO> result = services.selectProducteurs();
             return ApiResponse.createResponse("Liste des producteurs récupérée", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
@@ -90,6 +102,10 @@ public class usersControllers {
         try {
             List<UtilisateursDTO> result = services.selectFinanciers();
             return ApiResponse.createResponse("Liste des comptables récupérée", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
@@ -100,6 +116,10 @@ public class usersControllers {
         try {
             List<UtilisateursDTO> result = services.selectResponsables();
             return ApiResponse.createResponse("Liste des responsables récupérée", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
@@ -110,6 +130,10 @@ public class usersControllers {
         try {
             List<UtilisateursDTO> result = services.selectVentes();
             return ApiResponse.createResponse("Liste des vendeurs récupérée", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
@@ -151,6 +175,10 @@ public class usersControllers {
                     dto, 
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     e.getMessage(), 
@@ -183,6 +211,10 @@ public class usersControllers {
                     dto, 
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(
                     "Données invalides", 
@@ -222,6 +254,10 @@ public class usersControllers {
                     dto,
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (IllegalStateException e) {
             return ApiResponse.createResponse("Non authentifié", HttpStatus.UNAUTHORIZED, null, null);
         } catch (RuntimeException e) {
@@ -250,6 +286,10 @@ public class usersControllers {
         try {
             UtilisateursDTO dto = services.resetPasswordAndNotify(uniqueId);
             return ApiResponse.createResponse("Mot de passe réinitialisé et envoyé par email", HttpStatus.OK, dto, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -270,6 +310,10 @@ public class usersControllers {
                     dto, 
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     e.getMessage(), 
@@ -300,6 +344,10 @@ public class usersControllers {
                     dto, 
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     e.getMessage(), 
@@ -343,6 +391,10 @@ public class usersControllers {
                     dto,
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             // Attrape les erreurs métier (ex: doublon de téléphone dans la ferme)
             return ApiResponse.createResponse(
@@ -370,6 +422,10 @@ public class usersControllers {
         try {
             String message = services.supprimerOuArchiverUtilisateur(uniqueId);
             return ApiResponse.createResponse(message, HttpStatus.OK, message, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -385,6 +441,10 @@ public class usersControllers {
         try {
             UtilisateursDTO dto = services.restaurerUtilisateur(uniqueId);
             return ApiResponse.createResponse("Compte restauré avec succès", HttpStatus.OK, dto, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
@@ -402,6 +462,10 @@ public class usersControllers {
         try {
             PaginatedResponse<UtilisateursDTO> result = services.getCorbeille(page, size);
             return ApiResponse.createResponse("Corbeille récupérée", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, null);
         } catch (Exception e) {
@@ -427,6 +491,10 @@ public class usersControllers {
                     paginatedResult, 
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         } catch (RuntimeException e) {
             return ApiResponse.createResponse(
                     e.getMessage(), 
