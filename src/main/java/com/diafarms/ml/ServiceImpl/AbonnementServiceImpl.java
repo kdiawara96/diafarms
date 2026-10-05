@@ -2,7 +2,6 @@ package com.diafarms.ml.ServiceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.diafarms.ml.DTO.AbonnementConfigDTO;
 import com.diafarms.ml.DTO.AbonnementDTO;
 import com.diafarms.ml.DTO.PaiementAbonnementDTO;
+import com.diafarms.ml.commons.AbonnementEcheance;
 import com.diafarms.ml.commons.Initialisation;
 import com.diafarms.ml.enums.Periodicite;
 import com.diafarms.ml.enums.StatutAbonnement;
@@ -120,7 +120,8 @@ public class AbonnementServiceImpl implements AbonnementService {
         nouveau.setPrixMensuel(15000.0);
         nouveau.setPrixAnnuel(150000.0);
         nouveau.setDureeEssaiJours(14);
-        nouveau.setDureeGraceHeures(24);
+        nouveau.setDureeGraceHeures(24); // colonne historique NOT NULL, plus utilisée
+        nouveau.setDelaiGraceJours(AbonnementEcheance.DELAI_GRACE_JOURS_DEFAUT);
         return configRepo.save(nouveau);
     }
 
@@ -182,25 +183,11 @@ public class AbonnementServiceImpl implements AbonnementService {
         });
     }
 
-    // Voir spec, section "Calcul du statut effectif" : dateFin est un LocalDate (la
-    // ferme reste active toute la journée indiquée), l'instant de coupure réel est
-    // dateFin+1 jour à minuit, plus la grâce en heures.
-    private record StatutCalcule(String statut, boolean enGrace, long joursRestants) {}
-
-    private StatutCalcule calculerStatutEffectif(Abonnement abonnement, AbonnementConfig config) {
-        LocalDateTime maintenant = LocalDateTime.now();
-        LocalDateTime finJournee = abonnement.getDateFin().plusDays(1).atStartOfDay();
-        LocalDateTime instantLimite = finJournee.plusHours(config.getDureeGraceHeures());
-        long joursRestants = ChronoUnit.DAYS.between(LocalDate.now(), abonnement.getDateFin());
-
-        boolean estEssai = abonnement.getPeriodicite() == null;
-        if (maintenant.isBefore(finJournee)) {
-            return new StatutCalcule(estEssai ? "ESSAI" : "ACTIF", false, joursRestants);
-        }
-        if (maintenant.isBefore(instantLimite)) {
-            return new StatutCalcule(estEssai ? "ESSAI" : "ACTIF", true, joursRestants);
-        }
-        return new StatutCalcule("EXPIRE", false, joursRestants);
+    // Statut effectif : toujours recalculé (jamais lu dans Abonnement.statut), voir
+    // AbonnementEcheance pour les règles (date de fin incluse, puis délai de grâce en
+    // jours pendant lequel rien n'est bloqué).
+    private AbonnementEcheance.Etat calculerStatutEffectif(Abonnement abonnement, AbonnementConfig config) {
+        return AbonnementEcheance.calculer(abonnement, config, LocalDate.now());
     }
 
     @Override
@@ -214,14 +201,28 @@ public class AbonnementServiceImpl implements AbonnementService {
         Abonnement abonnement = getOuCreerAbonnement(farm);
         AbonnementConfig config = getOuCreerConfig();
 
-        StatutCalcule effectif = calculerStatutEffectif(abonnement, config);
+        AbonnementEcheance.Etat effectif = calculerStatutEffectif(abonnement, config);
 
         PaiementAbonnement enAttente = paiementAbonnementRepo
                 .findByAbonnement_IdAndStatut(abonnement.getId(), StatutPaiementAbonnement.EN_ATTENTE)
                 .orElse(null);
 
-        return AbonnementDTO.of(abonnement, effectif.statut(), effectif.enGrace(), effectif.joursRestants(),
-                PaiementAbonnementDTO.fromEntity(enAttente));
+        return AbonnementDTO.of(abonnement, effectif, PaiementAbonnementDTO.fromEntity(enAttente));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AbonnementDTO> listerFermes() {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensureSuperAdmin(currentUser);
+        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
+        LocalDate aujourdHui = LocalDate.now();
+        return abonnementRepo.findAllAvecFerme().stream()
+                .map(a -> AbonnementDTO.of(a, AbonnementEcheance.calculer(a, config, aujourdHui),
+                        PaiementAbonnementDTO.fromEntity(paiementAbonnementRepo
+                                .findByAbonnement_IdAndStatut(a.getId(), StatutPaiementAbonnement.EN_ATTENTE)
+                                .orElse(null))))
+                .toList();
     }
 
     @Override
@@ -391,6 +392,12 @@ public class AbonnementServiceImpl implements AbonnementService {
         if (request.getPrixAnnuel() != null) config.setPrixAnnuel(request.getPrixAnnuel());
         if (request.getDureeEssaiJours() != null) config.setDureeEssaiJours(request.getDureeEssaiJours());
         if (request.getDureeGraceHeures() != null) config.setDureeGraceHeures(request.getDureeGraceHeures());
+        if (request.getDelaiGraceJours() != null) {
+            if (request.getDelaiGraceJours() < 0 || request.getDelaiGraceJours() > 60) {
+                throw new IllegalArgumentException("Le délai de grâce doit être compris entre 0 et 60 jours.");
+            }
+            config.setDelaiGraceJours(request.getDelaiGraceJours());
+        }
         AbonnementConfig saved = configRepo.save(config);
         logs.addLogs(currentUser.getId(), saved.getId(), "AbonnementConfig", "Mise à jour de la configuration des abonnements");
         return AbonnementConfigDTO.fromEntity(saved);

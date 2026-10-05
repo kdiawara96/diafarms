@@ -35,6 +35,14 @@ public class AbonnementConfig {
     @Column(name = "duree_essai_jours", nullable = false)
     private Integer dureeEssaiJours;
 
+    // Ancien délai de grâce en HEURES : plus utilisé pour le calcul (remplacé par
+    // delaiGraceJours ci-dessous), gardé car la colonne existe déjà en base en NOT NULL.
     @Column(name = "duree_grace_heures", nullable = false)
     private Integer dureeGraceHeures;
+
+    // Délai de grâce en JOURS après la date de fin (abonnement ou essai) : la ferme garde
+    // tout son accès pendant ces jours-là. Nullable (colonne ajoutée par ddl-auto sur une
+    // table existante) : null = AbonnementEcheance.DELAI_GRACE_JOURS_DEFAUT (5).
+    @Column(name = "delai_grace_jours")
+    private Integer delaiGraceJours;
 }

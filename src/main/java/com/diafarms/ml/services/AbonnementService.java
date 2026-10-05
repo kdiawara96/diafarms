@@ -24,6 +24,10 @@ public interface AbonnementService {
     // Retourne null si l'utilisateur courant n'a pas de ferme (SUPER_ADMIN).
     AbonnementDTO getMoi();
 
+    // SUPER_ADMIN uniquement : l'abonnement de chaque ferme avec son statut effectif
+    // (dont les fermes en délai de grâce).
+    List<AbonnementDTO> listerFermes();
+
     // ADMIN/RESPONSABLE de la ferme courante uniquement. Refuse si une déclaration
     // est déjà EN_ATTENTE pour cette ferme.
     PaiementAbonnementDTO declarerPaiement(DeclarerPaiementAbonnementRequest request);

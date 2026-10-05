@@ -29,7 +29,7 @@ import lombok.Setter;
 // champ statut est mis à jour à chaque validation de paiement mais n'est jamais lu
 // directement pour décider d'un blocage : voir
 // AbonnementServiceImpl.calculerStatutEffectif, toujours recalculé à partir de
-// dateFin + AbonnementConfig.dureeGraceHeures.
+// dateFin + AbonnementConfig.delaiGraceJours (voir AbonnementEcheance).
 @Entity
 @Table(name = "abonnements")
 @Getter

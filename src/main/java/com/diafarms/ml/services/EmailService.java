@@ -29,4 +29,11 @@ public interface EmailService {
 
     boolean sendAbonnementValide(String to, String fullName, String farmNom,
             java.time.LocalDate dateFin);
+
+    /**
+     * Rappel de fin d'abonnement (J-7, J-1, début du délai de grâce), voir
+     * AbonnementRappelService. message = texte brut, paragraphes séparés par une ligne
+     * vide. Ne lève jamais d'exception : false si l'envoi échoue.
+     */
+    boolean sendRappelAbonnement(String to, String fullName, String sujet, String message);
 }

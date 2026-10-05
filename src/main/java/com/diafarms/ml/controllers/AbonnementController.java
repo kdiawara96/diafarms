@@ -14,6 +14,7 @@ import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.request.others.AbonnementConfigUpdateRequest;
 import com.diafarms.ml.request.others.DeclarerPaiementAbonnementRequest;
 import com.diafarms.ml.request.others.RejeterPaiementAbonnementRequest;
+import com.diafarms.ml.ServiceImpl.AbonnementRappelService;
 import com.diafarms.ml.services.AbonnementService;
 
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,34 @@ import lombok.RequiredArgsConstructor;
 public class AbonnementController {
 
     private final AbonnementService service;
+    private final AbonnementRappelService rappelService;
+
+    // SUPER_ADMIN : abonnement de chaque ferme (statut effectif, délai de grâce).
+    @GetMapping("/fermes")
+    public ResponseEntity<ApiResponse<List<AbonnementDTO>>> fermes() {
+        try {
+            return ApiResponse.createResponse("Abonnements des fermes récupérés", HttpStatus.OK, service.listerFermes(), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    // SUPER_ADMIN : lance la tâche des rappels (normalement quotidienne, 8 h). executer=false
+    // (par défaut) = simulation : renvoie ce qui serait envoyé, sans rien enregistrer.
+    @PostMapping("/rappels")
+    public ResponseEntity<ApiResponse<List<AbonnementRappelService.RappelDTO>>> rappels(
+            @RequestParam(defaultValue = "false") boolean executer) {
+        try {
+            return ApiResponse.createResponse(executer ? "Rappels envoyés" : "Simulation des rappels",
+                    HttpStatus.OK, rappelService.executerManuellement(executer), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
 
     @GetMapping("/moi")
     public ResponseEntity<ApiResponse<AbonnementDTO>> moi() {

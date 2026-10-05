@@ -2,6 +2,7 @@ package com.diafarms.ml.DTO;
 
 import java.time.LocalDate;
 
+import com.diafarms.ml.commons.AbonnementEcheance;
 import com.diafarms.ml.models.Abonnement;
 
 import lombok.AllArgsConstructor;
@@ -28,6 +29,22 @@ public class AbonnementDTO {
     private long joursRestants;
     private String periodicite;
     private PaiementAbonnementDTO paiementEnAttente;
+    // Délai de grâce (voir AbonnementEcheance) : nombre de jours configuré, dernier jour
+    // d'accès (dateFin + délai) et jours d'accès restants pendant la grâce (aujourd'hui
+    // compris, 0 hors grâce).
+    private boolean estEssai;
+    private int delaiGraceJours;
+    private LocalDate dernierJourAcces;
+    private long joursGraceRestants;
+
+    public static AbonnementDTO of(Abonnement a, AbonnementEcheance.Etat etat, PaiementAbonnementDTO paiementEnAttente) {
+        AbonnementDTO dto = of(a, etat.statut(), etat.enGrace(), etat.joursRestants(), paiementEnAttente);
+        dto.setEstEssai(etat.estEssai());
+        dto.setDelaiGraceJours(etat.delaiGraceJours());
+        dto.setDernierJourAcces(etat.dernierJourAcces());
+        dto.setJoursGraceRestants(etat.joursGraceRestants());
+        return dto;
+    }
 
     public static AbonnementDTO of(Abonnement a, String statutEffectif, boolean enGrace,
             long joursRestants, PaiementAbonnementDTO paiementEnAttente) {

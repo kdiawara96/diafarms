@@ -68,6 +68,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final MagasinService magasinService;
     private final MagasinTransfertService magasinTransfertService;
     private final CollecteOeufsRepo collecteOeufsRepo;
+    private final com.diafarms.ml.repository.AbonnementRepo abonnementRepo;
+    private final com.diafarms.ml.repository.AbonnementConfigRepo abonnementConfigRepo;
+    private final com.diafarms.ml.repository.AbonnementRappelRepo abonnementRappelRepo;
 
     // Un rôle est son SEUL rôle (pas de cumul) : un compte qui cumule les rôles garde
     // les notifications complètes, un autre rôle justifiant déjà l'accès non restreint
@@ -182,6 +185,8 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         addRejetNotification(result, currentUser);
+
+        addAbonnementNotification(result, currentUser);
 
         applyReadState(result, currentUser.getId());
 
@@ -410,6 +415,33 @@ public class NotificationServiceImpl implements NotificationService {
                 .actionPath("/ventes")
                 .build());
         }
+    }
+
+    /**
+     * Rappel de fin d'abonnement (J-7, J-1, délai de grâce) : affiché aux ADMIN de la
+     * ferme dès que la tâche quotidienne l'a envoyé (ligne AbonnementRappel pour la
+     * période en cours, voir AbonnementRappelService), avec un texte recalculé sur l'état
+     * du jour. Disparaît tout seul au renouvellement (nouvelle dateFin, aucune ligne).
+     * La clé change à chaque étape : le rappel suivant redevient non lu.
+     */
+    private void addAbonnementNotification(List<NotificationDTO> result, Utilisateurs currentUser) {
+        boolean admin = currentUser.getRoles() != null && currentUser.getRoles().stream()
+            .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()));
+        if (!admin) return;
+        abonnementRepo.findByFarm_Id(currentUser.getFarm().getId()).ifPresent(a ->
+            abonnementRappelRepo.findFirstByAbonnement_IdAndDateFinOrderByEnvoyeLeDesc(a.getId(), a.getDateFin())
+                .ifPresent(rappel -> {
+                    com.diafarms.ml.commons.AbonnementEcheance.Etat etat = com.diafarms.ml.commons.AbonnementEcheance
+                        .calculer(a, abonnementConfigRepo.findFirstByOrderByIdAsc(), LocalDate.now());
+                    if (etat.expire()) return; // le web est bloqué, l'écran de blocage suffit
+                    result.add(NotificationDTO.builder()
+                        .key("abonnement-" + rappel.getType().toLowerCase() + "-" + a.getDateFin())
+                        .type("ABONNEMENT")
+                        .level(etat.enGrace() ? "CRITIQUE" : "WARNING")
+                        .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat))
+                        .actionPath("/abonnement")
+                        .build());
+                }));
     }
 
     private NotificationDTO echeanceNotif(Projets p, String level, String message) {

@@ -287,4 +287,37 @@ public class EmailServiceImpl implements EmailService {
             </div>
             """.formatted(fullName, farmNom, dateFin);
     }
+
+    @Override
+    public boolean sendRappelAbonnement(String to, String fullName, String sujet, String message) {
+        try {
+            MimeMessage mime = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
+            helper.setFrom(fromAddress, "DiaFarms");
+            helper.setTo(to);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject(sujet);
+            String bonjour = "Bonjour " + (fullName != null ? fullName : "") + ",";
+            String texte = bonjour + "\n\n" + message + "\n\nL'équipe DiaFarms\n";
+            StringBuilder html = new StringBuilder()
+                    .append("<div style=\"font-family: Arial, sans-serif; max-width: 480px; margin: auto; color: #1f2937;\">")
+                    .append("<h2 style=\"color: #b45309;\">Abonnement</h2>")
+                    .append("<p>").append(escapeHtml(bonjour)).append("</p>");
+            for (String paragraphe : message.split("\n\n")) {
+                html.append("<p>").append(escapeHtml(paragraphe).replace("\n", "<br>")).append("</p>");
+            }
+            html.append("<p>L'équipe DiaFarms</p></div>");
+            helper.setText(texte, html.toString());
+            mailSender.send(mime);
+            return true;
+        } catch (Exception e) {
+            log.error("Échec de l'envoi du rappel d'abonnement à {} : {}", to, e.getMessage());
+            return false;
+        }
+    }
+
+    private static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
 }

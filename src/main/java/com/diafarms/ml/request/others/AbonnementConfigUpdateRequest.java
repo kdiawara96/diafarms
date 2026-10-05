@@ -9,5 +9,6 @@ public class AbonnementConfigUpdateRequest {
     private Double prixMensuel;
     private Double prixAnnuel;
     private Integer dureeEssaiJours;
-    private Integer dureeGraceHeures;
+    private Integer dureeGraceHeures; // historique, plus utilisé pour le calcul
+    private Integer delaiGraceJours;
 }
