@@ -268,6 +268,10 @@ public class AbonnementServiceImpl implements AbonnementService {
         }
 
         Abonnement abonnement = getOuCreerAbonnement(currentUser.getFarm());
+        if (abonnement.estSuspendu()) {
+            throw new IllegalArgumentException("L'accès de votre ferme est suspendu : vous ne pouvez pas déclarer de paiement. "
+                    + "Contactez-nous sur WhatsApp au +223 83 91 86 99.");
+        }
 
         if (paiementAbonnementRepo.findByAbonnement_IdAndStatut(abonnement.getId(), StatutPaiementAbonnement.EN_ATTENTE).isPresent()) {
             throw new IllegalArgumentException("Une déclaration de paiement est déjà en attente de validation.");
@@ -327,11 +331,16 @@ public class AbonnementServiceImpl implements AbonnementService {
 
         PaiementAbonnement paiement = paiementAbonnementRepo.findByUniqueId(paiementUniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Déclaration de paiement introuvable : " + paiementUniqueId));
-        if (paiement.getStatut() != StatutPaiementAbonnement.EN_ATTENTE) {
+        // Abonnement verrouillé avant toute lecture (voir AbonnementRepo.verrouillerParId) :
+        // une action SUPER_ADMIN simultanée (activer, suspendre...) passe avant ou après,
+        // jamais au milieu. Statut du paiement relu en base une fois le verrou obtenu.
+        Abonnement abonnement = abonnementRepo.verrouillerParId(paiement.getAbonnement().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Abonnement introuvable."));
+        if (paiementAbonnementRepo.statutEnBase(paiement.getId()) != StatutPaiementAbonnement.EN_ATTENTE) {
             throw new IllegalArgumentException("Cette déclaration a déjà été traitée.");
         }
-
-        Abonnement abonnement = paiement.getAbonnement();
+        // Une ferme suspendue le reste : valider un paiement ne lève jamais la suspension
+        // (seuls « Réactiver » et « Activer / prolonger » de la console la lèvent).
         int joursAjoutes = paiement.getPeriodicite() == Periodicite.ANNUEL ? 365 : 30;
         // À partir de la plus tardive entre l'échéance actuelle et aujourd'hui : ne
         // fait jamais perdre de jours déjà payés (renouvellement en avance), ne

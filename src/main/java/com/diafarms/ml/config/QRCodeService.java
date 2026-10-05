@@ -2,6 +2,7 @@ package com.diafarms.ml.config;
 
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +16,7 @@ import java.time.ZoneId;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class QRCodeService {
 
     private final JwtEncoder jwtEncoder;
@@ -93,6 +95,16 @@ public class QRCodeService {
             return qrCode;
         } catch (Exception e) {
             throw new RuntimeException("QR code invalide, expiré ou révoqué");
+        }
+    }
+
+    // Connexion mobile par QR réussie : date de dernière connexion (console SUPER_ADMIN).
+    // Jamais bloquant : un échec est seulement signalé dans les logs du serveur.
+    public void marquerConnexion(Utilisateurs user) {
+        try {
+            utilisateursRepo.marquerConnexion(user.getId(), LocalDateTime.now());
+        } catch (Exception e) {
+            log.warn("Dernière connexion (QR) non enregistrée pour l'utilisateur {} : {}", user.getId(), e.getMessage());
         }
     }
 }

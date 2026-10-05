@@ -44,4 +44,8 @@ public interface PaiementAbonnementRepo extends JpaRepository<PaiementAbonnement
     @Query("SELECT p FROM PaiementAbonnement p JOIN FETCH p.abonnement a JOIN FETCH a.farm "
             + "LEFT JOIN FETCH p.declarePar LEFT JOIN FETCH p.validePar WHERE p.id IN :ids")
     List<PaiementAbonnement> findAllAvecFermeParIds(@Param("ids") java.util.Collection<Long> ids);
+
+    // Statut relu en base (après verrouillage de l'abonnement, voir AbonnementServiceImpl.valider).
+    @Query("SELECT p.statut FROM PaiementAbonnement p WHERE p.id = :id")
+    StatutPaiementAbonnement statutEnBase(@Param("id") Long id);
 }

@@ -43,12 +43,12 @@ public class LogsController {
 
     /** Récupération des logs par idAction */
     @GetMapping("/list/by-action")
-    public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> getAllByIdAction(
+    public ResponseEntity<ApiResponse<PaginatedResponse<LogsDTO>>> getAllByIdAction(
             @RequestParam Long idAction,
             @RequestParam int page,
             @RequestParam int size
     ) {
-        PaginatedResponse<Logs> response = logsServices.getAllByIdAction(idAction, page, size);
+        PaginatedResponse<LogsDTO> response = logsServices.getAllByIdAction(idAction, page, size);
 
         return ApiResponse.createResponse(
                 "Logs par idAction récupérés",
@@ -60,12 +60,12 @@ public class LogsController {
 
     /** Récupération des logs par nom de classe */
     @GetMapping("/list/by-class")
-    public ResponseEntity<ApiResponse<PaginatedResponse<Logs>>> getAllByNomClass(
+    public ResponseEntity<ApiResponse<PaginatedResponse<LogsDTO>>> getAllByNomClass(
             @RequestParam String nomClass,
             @RequestParam int page,
             @RequestParam int size
     ) {
-        PaginatedResponse<Logs> response = logsServices.getAllByNomClass(nomClass, page, size);
+        PaginatedResponse<LogsDTO> response = logsServices.getAllByNomClass(nomClass, page, size);
 
         return ApiResponse.createResponse(
                 "Logs filtrés par nom de classe récupérés",
@@ -90,6 +90,8 @@ public class LogsController {
                     result,
                     null
             );
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(
                     "Erreur",

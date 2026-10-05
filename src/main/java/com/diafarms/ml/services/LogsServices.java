@@ -17,8 +17,8 @@ public interface LogsServices {
      */
     Logs addLogs(Long userId, Long entityId, String entityType, String action);
     String delete(String uniqueId);
-    PaginatedResponse<Logs> getAllByIdAction(Long idAction, int page, int size);
-    PaginatedResponse<Logs> getAllByNomClass(String nomClass, int page, int size);
+    PaginatedResponse<LogsDTO> getAllByIdAction(Long idAction, int page, int size);
+    PaginatedResponse<LogsDTO> getAllByNomClass(String nomClass, int page, int size);
     PaginatedResponse<LogsDTO> getAll(int page, int size, String search);
 
 }

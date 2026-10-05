@@ -5,6 +5,7 @@ import java.util.function.Supplier;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 // Console d'administration SUPER_ADMIN (voir AdminConsoleService). Chaque appel vérifie
-// le rôle SUPER_ADMIN côté serveur : tout autre compte reçoit 400.
+// le rôle SUPER_ADMIN côté serveur : tout autre compte reçoit 403.
 @RestController
 @RequestMapping("/diafarms/api/v1/admin")
 @RequiredArgsConstructor
@@ -38,6 +39,8 @@ public class AdminConsoleController {
     private <T> ResponseEntity<ApiResponse<T>> repondre(String message, Supplier<T> action) {
         try {
             return ApiResponse.createResponse(message, HttpStatus.OK, action.get(), null);
+        } catch (AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {

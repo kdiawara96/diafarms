@@ -22,7 +22,7 @@ import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.domain.Sort;
 
-import java.util.Optional;
+import org.springframework.security.access.AccessDeniedException;
 import java.util.UUID;
 
 
@@ -53,58 +53,92 @@ public class LogsServicesImpl implements LogsServices {
 
         return logsRepo.save(logs);
     }
+    // Accès aux logs : un SUPER_ADMIN voit tout ; tout autre compte ne voit QUE les logs de
+    // sa propre ferme (jamais un log sans ferme, jamais une action de la console
+    // d'administration, entity_type AdminFerme). Avant, /logs/list?search=,
+    // /logs/list/by-action et /logs/list/by-class lisaient toutes les fermes.
+    private static boolean estSuperAdmin(Utilisateurs u) {
+        return u != null && u.getRoles() != null
+                && u.getRoles().stream().anyMatch(r -> "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+    }
+
+    private static boolean estAdmin(Utilisateurs u) {
+        return u != null && u.getRoles() != null
+                && u.getRoles().stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()));
+    }
+
+    private Utilisateurs utilisateurCourant() {
+        try {
+            return verificationUniqueId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     @Override
     @Transactional
     public String delete(String uniqueId) {
-        Optional<Logs> logOptional = logsRepo.findByUniqueId(uniqueId);
-        if (logOptional.isPresent()) {
-            Logs log = logOptional.get();
-            boolean isRemoved = log.getInitialisation().getRemoved();
-            log.getInitialisation().setRemoved(!isRemoved);
-
-            Utilisateurs currentUser = verificationUniqueId();
-            if (currentUser != null) {
-                String action = isRemoved ? "Restauration d'un log" : "Suppression d'un log";
-                this.addLogs(currentUser.getId(), log.getId(), "Log", action);
+        Utilisateurs currentUser = utilisateurCourant();
+        Logs log = logsRepo.findByUniqueId(uniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Le log avec l'ID unique " + uniqueId + " n'existe pas."));
+        // Suppression : SUPER_ADMIN, ou ADMIN sur un log de SA ferme (hors console d'administration).
+        boolean autorise = estSuperAdmin(currentUser)
+                || (estAdmin(currentUser) && currentUser.getFarm() != null && log.getFarm() != null
+                    && currentUser.getFarm().getId().equals(log.getFarm().getId())
+                    && !"AdminFerme".equals(log.getEntityType()));
+        if (!autorise) {
+            if (currentUser != null && currentUser.getFarm() != null && log.getFarm() != null
+                    && currentUser.getFarm().getId().equals(log.getFarm().getId())
+                    && !"AdminFerme".equals(log.getEntityType())) {
+                throw new AccessDeniedException("Seul un administrateur de la ferme peut supprimer un log.");
             }
-
-            logsRepo.save(log);
-
-            return isRemoved ? "SUCCESS_RESTORE" : "SUCCESS_DELETE";
+            // Log d'une autre ferme : répond comme un log inexistant.
+            throw new IllegalArgumentException("Le log avec l'ID unique " + uniqueId + " n'existe pas.");
         }
-        throw new IllegalArgumentException("Le log avec l'ID unique " + uniqueId + " n'existe pas.");
-    }
-    @Override
-    public PaginatedResponse<Logs> getAllByIdAction(Long idAction, int page, int size) {
-        Page<Logs> logPage;
-
-
-        logPage = logsRepo.findAllByEntityIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt")), idAction);
-
-        return new PaginatedResponse<>(
-                logPage.getContent(),
-                logPage.getNumber(),
-                logPage.getSize(),
-                logPage.getTotalElements(),
-                logPage.getTotalPages()
-        );
+        boolean isRemoved = Boolean.TRUE.equals(log.getInitialisation().getRemoved());
+        log.getInitialisation().setRemoved(!isRemoved);
+        this.addLogs(currentUser.getId(), log.getId(), "Log", isRemoved ? "Restauration d'un log" : "Suppression d'un log");
+        logsRepo.save(log);
+        return isRemoved ? "SUCCESS_RESTORE" : "SUCCESS_DELETE";
     }
 
-    @Override
-    public PaginatedResponse<Logs> getAllByNomClass(String nomClass, int page, int size) {
-        Page<Logs> logPage;
-
-          logPage = logsRepo.findAllByEntityTypeAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "initialisation.createdAt")), nomClass);
-
+    private PaginatedResponse<LogsDTO> page(Page<Logs> logPage) {
+        Page<LogsDTO> dtoPage = logsMapper.toDTOPage(logPage);
         return new PaginatedResponse<>(
-                logPage.getContent(),
-                logPage.getNumber(),
-                logPage.getSize(),
-                logPage.getTotalElements(),
-                logPage.getTotalPages()
-        );
+                dtoPage.getContent(),
+                dtoPage.getNumber(),
+                dtoPage.getTotalPages(),
+                dtoPage.getTotalElements(),
+                dtoPage.getSize());
+    }
+
+    private Pageable pageable(int page, int size) {
+        return PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 200)),
+                Sort.by(Sort.Direction.DESC, "initialisation.createdAt"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<LogsDTO> getAllByIdAction(Long idAction, int page, int size) {
+        Utilisateurs u = utilisateurCourant();
+        Pageable p = pageable(page, size);
+        if (estSuperAdmin(u)) {
+            return page(logsRepo.findAllByEntityIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(p, idAction));
+        }
+        if (u == null || u.getFarm() == null) return page(Page.empty(p));
+        return page(logsRepo.findDeLaFermeParEntityId(u.getFarm().getId(), idAction, p));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponse<LogsDTO> getAllByNomClass(String nomClass, int page, int size) {
+        Utilisateurs u = utilisateurCourant();
+        Pageable p = pageable(page, size);
+        if (estSuperAdmin(u)) {
+            return page(logsRepo.findAllByEntityTypeAndInitialisationRemovedFalseAndInitialisationArchiveFalse(p, nomClass));
+        }
+        if (u == null || u.getFarm() == null) return page(Page.empty(p));
+        return page(logsRepo.findDeLaFermeParEntityType(u.getFarm().getId(), nomClass, p));
     }
 
     public Utilisateurs verificationUniqueId() {
@@ -126,37 +160,18 @@ public class LogsServicesImpl implements LogsServices {
  
 
     @Override
+    @Transactional(readOnly = true)
     public PaginatedResponse<LogsDTO> getAll(int page, int size, String search) {
-
-            Pageable pageable = PageRequest.of(
-                    page,
-                    size,
-                    Sort.by(Sort.Direction.DESC, "initialisation.createdAt")
-            );
-
-            Page<Logs> logPage;
-            if (search != null && !search.isBlank()) {
-                logPage = logsRepo.searchLogs(search, pageable);
-            } else {
-                Utilisateurs currentUser = verificationUniqueId();
-                if (currentUser == null || currentUser.getFarm() == null) {
-                    // Compte sans ferme (SUPER_ADMIN) : aucun log à lister ici.
-                    logPage = Page.empty(pageable);
-                } else {
-                    logPage = logsRepo.findByFarmIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(
-                        currentUser.getFarm().getId(), pageable);
-                }
-            }
-
-            // Map en DTO avant de renvoyer
-            Page<LogsDTO> dtoPage = logsMapper.toDTOPage(logPage);
-
-            return new PaginatedResponse<>(
-                dtoPage.getContent(),        // 1. data
-                dtoPage.getNumber(),         // 2. currentPage
-                dtoPage.getTotalPages(),     // 3. totalPages (C'était dtoPage.getSize())
-                dtoPage.getTotalElements(),  // 4. totalItems
-                dtoPage.getSize()            // 5. size (C'était logPage.getTotalPages())
-            );
+        Utilisateurs u = utilisateurCourant();
+        Pageable p = pageable(page, size);
+        boolean recherche = search != null && !search.isBlank();
+        if (estSuperAdmin(u)) {
+            // SUPER_ADMIN : recherche globale ; sans recherche, rien (son journal est dans
+            // la console d'administration, /admin/journal).
+            return page(recherche ? logsRepo.searchLogs(search, p) : Page.empty(p));
         }
+        if (u == null || u.getFarm() == null) return page(Page.empty(p));
+        Long farmId = u.getFarm().getId();
+        return page(recherche ? logsRepo.searchLogsDeLaFerme(farmId, search, p) : logsRepo.findDeLaFerme(farmId, p));
+    }
 }

@@ -107,6 +107,7 @@ public class QRCodeController {
                 throw new RuntimeException("Ce compte est suspendu.");
             }
             ensureMobileAccessAllowed(scannedUser);
+            qrCodeService.marquerConnexion(scannedUser);
 
             // fullName/role viennent de scannedUser (déjà chargé depuis la BDD) plutôt que du
             // contenu déchiffré : QrCodeEncrypte a été allégé au strict nécessaire pour que le

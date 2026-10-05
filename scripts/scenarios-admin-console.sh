@@ -9,7 +9,14 @@
 # la base de test contient déjà d'autres fermes.
 #
 # Vérifie :
-#   - tous les nouveaux endpoints refusés (400) à un ADMIN de ferme ;
+#   - tous les nouveaux endpoints refusés (403) à un ADMIN de ferme ;
+#   - aucune donnée confidentielle (note, motif, montant, moyen) dans logs.action ;
+#   - /logs (liste, recherche, by-class, by-action) limité à la ferme de l'appelant, jamais
+#     les actions de la console ; /logs/delete : SUPER_ADMIN, ou ADMIN sur sa ferme ;
+#   - durées : 12 mois = 365 jours ; date de fin avant la fin actuelle refusée ; montant
+#     sans moyen refusé sans rien modifier ;
+#   - ferme suspendue : déclaration de paiement refusée (WhatsApp), validation sans levée ;
+#   - 3 prolongations simultanées : aucune perdue (verrou) ;
 #   - tableau de bord : +2 fermes, +2 nouvelles ce mois, +480 sujets vivants, +1 essai ;
 #   - liste des fermes : propriétaire, utilisateurs, projets en cours, sujets vivants,
 #     dernière activité, statut ;
@@ -134,6 +141,14 @@ nouvelle_ferme() { # $1=lettre -> FARM_ID, ADMIN_EMAIL, TOKEN_ADMIN, FARM_UID, A
 
 nouvelle_ferme X; FARM_X="$FARM_ID"; UID_X="$FARM_UID"; TOKEN_X="$TOKEN_ADMIN"; EMAIL_X="$ADMIN_EMAIL"; TEL_X="$ADMIN_TEL"
 nouvelle_ferme Y; FARM_Y="$FARM_ID"; UID_Y="$FARM_UID"; TOKEN_Y="$TOKEN_ADMIN"
+COMPTA_Y_EMAIL="compta-conY-$SUFFIXE@t.local"
+TOKEN="$TOKEN_Y"
+api PUT /farm-settings '{"comptableMobileEnabled":true,"comptableWebEnabled":true}'
+api POST /users/create-pro-or-finance "{\"fullName\":\"Comptable $LETTRES\",\"email\":\"$COMPTA_Y_EMAIL\",\"telephone\":\"6$(python3 -c 'import random; print(random.randint(1000000, 9999999))')\",\"roles\":[\"COMPTABLE\"]}"
+ok_cree "COMPTABLE de la ferme Y"
+psql_run "UPDATE utilisateurs SET password='$HASH', must_change_password=false WHERE email='$COMPTA_Y_EMAIL'" >/dev/null
+TOKEN_COMPTA_Y="$(login_mobile "$COMPTA_Y_EMAIL" "$PWD_TEST")"
+[ -n "$TOKEN_COMPTA_Y" ] || { echo "ECHEC  connexion COMPTABLE de Y"; exit 1; }
 
 # Projets de X en SQL : un en cours (500 sujets, 20 morts, 1 mortalité supprimée ignorée)
 # et un clôturé (archive=true, ignoré).
@@ -150,16 +165,16 @@ TOKEN="$TOKEN_X"
 for ep in "GET /admin/tableau-de-bord" "GET /admin/fermes" "GET /admin/fermes/$UID_X" "GET /admin/finances" \
           "GET /admin/paiements" "GET /admin/journal" "POST /admin/fermes/$UID_X/reactiver"; do
   api ${ep% *} "${ep#* }"
-  check "ADMIN de ferme refusé : $ep" "code == 400 and d.get('data') is None"
+  check "ADMIN de ferme refusé (403) : $ep" "code == 403 and d.get('data') is None"
 done
 api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12,"montant":1,"moyenPaiement":"x"}'
-check "ADMIN de ferme refusé : activer" "code == 400"
+check "ADMIN de ferme refusé (403) : activer" "code == 403"
 api POST "/admin/fermes/$UID_X/suspendre" '{"motif":"x"}'
-check "ADMIN de ferme refusé : suspendre" "code == 400"
+check "ADMIN de ferme refusé (403) : suspendre" "code == 403"
 api POST "/admin/fermes/$UID_X/prolonger-essai" '{"jours":10}'
-check "ADMIN de ferme refusé : prolonger l'essai" "code == 400"
+check "ADMIN de ferme refusé (403) : prolonger l'essai" "code == 403"
 api POST "/admin/fermes/$UID_X/notes" '{"contenu":"x"}'
-check "ADMIN de ferme refusé : note" "code == 400"
+check "ADMIN de ferme refusé (403) : note" "code == 403"
 check_eq "rien n'a été modifié par l'ADMIN de ferme" "false|" "$(psql_run "select coalesce(suspendu,false)::text || '|' || coalesce(periodicite,'') from abonnements where farm_id=$FARM_X")"
 check_eq "aucune note créée par l'ADMIN de ferme" "0" "$(psql_run "select count(*) from notes_admin_ferme where farm_id=$FARM_X")"
 
@@ -196,7 +211,13 @@ check "activer avec formule inconnue : refusé" "code == 400"
 check_eq "aucun paiement créé par les refus" "0" "$(psql_run "select count(*) from paiements_abonnement p join abonnements a on a.id=p.abonnement_id where a.farm_id=$FARM_X")"
 
 FIN_ESSAI="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
-ATTENDU="$(python3 -c "import datetime; d=datetime.date.fromisoformat('$FIN_ESSAI'); m=d.month+12; y=d.year+(m-1)//12; m=(m-1)%12+1; import calendar; print(datetime.date(y,m,min(d.day,calendar.monthrange(y,m)[1])))")"
+# 12 mois = 365 jours (même convention que la validation d'un paiement : 1 mois = 30 jours).
+ATTENDU="$(python3 -c "import datetime; print(datetime.date.fromisoformat('$FIN_ESSAI') + datetime.timedelta(days=365))")"
+# Vérifications AVANT toute modification : paiement sans moyen refusé, rien n'a changé.
+api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12,"montant":5000}'
+check "activer avec montant mais sans moyen de paiement : refusé" "code == 400"
+check_eq "refus sans moyen : abonnement inchangé (toujours en essai, même fin)" "$FIN_ESSAI|" \
+  "$(psql_run "select date_fin || '|' || coalesce(periodicite,'') from abonnements where farm_id=$FARM_X")"
 api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12,"montant":123456,"moyenPaiement":"Espèces","reference":"REC-ADMIN-1"}'
 check "activer 12 mois + paiement hors application : ACTIF annuel" \
   "code == 200 and d['data']['ferme']['statut'] == 'ACTIF' and d['data']['ferme']['periodicite'] == 'ANNUEL' and d['data']['ferme']['dateFin'] == '$ATTENDU'"
@@ -211,6 +232,10 @@ check_eq "revenu de l'année : +123456" "123456.0" "$(ecart "$TMP/tdb1" "$TMP/td
 check_eq "revenu mensuel estimé : +10288 (annuel / 12)" "10288.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuMensuelEstime)"
 check_eq "fermes actives payantes : +1" "1" "$(ecart "$TMP/tdb1" "$TMP/tdb2" activesPayantes)"
 
+FIN_ACTUELLE="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
+api POST "/admin/fermes/$UID_X/activer" "{\"periodicite\":\"MENSUEL\",\"dateFin\":\"$(date -d '+10 days' +%F)\"}"
+check "activer avec une date de fin avant la fin actuelle : refusé (pas de raccourcissement)" "code == 400 and 'raccourci' in str(d)"
+check_eq "refus du raccourcissement : fin inchangée" "$FIN_ACTUELLE" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
 api POST "/admin/fermes/$UID_X/activer" "{\"periodicite\":\"MENSUEL\",\"dateFin\":\"2030-06-30\"}"
 check "activer avec date de fin explicite, sans paiement" \
   "code == 200 and d['data']['ferme']['dateFin'] == '2030-06-30' and d['data']['ferme']['periodicite'] == 'MENSUEL' and len(d['data']['paiements']) == 1"
@@ -247,6 +272,12 @@ api GET "/admin/finances?annee=2001"
 check "finances d'une année sans paiement : 0" "code == 200 and d['data']['totalAnnee'] == 0 and d['data']['annee'] == 2001"
 
 echo "--- suspendre"
+# X déclare un paiement AVANT la suspension (validé pendant la suspension plus bas).
+TOKEN="$TOKEN_X"
+api POST /abonnements/declarer-paiement '{"periodicite":"MENSUEL","moyenPaiement":"Orange Money","reference":"AVANT-SUSP"}'
+ok_cree "déclaration de paiement de X avant suspension"
+PAIEMENT_X="$(jval "d['data']['uniqueId']")"
+TOKEN="$TOKEN_SA"
 api POST "/admin/fermes/$UID_X/suspendre" '{"motif":"   "}'
 check "suspendre sans motif : refusé" "code == 400"
 api POST "/admin/fermes/$UID_X/suspendre" '{"motif":"Paiement contesté"}'
@@ -261,6 +292,12 @@ check "ferme suspendue : anciens champs de /abonnements/moi présents" \
   "all(k in d['data'] for k in ['uniqueId','farmUniqueId','farmNom','statutEffectif','enGrace','dateFin','joursRestants','periodicite','paiementEnAttente','estEssai','delaiGraceJours','dernierJourAcces','joursGraceRestants'])"
 api GET /notifications/list
 check "ferme suspendue : l'API répond toujours (pas de blocage serveur)" "code == 200"
+api POST /abonnements/declarer-paiement '{"periodicite":"MENSUEL","moyenPaiement":"Orange Money"}'
+check "ferme suspendue : déclarer un paiement refusé, message WhatsApp" "code == 400 and '+223 83 91 86 99' in str(d)"
+TOKEN="$TOKEN_SA"; api POST "/abonnements/$PAIEMENT_X/valider"
+check "valider le paiement d'une ferme suspendue : validé" "code == 200 and d['data']['statut'] == 'VALIDE'"
+TOKEN="$TOKEN_X"; api GET /abonnements/moi
+check "la validation ne lève pas la suspension" "d['data']['statutEffectif'] == 'EXPIRE' and d['data']['suspendu'] is True"
 # Aucun rappel pour une ferme suspendue, même dans la fenêtre J-7.
 psql_run "update abonnements set date_fin = current_date + 5 where farm_id=$FARM_X" >/dev/null
 TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
@@ -296,6 +333,8 @@ api POST "/admin/fermes/$UID_X/notes" '{"contenu":"Appelé le propriétaire, pai
 check "note ajoutée avec auteur et date" \
   "code == 200 and [(n['contenu'], n['auteurNom'] is not None, n['creeLe'][:10]) for n in d['data']['notes']] == [('Appelé le propriétaire, paiement promis lundi.', True, '$AUJ')]"
 api GET "/admin/fermes/$UID_X"
+check "fiche (agrégats d'une seule ferme) : 480 sujets, 1 projet en cours, total payé 123456 + 1 mois" \
+  "d['data']['ferme']['sujetsVivants'] == 480 and d['data']['ferme']['projetsEnCours'] == 1 and d['data']['ferme']['totalPaye'] > 123456"
 check "fiche : utilisateurs avec rôles et dernière connexion, rappels envoyés (liste), notes" \
   "[(u['roles'], (u['derniereConnexion'] or '')[:10]) for u in d['data']['utilisateurs']] == [(['ADMIN'], '$AUJ')] and isinstance(d['data']['rappels'], list) and len(d['data']['notes']) == 1"
 TOKEN="$TOKEN_X"; api GET /abonnements/moi
@@ -304,10 +343,10 @@ check "la note n'apparaît pas côté ferme" "'Appel' not in str(d)"
 echo "--- journal"
 TOKEN="$TOKEN_SA"
 api GET "/admin/journal?ferme=$UID_X&size=50"
-check "journal de X : activations, suspension, réactivation, note" \
-  "sorted(set(e['categorie'] for e in d['data']['data'])) == ['ACTIVATION', 'NOTE', 'REACTIVATION', 'SUSPENSION'] and all(e['farmUniqueId'] == '$UID_X' for e in d['data']['data'])"
-check "journal de X : 5 actions (2 activations), auteur renseigné" \
-  "d['data']['totalItems'] == 5 and all(e['auteurNom'] for e in d['data']['data'])"
+check "journal de X : activations, validation, suspension, réactivation, note" \
+  "sorted(set(e['categorie'] for e in d['data']['data'])) == ['ACTIVATION', 'NOTE', 'REACTIVATION', 'SUSPENSION', 'VALIDATION'] and all(e['farmUniqueId'] == '$UID_X' for e in d['data']['data'])"
+check "journal de X : 6 actions (2 activations), auteur renseigné" \
+  "d['data']['totalItems'] == 6 and all(e['auteurNom'] for e in d['data']['data'])"
 api GET "/admin/journal?ferme=$UID_Y&categorie=ESSAI"
 check "journal filtré par catégorie ESSAI pour Y" "d['data']['totalItems'] == 1 and 'Prolongation' in d['data']['data'][0]['action']"
 api GET "/admin/journal?categorie=SUSPENSION&du=$AUJ&au=$AUJ"
@@ -316,6 +355,59 @@ api GET "/admin/journal?du=2001-01-01&au=2001-01-02"
 check "journal sur une période vide" "code == 200 and d['data']['totalItems'] == 0"
 check_eq "actions SUPER_ADMIN non comptées comme activité de la ferme (farm_id vide)" "0" \
   "$(psql_run "select count(*) from logs where entity_type='AdminFerme' and farm_id is not null")"
+
+echo "--- aucune donnée confidentielle dans les logs"
+check_eq "logs de la console : ni contenu de note, ni motif, ni montant, ni moyen" "0" \
+  "$(psql_run "select count(*) from logs where entity_type='AdminFerme' and entity_id in ($FARM_X, $FARM_Y) and (action like '%Appel%' or action like '%contesté%' or action like '%123%456%' or action like '%Espèces%' or action like '%FCFA%')")"
+check_eq "logs de la console : note et suspension journalisées sans détail" "2" \
+  "$(psql_run "select count(*) from logs where entity_type='AdminFerme' and entity_id=$FARM_X and action in ('Note interne ajoutée sur la ferme FermeConsoleX$SUFFIXE', 'Suspension de la ferme FermeConsoleX$SUFFIXE')")"
+
+echo "--- /logs : chaque ferme ne voit que ses propres logs"
+TOKEN="$TOKEN_Y"
+for q in "/logs/list?page=0&size=200&search=FermeConsoleX$SUFFIXE" "/logs/list?page=0&size=200&search=Note%20interne" \
+         "/logs/list?page=0&size=200&search=Suspension" "/logs/list/by-class?nomClass=AdminFerme&page=0&size=200" \
+         "/logs/list/by-action?idAction=$FARM_X&page=0&size=200" "/logs/list/by-class?nomClass=PaiementAbonnement&page=0&size=200"; do
+  api GET "$q"
+  check "ADMIN de Y : $q ne renvoie rien de X ni de la console" \
+    "code == 200 and 'FermeConsoleX' not in str(d) and 'AdminFerme' not in str(d) and 'contesté' not in str(d)"
+done
+api GET "/logs/list?page=0&size=200"
+python3 -c 'import json,sys; print("\n".join(l["uniqueId"] for l in json.load(open(sys.argv[1]))["data"]["data"]))' "$TMP/body" > "$TMP/uids_y"
+NB_Y="$(wc -l < "$TMP/uids_y" | tr -d ' ')"
+LISTE_Y="$(sed "s/.*/'&'/" "$TMP/uids_y" | paste -sd, -)"
+check_eq "ADMIN de Y : /logs/list ne contient que des logs de la ferme Y" "$NB_Y" \
+  "$( [ "$NB_Y" = "0" ] && echo 0 || psql_run "select count(*) from logs where unique_id in ($LISTE_Y) and farm_id=$FARM_Y and coalesce(entity_type,'') <> 'AdminFerme'")"
+check "ADMIN de Y : ses propres logs sont bien listés" "code == 200 and d['data']['totalItems'] >= 1"
+
+echo "--- /logs/delete"
+LOG_X="$(psql_run "select unique_id from logs where farm_id=$FARM_X order by id limit 1")"
+LOG_ADMIN="$(psql_run "select unique_id from logs where entity_type='AdminFerme' and entity_id=$FARM_X order by id limit 1")"
+LOG_Y="$(psql_run "select unique_id from logs where farm_id=$FARM_Y order by id limit 1")"
+TOKEN="$TOKEN_Y"
+api DELETE "/logs/delete?uniqueId=$LOG_X"
+check "ADMIN de Y ne peut pas supprimer un log de X" "code == 404"
+api DELETE "/logs/delete?uniqueId=$LOG_ADMIN"
+check "ADMIN de Y ne peut pas supprimer un log de la console" "code == 404"
+check_eq "logs de X et de la console intacts" "0" "$(psql_run "select count(*) from logs where unique_id in ('$LOG_X','$LOG_ADMIN') and removed = true")"
+TOKEN="$TOKEN_COMPTA_Y"
+api DELETE "/logs/delete?uniqueId=$LOG_Y"
+check "COMPTABLE de Y ne peut pas supprimer un log de sa ferme (403)" "code == 403"
+TOKEN="$TOKEN_Y"
+api DELETE "/logs/delete?uniqueId=$LOG_Y"
+check "ADMIN de Y supprime un log de sa ferme" "code == 200 and d['data'] == 'SUCCESS_DELETE'"
+api DELETE "/logs/delete?uniqueId=$LOG_Y"
+check "ADMIN de Y le restaure" "code == 200 and d['data'] == 'SUCCESS_RESTORE'"
+
+echo "--- actions simultanées : aucune prolongation perdue"
+FIN_AVANT="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
+for i in 1 2 3; do
+  curl -s -o /dev/null -X POST "$BASE/admin/fermes/$UID_X/activer" -H "Authorization: Bearer $TOKEN_SA" \
+    -H 'Content-Type: application/json' -H 'X-Client-Type: web' -d '{"periodicite":"MENSUEL","jours":10}' &
+done
+wait
+check_eq "3 prolongations de 10 jours en même temps : +30 jours" \
+  "$(python3 -c "import datetime; print(datetime.date.fromisoformat('$FIN_AVANT') + datetime.timedelta(days=30))")" \
+  "$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

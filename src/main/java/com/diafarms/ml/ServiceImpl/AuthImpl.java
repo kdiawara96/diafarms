@@ -164,6 +164,8 @@ public class AuthImpl implements AuthServices {
                 repo.marquerConnexion(currentUser.getId(), java.time.LocalDateTime.now());
             } catch (Exception e) {
                 // la connexion passe quand même
+                org.slf4j.LoggerFactory.getLogger(AuthImpl.class)
+                        .warn("Dernière connexion non enregistrée pour l'utilisateur {} : {}", currentUser.getId(), e.getMessage());
             }
         }
 
