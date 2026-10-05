@@ -84,6 +84,13 @@ public class AuthImpl implements AuthServices {
                         new UsernamePasswordAuthenticationToken(identifiant, password)
                 );
             } catch (Exception e) {
+                // Diagnostic des échecs de connexion : la raison (compte introuvable, mot de
+                // passe faux, compte désactivé...) et l'identifiant masqué, jamais le mot de passe.
+                String id = identifiant == null ? "" : identifiant.trim();
+                String masque = id.length() <= 3 ? "***" : id.substring(0, 3) + "***(" + id.length() + ")";
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                org.slf4j.LoggerFactory.getLogger(AuthImpl.class).info("Échec de connexion [{}] client={} : {} / {}",
+                        masque, clientType, e.getClass().getSimpleName(), cause.getClass().getSimpleName());
                 return new ResponseEntity<>(Map.of("errorMessage", "Identifiant ou mot de passe incorrect"),
                         HttpStatus.UNAUTHORIZED);
             }
