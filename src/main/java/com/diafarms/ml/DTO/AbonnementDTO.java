@@ -36,6 +36,11 @@ public class AbonnementDTO {
     private int delaiGraceJours;
     private LocalDate dernierJourAcces;
     private long joursGraceRestants;
+    // Suspension manuelle par le SUPER_ADMIN : statutEffectif vaut alors EXPIRE (les
+    // anciens clients bloquent sans connaître ce champ), le web récent affiche le motif.
+    private boolean suspendu;
+    private String motifSuspension;
+    private java.time.LocalDateTime suspenduLe;
 
     public static AbonnementDTO of(Abonnement a, AbonnementEcheance.Etat etat, PaiementAbonnementDTO paiementEnAttente) {
         AbonnementDTO dto = of(a, etat.statut(), etat.enGrace(), etat.joursRestants(), paiementEnAttente);
@@ -43,6 +48,11 @@ public class AbonnementDTO {
         dto.setDelaiGraceJours(etat.delaiGraceJours());
         dto.setDernierJourAcces(etat.dernierJourAcces());
         dto.setJoursGraceRestants(etat.joursGraceRestants());
+        dto.setSuspendu(etat.suspendu());
+        if (etat.suspendu()) {
+            dto.setMotifSuspension(a.getMotifSuspension());
+            dto.setSuspenduLe(a.getSuspenduLe());
+        }
         return dto;
     }
 

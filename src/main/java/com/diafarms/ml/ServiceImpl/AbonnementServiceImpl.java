@@ -183,6 +183,12 @@ public class AbonnementServiceImpl implements AbonnementService {
         });
     }
 
+    // Console SUPER_ADMIN (AdminConsoleService) : même création paresseuse que getMoi,
+    // pour agir sur une ferme qui ne s'est jamais reconnectée depuis l'arrivée des abonnements.
+    public Abonnement abonnementDeLaFerme(Farm farm) {
+        return getOuCreerAbonnement(farm);
+    }
+
     // Statut effectif : toujours recalculé (jamais lu dans Abonnement.statut), voir
     // AbonnementEcheance pour les règles (date de fin incluse, puis délai de grâce en
     // jours pendant lequel rien n'est bloqué).
@@ -217,11 +223,14 @@ public class AbonnementServiceImpl implements AbonnementService {
         ensureSuperAdmin(currentUser);
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
         LocalDate aujourdHui = LocalDate.now();
+        // Une seule requête pour toutes les déclarations en attente (et non une par ferme).
+        java.util.Map<Long, PaiementAbonnement> enAttente = new java.util.HashMap<>();
+        for (PaiementAbonnement p : paiementAbonnementRepo.findAllAvecFermeParStatut(StatutPaiementAbonnement.EN_ATTENTE)) {
+            enAttente.putIfAbsent(p.getAbonnement().getId(), p);
+        }
         return abonnementRepo.findAllAvecFerme().stream()
                 .map(a -> AbonnementDTO.of(a, AbonnementEcheance.calculer(a, config, aujourdHui),
-                        PaiementAbonnementDTO.fromEntity(paiementAbonnementRepo
-                                .findByAbonnement_IdAndStatut(a.getId(), StatutPaiementAbonnement.EN_ATTENTE)
-                                .orElse(null))))
+                        PaiementAbonnementDTO.fromEntity(enAttente.get(a.getId()))))
                 .toList();
     }
 
@@ -342,7 +351,8 @@ public class AbonnementServiceImpl implements AbonnementService {
         paiement.setValidePar(currentUser);
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
-                "Validation du paiement d'abonnement de la ferme " + resoudreFarmNom(abonnement.getFarm(), null));
+                "Validation du paiement d'abonnement de la ferme " + resoudreFarmNom(abonnement.getFarm(),
+                        paiement.getDeclarePar() != null ? paiement.getDeclarePar().getFarmName() : null));
 
         if (paiement.getDeclarePar() != null) {
             String farmNom = resoudreFarmNom(abonnement.getFarm(), paiement.getDeclarePar().getFarmName());
@@ -371,7 +381,8 @@ public class AbonnementServiceImpl implements AbonnementService {
         paiement.setMotifRejet(request != null ? request.getMotif() : null);
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
-                "Rejet du paiement d'abonnement de la ferme " + resoudreFarmNom(paiement.getAbonnement().getFarm(), null));
+                "Rejet du paiement d'abonnement de la ferme " + resoudreFarmNom(paiement.getAbonnement().getFarm(),
+                        paiement.getDeclarePar() != null ? paiement.getDeclarePar().getFarmName() : null));
         return PaiementAbonnementDTO.fromEntity(saved);
     }
 

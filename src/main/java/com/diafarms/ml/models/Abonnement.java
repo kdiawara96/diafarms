@@ -66,6 +66,26 @@ public class Abonnement {
     @Column(name = "periodicite", length = 20)
     private Periodicite periodicite;
 
+    // Suspension manuelle par le SUPER_ADMIN (console d'administration) : bloque le web
+    // de la ferme tout de suite, quelle que soit dateFin, jusqu'à la réactivation.
+    // Colonnes nullables (ajoutées par ddl-auto sur une table existante) : null = non
+    // suspendu. Volontairement PAS une nouvelle valeur de StatutAbonnement (elle exigerait
+    // de modifier à la main la contrainte CHECK Postgres abonnements_statut_check).
+    // Le statut effectif exposé reste EXPIRE pour les anciens clients, avec suspendu=true
+    // (voir AbonnementEcheance).
+    @Column(name = "suspendu")
+    private Boolean suspendu;
+
+    @Column(name = "motif_suspension", length = 500)
+    private String motifSuspension;
+
+    @Column(name = "suspendu_le")
+    private java.time.LocalDateTime suspenduLe;
+
     @Embedded
     private Initialisation initialisation;
+
+    public boolean estSuspendu() {
+        return Boolean.TRUE.equals(suspendu);
+    }
 }

@@ -83,6 +83,13 @@ public class PaiementAbonnement {
     @Column(name = "motif_rejet", columnDefinition = "TEXT")
     private String motifRejet;
 
+    // true : paiement reçu en dehors de l'application (espèces, virement...) et
+    // enregistré directement par le SUPER_ADMIN depuis la console (« Activer /
+    // prolonger »), créé déjà VALIDE. Nullable (colonne ajoutée par ddl-auto) : null =
+    // paiement déclaré par la ferme avec « J'ai payé ».
+    @Column(name = "hors_application")
+    private Boolean horsApplication;
+
     @Embedded
     private Initialisation initialisation;
 }

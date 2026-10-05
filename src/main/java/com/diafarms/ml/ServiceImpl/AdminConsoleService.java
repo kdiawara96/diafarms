@@ -1,0 +1,787 @@
+package com.diafarms.ml.ServiceImpl;
+
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.diafarms.ml.DTO.AdminConsoleDTO;
+import com.diafarms.ml.DTO.PaiementAbonnementDTO;
+import com.diafarms.ml.commons.AbonnementEcheance;
+import com.diafarms.ml.commons.Initialisation;
+import com.diafarms.ml.enums.Periodicite;
+import com.diafarms.ml.enums.StatutAbonnement;
+import com.diafarms.ml.enums.StatutPaiementAbonnement;
+import com.diafarms.ml.models.Abonnement;
+import com.diafarms.ml.models.AbonnementConfig;
+import com.diafarms.ml.models.Farm;
+import com.diafarms.ml.models.NoteAdminFerme;
+import com.diafarms.ml.models.PaiementAbonnement;
+import com.diafarms.ml.models.Utilisateurs;
+import com.diafarms.ml.repository.AbonnementConfigRepo;
+import com.diafarms.ml.repository.AbonnementRepo;
+import com.diafarms.ml.repository.FarmsRepo;
+import com.diafarms.ml.repository.NoteAdminFermeRepo;
+import com.diafarms.ml.repository.PaiementAbonnementRepo;
+import com.diafarms.ml.request.others.AdminActiverAbonnementRequest;
+import com.diafarms.ml.request.others.AdminNoteRequest;
+import com.diafarms.ml.request.others.AdminProlongerEssaiRequest;
+import com.diafarms.ml.request.others.AdminSuspendreRequest;
+import com.diafarms.ml.services.LogsServices;
+
+import lombok.RequiredArgsConstructor;
+
+// Console d'administration SUPER_ADMIN (web : page d'accueil du SUPER_ADMIN, onglets
+// Vue d'ensemble / Fermes / Finances / Journal). Tout est réservé au SUPER_ADMIN, vérifié
+// ici côté serveur (ensureSuperAdmin), jamais seulement par le menu web.
+//
+// Performances : les chiffres par ferme (utilisateurs, projets en cours, sujets vivants,
+// dernière activité, total payé) viennent de quelques requêtes SQL agrégées GROUP BY
+// farm_id, jamais d'une requête par ferme : quelques centaines de fermes = une dizaine de
+// requêtes au total. Filtres facultatifs : clauses SQL ajoutées seulement quand le filtre
+// est présent (jamais l'idiome « :param IS NULL OR ... » qui plante sous Postgres).
+//
+// Actions sur une ferme (activer, suspendre, réactiver, prolonger l'essai, note) :
+// journalisées dans logs avec entity_type = "AdminFerme" et entity_id = farms.id (farm_id
+// du log laissé vide : une action du SUPER_ADMIN n'est ni une activité de la ferme, ni
+// visible dans son propre journal).
+//
+// Rien ici ne bloque l'API ni le mobile : une suspension ne fait que passer statutEffectif
+// à EXPIRE (avec suspendu=true) dans /abonnements/moi, que seul le web lit (AbonnementGate).
+@Service
+@RequiredArgsConstructor
+public class AdminConsoleService {
+
+    public static final String ENTITE_ADMIN_FERME = "AdminFerme";
+
+    private final JdbcTemplate jdbc;
+    private final AbonnementRepo abonnementRepo;
+    private final AbonnementConfigRepo configRepo;
+    private final PaiementAbonnementRepo paiementRepo;
+    private final FarmsRepo farmsRepo;
+    private final NoteAdminFermeRepo noteRepo;
+    private final AbonnementServiceImpl abonnementService;
+    private final OtherService otherService;
+    private final LogsServices logs;
+
+    // ------------------------------------------------------------------ sécurité
+
+    private Utilisateurs superAdmin() {
+        Utilisateurs u;
+        try {
+            u = otherService.getCurrentUser();
+        } catch (Exception e) {
+            u = null;
+        }
+        boolean ok = u != null && u.getRoles() != null && u.getRoles().stream()
+                .anyMatch(r -> "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
+        if (!ok) {
+            throw new IllegalArgumentException("Seul un SUPER_ADMIN peut effectuer cette action.");
+        }
+        return u;
+    }
+
+    // ------------------------------------------------------------------ outils SQL
+
+    private static long l(Object o) {
+        return o == null ? 0 : ((Number) o).longValue();
+    }
+
+    private static double d(Object o) {
+        return o == null ? 0 : ((Number) o).doubleValue();
+    }
+
+    private static LocalDateTime ldt(Object o) {
+        if (o == null) return null;
+        if (o instanceof Timestamp t) return t.toLocalDateTime();
+        if (o instanceof LocalDateTime x) return x;
+        return null;
+    }
+
+    private static LocalDateTime max(LocalDateTime a, LocalDateTime b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.isAfter(b) ? a : b;
+    }
+
+    private static LocalDate parseDate(String s, String libelle) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return LocalDate.parse(s.trim().substring(0, Math.min(10, s.trim().length())));
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("Date invalide pour " + libelle + " : " + s);
+        }
+    }
+
+    private static String nomFerme(Farm f, String nomInscription) {
+        if (f.getNom() != null && !f.getNom().isBlank()) return f.getNom();
+        if (nomInscription != null && !nomInscription.isBlank()) return nomInscription;
+        return f.getUniqueId();
+    }
+
+    // ------------------------------------------------------------------ données agrégées par ferme
+
+    private record Proprio(String nom, String telephone, String email, String nomFermeInscription) {}
+
+    private record Agregats(
+            Map<Long, Proprio> proprios,
+            Map<Long, long[]> utilisateurs,            // [nb actifs]
+            Map<Long, LocalDateTime> premiereInscription,
+            Map<Long, LocalDateTime> derniereConnexion,
+            Map<Long, long[]> projets,                 // [projets en cours, sujets vivants]
+            Map<Long, LocalDateTime> dernierLog,
+            Map<Long, Double> totalPaye,
+            Map<Long, Boolean> enAttente) {}
+
+    private Agregats agregats() {
+        Map<Long, Proprio> proprios = new HashMap<>();
+        // Propriétaire : le premier ADMIN (plus petit id) de la ferme.
+        jdbc.query("SELECT DISTINCT ON (u.farm_id) u.farm_id, u.full_name, u.telephone, u.email, u.farm_name "
+                + "FROM utilisateurs u JOIN roles_users ru ON ru.id_utilisateurs = u.id JOIN roles r ON r.id = ru.id_roles "
+                + "WHERE r.role = 'ADMIN' AND u.farm_id IS NOT NULL AND COALESCE(u.removed, false) = false "
+                + "ORDER BY u.farm_id, u.id", rs -> {
+                    proprios.put(rs.getLong(1), new Proprio(rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5)));
+                });
+
+        Map<Long, long[]> utilisateurs = new HashMap<>();
+        Map<Long, LocalDateTime> premiere = new HashMap<>();
+        Map<Long, LocalDateTime> derniereCo = new HashMap<>();
+        jdbc.query("SELECT farm_id, "
+                + "COUNT(*) FILTER (WHERE COALESCE(removed, false) = false AND COALESCE(archive, false) = false), "
+                + "MIN(created_at), MAX(last_login) FROM utilisateurs WHERE farm_id IS NOT NULL GROUP BY farm_id", rs -> {
+                    long id = rs.getLong(1);
+                    utilisateurs.put(id, new long[] { rs.getLong(2) });
+                    premiere.put(id, ldt(rs.getTimestamp(3)));
+                    derniereCo.put(id, ldt(rs.getTimestamp(4)));
+                });
+
+        // Projets en cours (ni supprimés ni clôturés) et leurs sujets vivants :
+        // sujets de départ - morts - réformés (même définition qu'EffectifVivantHelper),
+        // jamais négatif pour un projet.
+        Map<Long, long[]> projets = new HashMap<>();
+        jdbc.query("SELECT p.farm_id, COUNT(*), "
+                + "COALESCE(SUM(GREATEST(COALESCE(p.nb_sujets, 0) - COALESCE(m.morts, 0) - COALESCE(rf.ref, 0), 0)), 0) "
+                + "FROM projets p "
+                + "LEFT JOIN (SELECT projet_id, SUM(nombre_morts) AS morts FROM mortalites "
+                + "           WHERE COALESCE(removed, false) = false GROUP BY projet_id) m ON m.projet_id = p.id "
+                + "LEFT JOIN (SELECT projet_id, SUM(nombre_sujets) AS ref FROM reformes "
+                + "           WHERE COALESCE(removed, false) = false GROUP BY projet_id) rf ON rf.projet_id = p.id "
+                + "WHERE p.farm_id IS NOT NULL AND COALESCE(p.removed, false) = false AND COALESCE(p.archive, false) = false "
+                + "GROUP BY p.farm_id", rs -> {
+                    projets.put(rs.getLong(1), new long[] { rs.getLong(2), rs.getLong(3) });
+                });
+
+        Map<Long, LocalDateTime> dernierLog = new HashMap<>();
+        jdbc.query("SELECT farm_id, MAX(created_at) FROM logs WHERE farm_id IS NOT NULL GROUP BY farm_id", rs -> {
+            dernierLog.put(rs.getLong(1), ldt(rs.getTimestamp(2)));
+        });
+
+        Map<Long, Double> totalPaye = new HashMap<>();
+        Map<Long, Boolean> enAttente = new HashMap<>();
+        jdbc.query("SELECT a.farm_id, COALESCE(SUM(p.montant) FILTER (WHERE p.statut = 'VALIDE'), 0), "
+                + "BOOL_OR(p.statut = 'EN_ATTENTE') FROM paiements_abonnement p "
+                + "JOIN abonnements a ON a.id = p.abonnement_id GROUP BY a.farm_id", rs -> {
+                    totalPaye.put(rs.getLong(1), rs.getDouble(2));
+                    enAttente.put(rs.getLong(1), rs.getBoolean(3));
+                });
+        return new Agregats(proprios, utilisateurs, premiere, derniereCo, projets, dernierLog, totalPaye, enAttente);
+    }
+
+    // Une ligne par ferme, avec son abonnement (et son état du jour) s'il existe.
+    private record Ligne(Farm farm, Abonnement abonnement, AbonnementEcheance.Etat etat, AdminConsoleDTO.Ferme dto) {}
+
+    private List<Ligne> lignes() {
+        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
+        LocalDate auj = LocalDate.now();
+        Map<Long, Abonnement> parFerme = new HashMap<>();
+        for (Abonnement a : abonnementRepo.findAllAvecFerme()) parFerme.put(a.getFarm().getId(), a);
+        Agregats ag = agregats();
+        List<Ligne> res = new ArrayList<>();
+        for (Farm f : farmsRepo.findAll()) {
+            Abonnement a = parFerme.get(f.getId());
+            AbonnementEcheance.Etat etat = a != null ? AbonnementEcheance.calculer(a, config, auj) : null;
+            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag)));
+        }
+        return res;
+    }
+
+    private AdminConsoleDTO.Ferme versDto(Farm f, Abonnement a, AbonnementEcheance.Etat etat, Agregats ag) {
+        Long id = f.getId();
+        Proprio p = ag.proprios().get(id);
+        LocalDateTime inscription = ag.premiereInscription().get(id);
+        if (inscription == null && a != null && a.getInitialisation() != null) inscription = a.getInitialisation().getCreatedAt();
+        long[] u = ag.utilisateurs().getOrDefault(id, new long[] { 0 });
+        long[] pr = ag.projets().getOrDefault(id, new long[] { 0, 0 });
+        return new AdminConsoleDTO.Ferme(
+                f.getUniqueId(),
+                nomFerme(f, p != null ? p.nomFermeInscription() : null),
+                p != null ? p.nom() : null,
+                p != null ? p.telephone() : null,
+                p != null ? p.email() : null,
+                f.getPaysCode(),
+                f.getDevise(),
+                f.getVille(),
+                inscription != null ? inscription.toLocalDate() : null,
+                etat != null ? etat.statutDetaille() : "AUCUN",
+                a != null ? a.getDateFin() : null,
+                etat != null ? etat.joursRestants() : null,
+                etat != null ? etat.dernierJourAcces() : null,
+                a != null && a.getPeriodicite() != null ? a.getPeriodicite().name() : null,
+                a != null && a.estSuspendu(),
+                a != null && a.estSuspendu() ? a.getMotifSuspension() : null,
+                a != null && a.estSuspendu() ? a.getSuspenduLe() : null,
+                u[0],
+                pr[0],
+                pr[1],
+                max(ag.dernierLog().get(id), ag.derniereConnexion().get(id)),
+                ag.totalPaye().getOrDefault(id, 0.0),
+                Boolean.TRUE.equals(ag.enAttente().get(id)));
+    }
+
+    // ------------------------------------------------------------------ lecture
+
+    @Transactional(readOnly = true)
+    public List<AdminConsoleDTO.Ferme> listerFermes() {
+        superAdmin();
+        return lignes().stream().map(Ligne::dto)
+                .sorted(Comparator.comparing(AdminConsoleDTO.Ferme::inscriteLe, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+    }
+
+    private static List<String> douzeDerniersMois(LocalDate auj) {
+        List<String> mois = new ArrayList<>();
+        YearMonth ym = YearMonth.from(auj).minusMonths(11);
+        for (int i = 0; i < 12; i++) mois.add(ym.plusMonths(i).toString());
+        return mois;
+    }
+
+    // Paiements validés par mois (date de validation) : "2026-10" -> [montant, nombre].
+    private Map<String, double[]> revenusParMois(LocalDate du, LocalDate au) {
+        Map<String, double[]> m = new HashMap<>();
+        jdbc.query("SELECT to_char(date_validation, 'YYYY-MM'), SUM(montant), COUNT(*) FROM paiements_abonnement "
+                + "WHERE statut = 'VALIDE' AND date_validation >= ? AND date_validation < ? GROUP BY 1",
+                rs -> {
+                    m.put(rs.getString(1), new double[] { rs.getDouble(2), rs.getLong(3) });
+                }, du.atStartOfDay(), au.atStartOfDay());
+        return m;
+    }
+
+    @Transactional(readOnly = true)
+    public AdminConsoleDTO.TableauDeBord tableauDeBord() {
+        superAdmin();
+        LocalDate auj = LocalDate.now();
+        List<Ligne> lignes = lignes();
+
+        long essai = 0, actives = 0, grace = 0, expirees = 0, suspendues = 0, aucun = 0;
+        long nouvelles = 0, actives7 = 0, actives30 = 0, sujets = 0;
+        YearMonth ceMois = YearMonth.from(auj);
+        LocalDateTime il7 = auj.minusDays(7).atStartOfDay();
+        LocalDateTime il30 = auj.minusDays(30).atStartOfDay();
+        List<AdminConsoleDTO.FermeCourte> essaisFin = new ArrayList<>();
+        Map<String, Long> nouvellesParMois = new HashMap<>();
+        for (Ligne li : lignes) {
+            AdminConsoleDTO.Ferme f = li.dto();
+            switch (f.statut()) {
+                case "ESSAI" -> essai++;
+                case "ACTIF" -> actives++;
+                case "GRACE" -> grace++;
+                case "EXPIRE" -> expirees++;
+                case "SUSPENDU" -> suspendues++;
+                default -> aucun++;
+            }
+            if (f.inscriteLe() != null) {
+                if (YearMonth.from(f.inscriteLe()).equals(ceMois)) nouvelles++;
+                nouvellesParMois.merge(YearMonth.from(f.inscriteLe()).toString(), 1L, Long::sum);
+            }
+            if (f.derniereActivite() != null && !f.derniereActivite().isBefore(il7)) actives7++;
+            if (f.derniereActivite() != null && !f.derniereActivite().isBefore(il30)) actives30++;
+            sujets += f.sujetsVivants();
+            if ("ESSAI".equals(f.statut()) && f.joursRestants() != null && f.joursRestants() >= 0 && f.joursRestants() <= 7) {
+                essaisFin.add(new AdminConsoleDTO.FermeCourte(f.farmUniqueId(), f.nom(), f.dateFin(), f.statut()));
+            }
+        }
+        essaisFin.sort(Comparator.comparing(AdminConsoleDTO.FermeCourte::dateFin));
+
+        // Revenus : 12 derniers mois + année en cours, en une requête.
+        LocalDate debut = YearMonth.from(auj).minusMonths(11).atDay(1);
+        LocalDate debutAnnee = auj.withDayOfYear(1);
+        Map<String, double[]> rev = revenusParMois(debut.isBefore(debutAnnee) ? debut : debutAnnee, auj.plusDays(1));
+        List<AdminConsoleDTO.MoisValeur> revenus12 = new ArrayList<>();
+        List<AdminConsoleDTO.MoisValeur> nouvelles12 = new ArrayList<>();
+        for (String m : douzeDerniersMois(auj)) {
+            double[] v = rev.getOrDefault(m, new double[] { 0, 0 });
+            revenus12.add(new AdminConsoleDTO.MoisValeur(m, v[0], (long) v[1]));
+            nouvelles12.add(new AdminConsoleDTO.MoisValeur(m, 0, nouvellesParMois.getOrDefault(m, 0L)));
+        }
+        double revMois = rev.getOrDefault(ceMois.toString(), new double[] { 0 })[0];
+        double revPrec = rev.getOrDefault(ceMois.minusMonths(1).toString(), new double[] { 0 })[0];
+        double revAnnee = 0;
+        for (Map.Entry<String, double[]> e : rev.entrySet()) {
+            if (e.getKey().startsWith(String.valueOf(auj.getYear()))) revAnnee += e.getValue()[0];
+        }
+
+        // Revenu mensuel estimé : fermes payantes non bloquées (actives ou en grâce), au
+        // montant de leur dernier paiement validé (annuel / 12), à défaut au prix actuel.
+        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
+        Map<Long, double[]> dernierPaiement = new HashMap<>(); // abonnement_id -> [montant, annuel?1:0]
+        jdbc.query("SELECT DISTINCT ON (abonnement_id) abonnement_id, montant, periodicite FROM paiements_abonnement "
+                + "WHERE statut = 'VALIDE' ORDER BY abonnement_id, date_validation DESC NULLS LAST, id DESC", rs -> {
+                    dernierPaiement.put(rs.getLong(1), new double[] { rs.getDouble(2), "ANNUEL".equals(rs.getString(3)) ? 1 : 0 });
+                });
+        double mrr = 0;
+        for (Ligne li : lignes) {
+            String st = li.dto().statut();
+            if (li.abonnement() == null || !("ACTIF".equals(st) || "GRACE".equals(st)) || li.etat().estEssai()) continue;
+            double[] dp = dernierPaiement.get(li.abonnement().getId());
+            if (dp != null && dp[0] > 0) {
+                mrr += dp[1] == 1 ? dp[0] / 12.0 : dp[0];
+            } else if (config != null) {
+                mrr += li.abonnement().getPeriodicite() == Periodicite.ANNUEL
+                        ? (config.getPrixAnnuel() == null ? 0 : config.getPrixAnnuel() / 12.0)
+                        : (config.getPrixMensuel() == null ? 0 : config.getPrixMensuel());
+            }
+        }
+
+        Long attente = jdbc.queryForObject("SELECT COUNT(*) FROM paiements_abonnement WHERE statut = 'EN_ATTENTE'", Long.class);
+
+        return new AdminConsoleDTO.TableauDeBord(lignes.size(), essai, actives, grace, expirees, suspendues, aucun,
+                nouvelles, actives7, actives30, sujets, revMois, revPrec, revAnnee, Math.round(mrr),
+                attente == null ? 0 : attente, essaisFin, revenus12, nouvelles12);
+    }
+
+    private Farm fermeOu400(String farmUniqueId) {
+        Farm f = farmUniqueId == null ? null : farmsRepo.findByUniqueId(farmUniqueId);
+        if (f == null) throw new IllegalArgumentException("Ferme introuvable : " + farmUniqueId);
+        return f;
+    }
+
+    @Transactional(readOnly = true)
+    public AdminConsoleDTO.FermeDetail detailFerme(String farmUniqueId) {
+        superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        Abonnement a = abonnementRepo.findByFarm_Id(f.getId()).orElse(null);
+        AbonnementEcheance.Etat etat = a != null
+                ? AbonnementEcheance.calculer(a, configRepo.findFirstByOrderByIdAsc(), LocalDate.now()) : null;
+        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats());
+
+        // Utilisateurs de la ferme, rôles groupés en une requête.
+        Map<Long, AdminConsoleDTO.Utilisateur> users = new LinkedHashMap<>();
+        Map<Long, List<String>> roles = new HashMap<>();
+        jdbc.query("SELECT u.id, r.role FROM utilisateurs u JOIN roles_users ru ON ru.id_utilisateurs = u.id "
+                + "JOIN roles r ON r.id = ru.id_roles WHERE u.farm_id = ?", rs -> {
+                    roles.computeIfAbsent(rs.getLong(1), k -> new ArrayList<>()).add(rs.getString(2));
+                }, f.getId());
+        jdbc.query("SELECT id, unique_id, full_name, telephone, email, statut, removed, archive, last_login, created_at "
+                + "FROM utilisateurs WHERE farm_id = ? ORDER BY id", rs -> {
+                    long id = rs.getLong(1);
+                    boolean actif = !rs.getBoolean(7) && !rs.getBoolean(8) && (rs.getObject(6) == null || rs.getBoolean(6));
+                    users.put(id, new AdminConsoleDTO.Utilisateur(rs.getString(2), rs.getString(3), rs.getString(4),
+                            rs.getString(5), roles.getOrDefault(id, List.of()), actif, ldt(rs.getTimestamp(9)),
+                            ldt(rs.getTimestamp(10))));
+                }, f.getId());
+
+        List<PaiementAbonnementDTO> paiements = paiementRepo.findByAbonnement_Farm_IdOrderByDateDeclarationDesc(f.getId())
+                .stream().map(PaiementAbonnementDTO::fromEntity).toList();
+
+        List<AdminConsoleDTO.RappelEnvoye> rappels = new ArrayList<>();
+        if (a != null) {
+            jdbc.query("SELECT type, date_fin, envoye_le, destinataires, emails_envoyes FROM abonnement_rappels "
+                    + "WHERE abonnement_id = ? ORDER BY envoye_le DESC", rs -> {
+                        rappels.add(new AdminConsoleDTO.RappelEnvoye(rs.getString(1), rs.getDate(2).toLocalDate(),
+                                ldt(rs.getTimestamp(3)), (Integer) rs.getObject(4), (Integer) rs.getObject(5)));
+                    }, a.getId());
+        }
+
+        List<AdminConsoleDTO.Note> notes = noteRepo.findByFarm_IdOrderByCreeLeDesc(f.getId()).stream()
+                .map(n -> new AdminConsoleDTO.Note(n.getUniqueId(), n.getContenu(), n.getAuteurNom(), n.getCreeLe()))
+                .toList();
+
+        List<AdminConsoleDTO.JournalEntree> journal = journal(null, null, null, f.getUniqueId(), 0, 50).data();
+
+        return new AdminConsoleDTO.FermeDetail(dto, new ArrayList<>(users.values()), paiements, rappels, notes, journal);
+    }
+
+    // ------------------------------------------------------------------ actions
+
+    private Abonnement abonnement(Farm f) {
+        return abonnementService.abonnementDeLaFerme(f);
+    }
+
+    private void journaliser(Utilisateurs sa, Farm f, String action) {
+        logs.addLogs(sa.getId(), f.getId(), ENTITE_ADMIN_FERME, action.length() > 490 ? action.substring(0, 490) : action);
+    }
+
+    private String nom(Farm f) {
+        if (f.getNom() != null && !f.getNom().isBlank()) return f.getNom();
+        List<String> n = jdbc.queryForList("SELECT farm_name FROM utilisateurs WHERE farm_id = ? AND farm_name IS NOT NULL ORDER BY id LIMIT 1",
+                String.class, f.getId());
+        return n.isEmpty() ? f.getUniqueId() : n.get(0);
+    }
+
+    @Transactional
+    public AdminConsoleDTO.FermeDetail activer(String farmUniqueId, AdminActiverAbonnementRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        if (req == null || req.getPeriodicite() == null) {
+            throw new IllegalArgumentException("Choisissez la formule (mensuelle ou annuelle).");
+        }
+        Periodicite periodicite;
+        try {
+            periodicite = Periodicite.valueOf(req.getPeriodicite().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Formule invalide (attendu MENSUEL ou ANNUEL) : " + req.getPeriodicite());
+        }
+        LocalDate auj = LocalDate.now();
+        Abonnement a = abonnement(f);
+        LocalDate nouvelleFin;
+        LocalDate dateExplicite = parseDate(req.getDateFin(), "la date de fin");
+        if (dateExplicite != null) {
+            if (dateExplicite.isBefore(auj)) {
+                throw new IllegalArgumentException("La date de fin doit être aujourd'hui ou plus tard.");
+            }
+            nouvelleFin = dateExplicite;
+        } else {
+            int mois = req.getMois() == null ? 0 : req.getMois();
+            int jours = req.getJours() == null ? 0 : req.getJours();
+            if (mois < 0 || jours < 0 || (mois == 0 && jours == 0)) {
+                throw new IllegalArgumentException("Indiquez une durée (mois ou jours) ou une date de fin.");
+            }
+            if (mois > 120 || jours > 3650) {
+                throw new IllegalArgumentException("Durée trop longue (10 ans au plus).");
+            }
+            // Même règle que la validation d'un paiement : pendant la grâce on repart de
+            // l'échéance, après la grâce à partir d'aujourd'hui, jamais de jours perdus.
+            int grace = AbonnementEcheance.delaiGraceJours(configRepo.findFirstByOrderByIdAsc());
+            LocalDate base = !auj.isAfter(a.getDateFin().plusDays(grace)) ? a.getDateFin() : auj;
+            nouvelleFin = base.plusMonths(mois).plusDays(jours);
+        }
+
+        boolean etaitSuspendu = a.estSuspendu();
+        a.setDateFin(nouvelleFin);
+        a.setPeriodicite(periodicite);
+        a.setStatut(StatutAbonnement.ACTIF);
+        a.setSuspendu(null);
+        a.setMotifSuspension(null);
+        a.setSuspenduLe(null);
+        if (a.getInitialisation() != null) Initialisation.updateDate(a.getInitialisation());
+        abonnementRepo.save(a);
+
+        String paiementTxt = "";
+        if (req.getMontant() != null) {
+            if (req.getMontant() <= 0) throw new IllegalArgumentException("Le montant reçu doit être supérieur à 0.");
+            if (req.getMoyenPaiement() == null || req.getMoyenPaiement().isBlank()) {
+                throw new IllegalArgumentException("Indiquez le moyen de paiement.");
+            }
+            PaiementAbonnement p = new PaiementAbonnement();
+            p.setUniqueId(UUID.randomUUID().toString());
+            p.setAbonnement(a);
+            p.setMontant(req.getMontant());
+            p.setPeriodicite(periodicite);
+            p.setMoyenPaiement(req.getMoyenPaiement().trim().length() > 50 ? req.getMoyenPaiement().trim().substring(0, 50) : req.getMoyenPaiement().trim());
+            String ref = req.getReference() == null || req.getReference().isBlank() ? null : req.getReference().trim();
+            p.setReference(ref != null && ref.length() > 100 ? ref.substring(0, 100) : ref);
+            p.setStatut(StatutPaiementAbonnement.VALIDE);
+            LocalDateTime maintenant = LocalDateTime.now();
+            p.setDateDeclaration(maintenant);
+            p.setDateValidation(maintenant);
+            p.setValidePar(sa);
+            p.setHorsApplication(true);
+            p.setInitialisation(Initialisation.init());
+            paiementRepo.save(p);
+            paiementTxt = ", paiement hors application de " + AbonnementEcheance.fcfa(req.getMontant()) + " (" + p.getMoyenPaiement() + ")";
+        }
+        journaliser(sa, f, "Activation de l'abonnement de la ferme " + nom(f) + " : "
+                + (periodicite == Periodicite.ANNUEL ? "annuel" : "mensuel") + " jusqu'au "
+                + AbonnementEcheance.date(nouvelleFin) + paiementTxt + (etaitSuspendu ? ", suspension levée" : ""));
+        return detailFerme(farmUniqueId);
+    }
+
+    @Transactional
+    public AdminConsoleDTO.FermeDetail suspendre(String farmUniqueId, AdminSuspendreRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        String motif = req == null || req.getMotif() == null ? "" : req.getMotif().trim();
+        if (motif.isEmpty()) throw new IllegalArgumentException("Indiquez le motif de la suspension (il sera montré à la ferme).");
+        if (motif.length() > 500) throw new IllegalArgumentException("Motif trop long (500 caractères au plus).");
+        Abonnement a = abonnement(f);
+        if (a.estSuspendu()) throw new IllegalArgumentException("Cette ferme est déjà suspendue.");
+        a.setSuspendu(true);
+        a.setMotifSuspension(motif);
+        a.setSuspenduLe(LocalDateTime.now());
+        abonnementRepo.save(a);
+        journaliser(sa, f, "Suspension de la ferme " + nom(f) + " : " + motif);
+        return detailFerme(farmUniqueId);
+    }
+
+    @Transactional
+    public AdminConsoleDTO.FermeDetail reactiver(String farmUniqueId) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        Abonnement a = abonnement(f);
+        if (!a.estSuspendu()) throw new IllegalArgumentException("Cette ferme n'est pas suspendue.");
+        a.setSuspendu(null);
+        a.setMotifSuspension(null);
+        a.setSuspenduLe(null);
+        abonnementRepo.save(a);
+        journaliser(sa, f, "Réactivation de la ferme " + nom(f) + " (fin de la suspension)");
+        return detailFerme(farmUniqueId);
+    }
+
+    @Transactional
+    public AdminConsoleDTO.FermeDetail prolongerEssai(String farmUniqueId, AdminProlongerEssaiRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        int jours = req == null || req.getJours() == null ? 0 : req.getJours();
+        if (jours < 1 || jours > 365) throw new IllegalArgumentException("Nombre de jours invalide (1 à 365).");
+        Abonnement a = abonnement(f);
+        if (a.getPeriodicite() != null) {
+            throw new IllegalArgumentException("Cette ferme a déjà un abonnement payé : utilisez « Activer / prolonger ».");
+        }
+        LocalDate auj = LocalDate.now();
+        LocalDate base = a.getDateFin().isBefore(auj) ? auj : a.getDateFin();
+        a.setDateFin(base.plusDays(jours));
+        abonnementRepo.save(a);
+        journaliser(sa, f, "Prolongation de l'essai de la ferme " + nom(f) + " : " + jours + " jour(s), jusqu'au "
+                + AbonnementEcheance.date(a.getDateFin()));
+        return detailFerme(farmUniqueId);
+    }
+
+    @Transactional
+    public AdminConsoleDTO.FermeDetail ajouterNote(String farmUniqueId, AdminNoteRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        String contenu = req == null || req.getContenu() == null ? "" : req.getContenu().trim();
+        if (contenu.isEmpty()) throw new IllegalArgumentException("La note est vide.");
+        if (contenu.length() > 2000) throw new IllegalArgumentException("Note trop longue (2000 caractères au plus).");
+        NoteAdminFerme n = new NoteAdminFerme();
+        n.setUniqueId(UUID.randomUUID().toString());
+        n.setFarm(f);
+        n.setContenu(contenu);
+        n.setAuteur(sa);
+        n.setAuteurNom(sa.getFullName());
+        n.setCreeLe(LocalDateTime.now());
+        noteRepo.save(n);
+        journaliser(sa, f, "Note interne sur la ferme " + nom(f) + " : "
+                + (contenu.length() > 120 ? contenu.substring(0, 120) + "..." : contenu));
+        return detailFerme(farmUniqueId);
+    }
+
+    // ------------------------------------------------------------------ finances
+
+    @Transactional(readOnly = true)
+    public AdminConsoleDTO.Finances finances(Integer anneeDemandee) {
+        superAdmin();
+        LocalDate auj = LocalDate.now();
+        int annee = anneeDemandee == null ? auj.getYear() : anneeDemandee;
+        if (annee < 2000 || annee > 2100) throw new IllegalArgumentException("Année invalide : " + annee);
+        LocalDate d1 = LocalDate.of(annee, 1, 1);
+        LocalDate d2 = d1.plusYears(1);
+
+        Map<String, double[]> rev = revenusParMois(d1, d2);
+        List<AdminConsoleDTO.MoisValeur> parMois = new ArrayList<>();
+        double totalAnnee = 0;
+        for (int m = 1; m <= 12; m++) {
+            String cle = YearMonth.of(annee, m).toString();
+            double[] v = rev.getOrDefault(cle, new double[] { 0, 0 });
+            parMois.add(new AdminConsoleDTO.MoisValeur(cle, v[0], (long) v[1]));
+            totalAnnee += v[0];
+        }
+
+        List<AdminConsoleDTO.CleValeur> parAnnee = jdbc.query(
+                "SELECT to_char(date_validation, 'YYYY'), SUM(montant), COUNT(*) FROM paiements_abonnement "
+                        + "WHERE statut = 'VALIDE' AND date_validation IS NOT NULL GROUP BY 1 ORDER BY 1",
+                (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)));
+        double totalDepuisDebut = parAnnee.stream().mapToDouble(AdminConsoleDTO.CleValeur::montant).sum();
+
+        List<AdminConsoleDTO.CleValeur> parPeriodicite = jdbc.query(
+                "SELECT periodicite, SUM(montant), COUNT(*) FROM paiements_abonnement WHERE statut = 'VALIDE' "
+                        + "AND date_validation >= ? AND date_validation < ? GROUP BY 1 ORDER BY 2 DESC",
+                (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)),
+                d1.atStartOfDay(), d2.atStartOfDay());
+        // Moyen de paiement en texte libre : regroupé sans tenir compte des majuscules ni des espaces.
+        List<AdminConsoleDTO.CleValeur> parMoyen = jdbc.query(
+                "SELECT MIN(TRIM(moyen_paiement)), SUM(montant), COUNT(*) FROM paiements_abonnement WHERE statut = 'VALIDE' "
+                        + "AND date_validation >= ? AND date_validation < ? GROUP BY LOWER(TRIM(moyen_paiement)) ORDER BY 2 DESC",
+                (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)),
+                d1.atStartOfDay(), d2.atStartOfDay());
+
+        // Conversion et pertes, sur l'état du jour de toutes les fermes.
+        AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
+        Map<Long, Long> paiementsValides = new HashMap<>();
+        jdbc.query("SELECT abonnement_id, COUNT(*) FROM paiements_abonnement WHERE statut = 'VALIDE' GROUP BY abonnement_id",
+                rs -> {
+                    paiementsValides.put(rs.getLong(1), rs.getLong(2));
+                });
+        long essaisTermines = 0, convertis = 0, ayantPaye = 0, perdues = 0;
+        List<AdminConsoleDTO.FermeCourte> listePerdues = new ArrayList<>();
+        Map<Long, String> noms = nomsInscription();
+        for (Abonnement a : abonnementRepo.findAllAvecFerme()) {
+            AbonnementEcheance.Etat etat = AbonnementEcheance.calculer(a, config, auj);
+            boolean aPaye = paiementsValides.containsKey(a.getId()) || a.getPeriodicite() != null;
+            if (aPaye) {
+                convertis++;
+                essaisTermines++;
+                ayantPaye++;
+                if (etat.expire() && !etat.suspendu()) {
+                    perdues++;
+                    listePerdues.add(new AdminConsoleDTO.FermeCourte(a.getFarm().getUniqueId(),
+                            nomFerme(a.getFarm(), noms.get(a.getFarm().getId())), a.getDateFin(), "EXPIRE"));
+                }
+            } else if (etat.joursRestants() < 0) {
+                essaisTermines++; // essai terminé sans paiement
+            }
+        }
+        listePerdues.sort(Comparator.comparing(AdminConsoleDTO.FermeCourte::dateFin).reversed());
+        double taux = essaisTermines == 0 ? 0 : Math.round(convertis * 1000.0 / essaisTermines) / 10.0;
+        double tauxPerte = ayantPaye == 0 ? 0 : Math.round(perdues * 1000.0 / ayantPaye) / 10.0;
+        return new AdminConsoleDTO.Finances(annee, parMois, parAnnee, parPeriodicite, parMoyen, totalAnnee,
+                totalDepuisDebut, essaisTermines, convertis, taux, ayantPaye, perdues, tauxPerte, listePerdues);
+    }
+
+    private Map<Long, String> nomsInscription() {
+        Map<Long, String> m = new HashMap<>();
+        jdbc.query("SELECT DISTINCT ON (farm_id) farm_id, farm_name FROM utilisateurs "
+                + "WHERE farm_id IS NOT NULL AND farm_name IS NOT NULL ORDER BY farm_id, id", rs -> {
+                    m.put(rs.getLong(1), rs.getString(2));
+                });
+        return m;
+    }
+
+    // Liste des paiements (tous statuts) avec filtres facultatifs : dates (de déclaration),
+    // ferme, statut. Plus récents d'abord, 2000 lignes au plus.
+    @Transactional(readOnly = true)
+    public List<PaiementAbonnementDTO> paiements(String du, String au, String farmUniqueId, String statut) {
+        superAdmin();
+        StringBuilder sql = new StringBuilder("SELECT p.id FROM paiements_abonnement p JOIN abonnements a ON a.id = p.abonnement_id "
+                + "JOIN farms f ON f.id = a.farm_id WHERE 1 = 1");
+        List<Object> args = new ArrayList<>();
+        LocalDate dDu = parseDate(du, "la date de début");
+        LocalDate dAu = parseDate(au, "la date de fin");
+        if (dDu != null) {
+            sql.append(" AND p.date_declaration >= ?");
+            args.add(dDu.atStartOfDay());
+        }
+        if (dAu != null) {
+            sql.append(" AND p.date_declaration < ?");
+            args.add(dAu.plusDays(1).atStartOfDay());
+        }
+        if (farmUniqueId != null && !farmUniqueId.isBlank()) {
+            sql.append(" AND f.unique_id = ?");
+            args.add(farmUniqueId.trim());
+        }
+        if (statut != null && !statut.isBlank()) {
+            try {
+                args.add(StatutPaiementAbonnement.valueOf(statut.trim().toUpperCase()).name());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Statut invalide : " + statut);
+            }
+            sql.append(" AND p.statut = ?");
+        }
+        sql.append(" ORDER BY p.date_declaration DESC, p.id DESC LIMIT 2000");
+        List<Long> ids = jdbc.queryForList(sql.toString(), Long.class, args.toArray());
+        if (ids.isEmpty()) return List.of();
+        Map<Long, PaiementAbonnement> parId = new HashMap<>();
+        for (PaiementAbonnement p : paiementRepo.findAllAvecFermeParIds(ids)) parId.put(p.getId(), p);
+        Map<Long, String> noms = nomsInscription();
+        List<PaiementAbonnementDTO> res = new ArrayList<>();
+        for (Long id : ids) {
+            PaiementAbonnement p = parId.get(id);
+            if (p == null) continue;
+            PaiementAbonnementDTO dto = PaiementAbonnementDTO.fromEntity(p);
+            Farm f = p.getAbonnement().getFarm();
+            dto.setFarmNom(nomFerme(f, noms.get(f.getId())));
+            res.add(dto);
+        }
+        return res;
+    }
+
+    // ------------------------------------------------------------------ journal
+
+    // Catégorie d'une action, d'après le type d'entité et le début du texte (les textes
+    // sont écrits par AbonnementServiceImpl, AbonnementRappelService et ce service).
+    private static final String CATEGORIE_SQL = "CASE "
+            + "WHEN l.entity_type = 'AbonnementConfig' THEN 'CONFIG' "
+            + "WHEN l.entity_type = 'AbonnementRappel' THEN 'RAPPELS' "
+            + "WHEN l.action LIKE 'Validation du paiement%' THEN 'VALIDATION' "
+            + "WHEN l.action LIKE 'Rejet du paiement%' THEN 'REJET' "
+            + "WHEN l.action LIKE 'Suspension%' THEN 'SUSPENSION' "
+            + "WHEN l.action LIKE 'Réactivation%' THEN 'REACTIVATION' "
+            + "WHEN l.action LIKE 'Activation%' THEN 'ACTIVATION' "
+            + "WHEN l.action LIKE 'Prolongation de l''essai%' THEN 'ESSAI' "
+            + "WHEN l.action LIKE 'Note interne%' THEN 'NOTE' "
+            + "ELSE 'AUTRE' END";
+
+    @Transactional(readOnly = true)
+    public AdminConsoleDTO.JournalPage journalPage(String du, String au, String categorie, String farmUniqueId, int page, int size) {
+        superAdmin();
+        return journal(du, au, categorie, farmUniqueId, page, size);
+    }
+
+    private AdminConsoleDTO.JournalPage journal(String du, String au, String categorie, String farmUniqueId, int page, int size) {
+        int taille = Math.max(1, Math.min(size, 200));
+        int pg = Math.max(0, page);
+        // Actions faites par un compte SUPER_ADMIN ; ferme retrouvée selon le type d'entité.
+        String base = "SELECT l.unique_id, l.created_at, l.action, u.full_name, f.unique_id AS farm_uid, f.nom AS farm_nom, "
+                + "f.id AS farm_id, " + CATEGORIE_SQL + " AS categorie "
+                + "FROM logs l JOIN utilisateurs u ON u.id = l.user_id "
+                + "LEFT JOIN paiements_abonnement pa ON l.entity_type = 'PaiementAbonnement' AND pa.id = l.entity_id "
+                + "LEFT JOIN abonnements ab ON ab.id = pa.abonnement_id "
+                + "LEFT JOIN farms f ON f.id = CASE WHEN l.entity_type = '" + ENTITE_ADMIN_FERME + "' THEN l.entity_id "
+                + "                                 WHEN l.entity_type = 'PaiementAbonnement' THEN ab.farm_id END "
+                + "WHERE EXISTS (SELECT 1 FROM roles_users ru JOIN roles r ON r.id = ru.id_roles "
+                + "              WHERE ru.id_utilisateurs = l.user_id AND r.role = 'SUPER_ADMIN') "
+                + "AND COALESCE(l.removed, false) = false";
+        StringBuilder where = new StringBuilder();
+        List<Object> args = new ArrayList<>();
+        LocalDate dDu = parseDate(du, "la date de début");
+        LocalDate dAu = parseDate(au, "la date de fin");
+        if (dDu != null) {
+            where.append(" AND x.created_at >= ?");
+            args.add(dDu.atStartOfDay());
+        }
+        if (dAu != null) {
+            where.append(" AND x.created_at < ?");
+            args.add(dAu.plusDays(1).atStartOfDay());
+        }
+        if (categorie != null && !categorie.isBlank()) {
+            where.append(" AND x.categorie = ?");
+            args.add(categorie.trim().toUpperCase());
+        }
+        if (farmUniqueId != null && !farmUniqueId.isBlank()) {
+            where.append(" AND x.farm_uid = ?");
+            args.add(farmUniqueId.trim());
+        }
+        String from = " FROM (" + base + ") x WHERE 1 = 1" + where;
+        Long total = jdbc.queryForObject("SELECT COUNT(*)" + from, Long.class, args.toArray());
+        List<Object> argsPage = new ArrayList<>(args);
+        argsPage.add(taille);
+        argsPage.add((long) pg * taille);
+        Map<Long, String> noms = nomsInscription();
+        List<AdminConsoleDTO.JournalEntree> data = jdbc.query(
+                "SELECT x.*" + from + " ORDER BY x.created_at DESC NULLS LAST LIMIT ? OFFSET ?",
+                (rs, i) -> {
+                    String farmNom = rs.getString("farm_nom");
+                    Object fid = rs.getObject("farm_id");
+                    if ((farmNom == null || farmNom.isBlank()) && fid != null) {
+                        farmNom = noms.getOrDefault(((Number) fid).longValue(), rs.getString("farm_uid"));
+                    }
+                    return new AdminConsoleDTO.JournalEntree(rs.getString("unique_id"), ldt(rs.getTimestamp("created_at")),
+                            rs.getString("categorie"), rs.getString("action"), rs.getString("full_name"),
+                            rs.getString("farm_uid"), farmNom);
+                }, argsPage.toArray());
+        long t = total == null ? 0 : total;
+        return new AdminConsoleDTO.JournalPage(data, pg + 1, (int) ((t + taille - 1) / taille), t, taille);
+    }
+}

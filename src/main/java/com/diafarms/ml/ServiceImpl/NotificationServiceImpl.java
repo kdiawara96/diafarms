@@ -433,7 +433,7 @@ public class NotificationServiceImpl implements NotificationService {
                 .ifPresent(rappel -> {
                     com.diafarms.ml.commons.AbonnementEcheance.Etat etat = com.diafarms.ml.commons.AbonnementEcheance
                         .calculer(a, abonnementConfigRepo.findFirstByOrderByIdAsc(), LocalDate.now());
-                    if (etat.expire()) return; // le web est bloqué, l'écran de blocage suffit
+                    if (etat.bloque()) return; // le web est bloqué (expiré ou suspendu), l'écran de blocage suffit
                     result.add(NotificationDTO.builder()
                         .key("abonnement-" + rappel.getType().toLowerCase() + "-" + a.getDateFin())
                         .type("ABONNEMENT")

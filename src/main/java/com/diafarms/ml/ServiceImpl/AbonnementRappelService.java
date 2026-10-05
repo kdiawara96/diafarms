@@ -49,11 +49,13 @@ public class AbonnementRappelService {
     private final OtherService otherService;
     private final TransactionTemplate tx;
     private final TransactionTemplate txLecture;
+    private final com.diafarms.ml.services.LogsServices logs;
 
     public AbonnementRappelService(AbonnementRepo abonnementRepo, AbonnementConfigRepo configRepo,
             AbonnementRappelRepo rappelRepo, PaiementAbonnementRepo paiementAbonnementRepo,
             UtilisateursRepo utilisateursRepo, EmailService emailService, OtherService otherService,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager, com.diafarms.ml.services.LogsServices logs) {
+        this.logs = logs;
         this.abonnementRepo = abonnementRepo;
         this.configRepo = configRepo;
         this.rappelRepo = rappelRepo;
@@ -105,7 +107,17 @@ public class AbonnementRappelService {
         if (!superAdmin) {
             throw new IllegalArgumentException("Seul un SUPER_ADMIN peut effectuer cette action.");
         }
-        return executer(envoyer);
+        List<RappelDTO> res = executer(envoyer);
+        if (envoyer) {
+            try {
+                // Journal de la console SUPER_ADMIN (catégorie RAPPELS).
+                logs.addLogs(u.getId(), null, "AbonnementRappel",
+                        "Envoi manuel des rappels d'abonnement : " + res.size() + " rappel(s) envoyé(s)");
+            } catch (Exception e) {
+                log.warn("Journal de l'envoi manuel des rappels impossible : {}", e.getMessage());
+            }
+        }
+        return res;
     }
 
     public List<RappelDTO> executer(boolean envoyer) {

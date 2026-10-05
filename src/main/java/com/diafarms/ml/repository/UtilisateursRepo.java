@@ -50,6 +50,13 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     List<Utilisateurs> findAdminsActifsByFarmId(@Param("farmId") Long farmId);
 
     Optional<Utilisateurs> findByUniqueIdAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String uniqueId);
+
+    // Date de dernière connexion (AuthImpl, connexion par mot de passe) : mise à jour
+    // ciblée, sans recharger ni réenregistrer l'utilisateur.
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("UPDATE Utilisateurs u SET u.lastLogin = :quand WHERE u.id = :id")
+    int marquerConnexion(@Param("id") Long id, @Param("quand") java.time.LocalDateTime quand);
     Utilisateurs findByEmailAndInitialisationRemovedFalseAndInitialisationArchiveFalse(String username);
     boolean existsByTelephoneAndFarmId(String telephone, Long farmId);
     Optional<Utilisateurs> findByEmailOrUsernameOrTelephoneAndInitialisationRemovedFalseAndInitialisationArchiveFalse(

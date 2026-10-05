@@ -157,6 +157,16 @@ public class AuthImpl implements AuthServices {
             }
         }
 
+        // Dernière connexion (connexion par mot de passe, web ou mobile ; pas les refresh) :
+        // affichée dans la console SUPER_ADMIN. Jamais bloquant pour la connexion.
+        if (grantType.equals("password")) {
+            try {
+                repo.marquerConnexion(currentUser.getId(), java.time.LocalDateTime.now());
+            } catch (Exception e) {
+                // la connexion passe quand même
+            }
+        }
+
         // =============================== CREATION DU JWT ===============================
         Instant now = Instant.now();
 

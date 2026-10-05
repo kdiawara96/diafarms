@@ -30,6 +30,10 @@ public class PaiementAbonnementDTO {
     private LocalDateTime dateValidation;
     private String valideParNom;
     private String motifRejet;
+    // Console SUPER_ADMIN : ferme concernée, et paiement reçu hors application (saisi
+    // directement par le SUPER_ADMIN) plutôt que déclaré par la ferme.
+    private String farmUniqueId;
+    private boolean horsApplication;
 
     // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
     // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
@@ -64,6 +68,9 @@ public class PaiementAbonnementDTO {
                 .dateValidation(p.getDateValidation())
                 .valideParNom(p.getValidePar() != null ? p.getValidePar().getFullName() : null)
                 .motifRejet(p.getMotifRejet())
+                .farmUniqueId(p.getAbonnement() != null && p.getAbonnement().getFarm() != null
+                        ? p.getAbonnement().getFarm().getUniqueId() : null)
+                .horsApplication(Boolean.TRUE.equals(p.getHorsApplication()))
                 .build();
     }
 }

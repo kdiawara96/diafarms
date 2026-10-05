@@ -50,10 +50,29 @@ public final class AbonnementEcheance {
             // Dernier jour d'accès (dateFin + délai de grâce).
             LocalDate dernierJourAcces,
             // Jours d'accès qu'il reste pendant la grâce, aujourd'hui compris (0 hors grâce).
-            long joursGraceRestants) {
+            long joursGraceRestants,
+            // Suspension manuelle par le SUPER_ADMIN (Abonnement.suspendu) : bloque le web
+            // comme une expiration, quelle que soit la date de fin.
+            boolean suspendu) {
 
+        // Statut exposé dans statutEffectif (/abonnements/moi, AbonnementGate) : une ferme
+        // suspendue répond EXPIRE pour que tout client, même ancien, la bloque ; le web
+        // récent lit en plus AbonnementDTO.suspendu pour afficher le bon message.
         public String statut() {
+            if (expire || suspendu) return "EXPIRE";
+            return estEssai ? "ESSAI" : "ACTIF";
+        }
+
+        // Web bloqué (expiré après la grâce, ou suspendu).
+        public boolean bloque() {
+            return expire || suspendu;
+        }
+
+        // Statut détaillé pour la console SUPER_ADMIN : SUSPENDU, EXPIRE, GRACE, ESSAI ou ACTIF.
+        public String statutDetaille() {
+            if (suspendu) return "SUSPENDU";
             if (expire) return "EXPIRE";
+            if (enGrace) return "GRACE";
             return estEssai ? "ESSAI" : "ACTIF";
         }
 
@@ -62,7 +81,7 @@ public final class AbonnementEcheance {
         // J-7 de J-7 à J-2, J-1 de J-1 au dernier jour, grâce pendant toute la grâce.
         // L'unicité « une fois par période » est assurée par AbonnementRappel.
         public String rappelDuJour() {
-            if (expire) return null;
+            if (expire || suspendu) return null; // jamais de rappel à une ferme suspendue
             if (enGrace) return RAPPEL_GRACE;
             if (joursRestants >= 2 && joursRestants <= 7) return RAPPEL_J7;
             if (joursRestants >= 0 && joursRestants <= 1) return RAPPEL_J1;
@@ -79,7 +98,8 @@ public final class AbonnementEcheance {
         boolean expire = aujourdHui.isAfter(dernierJour);
         long joursGraceRestants = enGrace ? ChronoUnit.DAYS.between(aujourdHui, dernierJour) + 1 : 0;
         boolean estEssai = abonnement.getPeriodicite() == null;
-        return new Etat(estEssai, dateFin, grace, joursRestants, enGrace, expire, dernierJour, joursGraceRestants);
+        return new Etat(estEssai, dateFin, grace, joursRestants, enGrace, expire, dernierJour, joursGraceRestants,
+                abonnement.estSuspendu());
     }
 
     public static String date(LocalDate d) {

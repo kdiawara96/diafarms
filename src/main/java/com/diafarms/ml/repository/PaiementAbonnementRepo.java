@@ -33,4 +33,15 @@ public interface PaiementAbonnementRepo extends JpaRepository<PaiementAbonnement
     // faits côté service en Java plutôt qu'en JPQL avec paramètre optionnel
     // (évite le bug Postgres "(:param IS NULL OR ...)" sur un type énuméré).
     List<PaiementAbonnement> findByAbonnement_Farm_IdOrderByDateDeclarationDesc(Long farmId);
+
+    // Toutes les déclarations d'un statut, avec abonnement, ferme et auteurs chargés en
+    // une requête (portail SUPER_ADMIN : évite une requête par ferme).
+    @Query("SELECT p FROM PaiementAbonnement p JOIN FETCH p.abonnement a JOIN FETCH a.farm "
+            + "LEFT JOIN FETCH p.declarePar LEFT JOIN FETCH p.validePar WHERE p.statut = :statut ORDER BY p.dateDeclaration ASC")
+    List<PaiementAbonnement> findAllAvecFermeParStatut(@Param("statut") StatutPaiementAbonnement statut);
+
+    // Paiements d'une liste d'identifiants, tout chargé (console SUPER_ADMIN, liste filtrée).
+    @Query("SELECT p FROM PaiementAbonnement p JOIN FETCH p.abonnement a JOIN FETCH a.farm "
+            + "LEFT JOIN FETCH p.declarePar LEFT JOIN FETCH p.validePar WHERE p.id IN :ids")
+    List<PaiementAbonnement> findAllAvecFermeParIds(@Param("ids") java.util.Collection<Long> ids);
 }
