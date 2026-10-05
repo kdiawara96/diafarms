@@ -17,6 +17,11 @@
 #     sans moyen refusé sans rien modifier ;
 #   - ferme suspendue : déclaration de paiement refusée (WhatsApp), validation sans levée ;
 #   - 3 prolongations simultanées : aucune perdue (verrou) ;
+#   - hors statistiques : ferme exclue de tous les chiffres, toujours listée, réintégrable ;
+#   - e-mails à la ferme (si MAIL_SINK_DIR) : essai prolongé, suspension, réactivation, activation ;
+#   - connexion mobile refusée (403) pour une ferme expirée après la grâce ou suspendue,
+#     acceptée pendant la grâce ; web, refresh et token déjà émis toujours acceptés ;
+#     nouveau QR et scan serveur refusés ; tout revient au renouvellement ;
 #   - tableau de bord : +2 fermes, +2 nouvelles ce mois, +480 sujets vivants, +1 essai ;
 #   - liste des fermes : propriétaire, utilisateurs, projets en cours, sujets vivants,
 #     dernière activité, statut ;
@@ -75,7 +80,7 @@ except Exception:
     d = {}
 ok = False
 try:
-    ok = bool(eval(expr, {"d": d, "code": code}))
+    ok = bool(eval(expr, {"d": d, "code": code, "json": json}))
 except Exception as e:
     print("   exception:", e, file=sys.stderr)
 if not ok:
@@ -408,6 +413,145 @@ wait
 check_eq "3 prolongations de 10 jours en même temps : +30 jours" \
   "$(python3 -c "import datetime; print(datetime.date.fromisoformat('$FIN_AVANT') + datetime.timedelta(days=30))")" \
   "$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
+
+echo "--- hors statistiques"
+TOKEN="$TOKEN_SA"
+api GET /admin/tableau-de-bord; cp "$TMP/body" "$TMP/tdbS0"
+api GET /admin/finances; cp "$TMP/body" "$TMP/finS0"
+PAYE_X_ANNEE="$(psql_run "select coalesce(sum(p.montant),0)::numeric(14,1) from paiements_abonnement p join abonnements a on a.id=p.abonnement_id where a.farm_id=$FARM_X and p.statut='VALIDE' and date_part('year', p.date_validation)=date_part('year', now())")"
+PAYE_X_MOIS="$(psql_run "select coalesce(sum(p.montant),0)::numeric(14,1) from paiements_abonnement p join abonnements a on a.id=p.abonnement_id where a.farm_id=$FARM_X and p.statut='VALIDE' and date_trunc('month', p.date_validation)=date_trunc('month', now())")"
+TOKEN="$TOKEN_X"; api POST "/admin/fermes/$UID_X/statistiques" '{"exclure":true}'
+check "hors statistiques : refusé (403) à un ADMIN de ferme" "code == 403"
+TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_X/statistiques" '{}'
+check "hors statistiques sans valeur : refusé" "code == 400"
+api POST "/admin/fermes/$UID_X/statistiques" '{"exclure":true}'
+check "exclure X des statistiques" "code == 200 and d['data']['ferme']['exclureStatistiques'] is True"
+api POST "/admin/fermes/$UID_X/statistiques" '{"exclure":true}'
+check "exclure deux fois : refusé" "code == 400"
+api GET /admin/tableau-de-bord; cp "$TMP/body" "$TMP/tdbS1"
+check_eq "X hors stats : -1 ferme" "-1" "$(ecart "$TMP/tdbS0" "$TMP/tdbS1" totalFermes)"
+check_eq "X hors stats : -480 sujets vivants" "-480" "$(ecart "$TMP/tdbS0" "$TMP/tdbS1" totalSujetsVivants)"
+check_eq "X hors stats : -1 nouvelle ferme du mois" "-1" "$(ecart "$TMP/tdbS0" "$TMP/tdbS1" nouvellesCeMois)"
+check_eq "X hors stats : revenu de l'année sans les paiements de X" "-$PAYE_X_ANNEE" "$(ecart "$TMP/tdbS0" "$TMP/tdbS1" revenuCetteAnnee)"
+check_eq "X hors stats : revenu du mois sans les paiements de X" "-$PAYE_X_MOIS" "$(ecart "$TMP/tdbS0" "$TMP/tdbS1" revenuCeMois)"
+check "X hors stats : revenu mensuel estimé en baisse" "json.load(open('$TMP/tdbS0'))['data']['revenuMensuelEstime'] > d['data']['revenuMensuelEstime']"
+check "X hors stats : graphique des nouvelles fermes du mois -1" \
+  "json.load(open('$TMP/tdbS0'))['data']['nouvellesFermesParMois'][-1]['nombre'] - d['data']['nouvellesFermesParMois'][-1]['nombre'] == 1"
+api GET /admin/finances; cp "$TMP/body" "$TMP/finS1"
+check "X hors stats : finances de l'année et conversion sans X" \
+  "abs((json.load(open('$TMP/finS0'))['data']['totalAnnee'] - d['data']['totalAnnee']) - $PAYE_X_ANNEE) < 0.01 and json.load(open('$TMP/finS0'))['data']['essaisConvertis'] - d['data']['essaisConvertis'] == 1 and json.load(open('$TMP/finS0'))['data']['fermesAyantPaye'] - d['data']['fermesAyantPaye'] == 1"
+api GET /admin/fermes
+check "X hors stats : toujours dans la liste des fermes, marquée" "[f['exclureStatistiques'] for f in d['data'] if f['farmUniqueId'] == '$UID_X'] == [True]"
+api GET "/admin/journal?ferme=$UID_X&categorie=STATISTIQUES"
+check "journal : exclusion des statistiques, sans détail" "d['data']['totalItems'] == 1 and d['data']['data'][0]['action'] == 'Ferme FermeConsoleX$SUFFIXE exclue des statistiques'"
+api POST "/admin/fermes/$UID_X/statistiques" '{"exclure":false}'
+check "réintégrer X dans les statistiques" "code == 200 and d['data']['ferme']['exclureStatistiques'] is False"
+api GET /admin/tableau-de-bord
+check "X réintégrée : mêmes chiffres qu'avant" \
+  "all(json.load(open('$TMP/tdbS0'))['data'][k] == d['data'][k] for k in ['totalFermes','totalSujetsVivants','revenuCetteAnnee','revenuCeMois','revenuMensuelEstime'])"
+
+echo "--- e-mails à la ferme"
+MAILS_DIR="${MAIL_SINK_DIR:-}"
+# E-mails reçus par une adresse : JSON [[sujet, texte], ...] (décodés : quoted-printable, UTF-8).
+mails_de() {
+  python3 - "$MAILS_DIR" "$1" <<'PY'
+import email, email.header, glob, json, os, sys
+d, adr = sys.argv[1], sys.argv[2]
+res = []
+for fn in sorted(glob.glob(os.path.join(d, "*.eml"))):
+    m = email.message_from_bytes(open(fn, "rb").read())
+    if adr not in (m.get("To") or ""):
+        continue
+    sujet = str(email.header.make_header(email.header.decode_header(m.get("Subject") or "")))
+    texte = ""
+    for part in m.walk():
+        if part.get_content_type() == "text/plain":
+            texte = part.get_payload(decode=True).decode("utf-8", "replace")
+            break
+    res.append([sujet, texte, m.get("From") or ""])
+print(json.dumps(res, ensure_ascii=False))
+PY
+}
+EMAIL_Y="$(psql_run "select email from utilisateurs where farm_id=$FARM_Y and email like 'admin-conY-%'")"
+if [ -n "$MAILS_DIR" ]; then
+  N0="$(mails_de "$EMAIL_Y" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+  api POST "/admin/fermes/$UID_Y/prolonger-essai" '{"jours":3}'
+  api POST "/admin/fermes/$UID_Y/suspendre" '{"motif":"Test des e-mails"}'
+  api POST "/admin/fermes/$UID_Y/reactiver"
+  api POST "/admin/fermes/$UID_Y/activer" '{"periodicite":"MENSUEL","jours":5,"montant":7777,"moyenPaiement":"Wave"}'
+  check "activer avec e-mail : action réussie" "code == 200"
+  sleep 2
+  mails_de "$EMAIL_Y" > "$TMP/body"; echo 200 > "$TMP/code"
+  check "e-mails de Y : 4 nouveaux, signés Cocorico" "len(d) == $N0 + 4 and all('Cocorico' in m[2] and \"L'équipe Cocorico\" in m[1] for m in d[$N0:])"
+  check "e-mail d'essai prolongé : nouvelle date" "\"essai Cocorico est prolongée\" in d[$N0][0] and 'prolongée jusqu' in d[$N0][1]"
+  check "e-mail de suspension : motif et WhatsApp" "'suspendu' in d[$N0+1][0] and 'Motif : Test des e-mails' in d[$N0+1][1] and '+223 83 91 86 99' in d[$N0+1][1]"
+  check "e-mail de réactivation" "'rétabli' in d[$N0+2][0]"
+  check "e-mail d'activation : fin et montant" "'actif jusqu' in d[$N0+3][0] and '7 777 FCFA' in d[$N0+3][1]"
+  mails_de "$COMPTA_Y_EMAIL" > "$TMP/body"
+  check "le COMPTABLE de Y ne reçoit pas ces e-mails" "not [m for m in d if 'Cocorico est' in m[0] and ('suspendu' in m[0] or 'rétabli' in m[0])]"
+else
+  echo "(MAIL_SINK_DIR non défini : vérifications des e-mails ignorées)"
+  api POST "/admin/fermes/$UID_Y/activer" '{"periodicite":"MENSUEL","jours":5,"montant":7777,"moyenPaiement":"Wave"}'
+fi
+# Un serveur d'e-mails en panne ne fait jamais échouer l'action : vérifié par le code
+# (envoi après commit, erreurs seulement journalisées).
+
+echo "--- connexion mobile d'une ferme bloquée"
+GRACE="$(psql_run "select coalesce(delai_grace_jours, 5) from abonnement_config order by id limit 1")"
+ADMIN_Y_EMAIL="$EMAIL_Y"
+auth() { # $1=client $2=identifiant -> code dans $TMP/code, corps dans $TMP/body
+  curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/auth" -H "X-Client-Type: $1" \
+    --data-urlencode grantType=password --data-urlencode "identifiant=$2" --data-urlencode "password=$PWD_TEST" \
+    --data-urlencode ouiRefresh=true > "$TMP/code"
+}
+auth mobile "$ADMIN_Y_EMAIL"
+check "Y active : connexion mobile OK" "code == 200 and d['data']['accessToken']"
+REFRESH_Y="$(jval "d['data']['refreshToken']")"
+TOKEN="$TOKEN_Y"; api POST /qrcode/generate "{\"uniqueId\":\"$(psql_run "select unique_id from utilisateurs where email='$COMPTA_Y_EMAIL'")\",\"duration\":\"30d\"}"
+check "Y active : QR du COMPTABLE généré" "code == 200"
+QR_Y="$(jval "d['data']['encryptedQr']")"
+psql_run "update abonnements set date_fin = current_date - 1, suspendu = null, motif_suspension = null, suspendu_le = null where farm_id=$FARM_Y" >/dev/null
+if [ "$GRACE" -ge 1 ]; then
+  auth mobile "$ADMIN_Y_EMAIL"
+  check "Y en grâce : connexion mobile OK" "code == 200"
+fi
+psql_run "update abonnements set date_fin = current_date - $((GRACE + 1)) where farm_id=$FARM_Y" >/dev/null
+auth mobile "$ADMIN_Y_EMAIL"
+check "Y expirée : connexion mobile refusée (403) avec le message" \
+  "code == 403 and 'abonnement de votre ferme est terminé' in d['message'] and 'saisies déjà faites' in d['message'] and '+223 83 91 86 99' in d['data']['errorMessage']"
+auth mobile "$COMPTA_Y_EMAIL"
+check "Y expirée : connexion mobile du COMPTABLE refusée" "code == 403"
+auth web "$ADMIN_Y_EMAIL"
+check "Y expirée : connexion web OK (page Abonnement)" "code == 200"
+curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/auth" -H 'X-Client-Type: mobile' --data-urlencode grantType=refreshToken \
+  --data-urlencode identifiant= --data-urlencode password= --data-urlencode "refreshToken=$REFRESH_Y" --data-urlencode ouiRefresh=true > "$TMP/code"
+check "Y expirée : rafraîchissement du token mobile OK" "code == 200 and d['data']['accessToken']"
+TOKEN="$TOKEN_Y"; api GET /projets/select
+check "Y expirée : un token déjà émis lit toujours (projets)" "code == 200"
+api PUT /farm-settings '{"comptableMobileEnabled":true,"comptableWebEnabled":true}'
+check "Y expirée : un token déjà émis écrit toujours (aucune saisie perdue)" "code == 200"
+api POST /qrcode/generate "{\"uniqueId\":\"$(psql_run "select unique_id from utilisateurs where email='$COMPTA_Y_EMAIL'")\",\"duration\":\"30d\"}"
+check "Y expirée : nouveau QR refusé avec le message" "code == 400 and 'terminé' in str(d)"
+curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/qrcode/scan" -H "Authorization: Bearer $TOKEN_SA" -H 'Content-Type: application/json' -d "{\"encryptedQr\":\"$QR_Y\"}" > "$TMP/code"
+check "Y expirée : scan du QR refusé par le serveur avec le message" "code == 401 and 'terminé' in str(d)"
+TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_Y/suspendre" '{"motif":"Test mobile"}'
+psql_run "update abonnements set date_fin = current_date + 30 where farm_id=$FARM_Y" >/dev/null
+auth mobile "$ADMIN_Y_EMAIL"
+check "Y suspendue (date valide) : connexion mobile refusée, message de suspension" \
+  "code == 403 and d['message'] == \"L'accès de votre ferme est suspendu. Contactez-nous sur WhatsApp au +223 83 91 86 99.\""
+auth web "$ADMIN_Y_EMAIL"
+check "Y suspendue : connexion web OK" "code == 200"
+curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/auth" -H 'X-Client-Type: mobile' --data-urlencode grantType=password \
+  --data-urlencode "identifiant=$SUPERADMIN_ID" --data-urlencode "password=$SUPERADMIN_PWD" > "$TMP/code"
+check "SUPER_ADMIN : connexion mobile OK" "code == 200"
+TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_Y/reactiver"
+psql_run "update abonnements set date_fin = current_date - $((GRACE + 1)) where farm_id=$FARM_Y" >/dev/null
+api POST "/admin/fermes/$UID_Y/activer" '{"periodicite":"MENSUEL","mois":1}'
+check "renouvellement de Y" "code == 200 and d['data']['ferme']['statut'] == 'ACTIF'"
+auth mobile "$ADMIN_Y_EMAIL"
+check "Y renouvelée : connexion mobile de nouveau OK" "code == 200"
+curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/qrcode/scan" -H "Authorization: Bearer $TOKEN_SA" -H 'Content-Type: application/json' -d "{\"encryptedQr\":\"$QR_Y\"}" > "$TMP/code"
+check "Y renouvelée : scan du QR de nouveau accepté" "code == 200 and d['data']['valid']"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

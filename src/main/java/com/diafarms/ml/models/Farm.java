@@ -71,6 +71,13 @@ public class Farm {
     @Column(name = "devise", length = 3)
     private String devise;
 
+    // Ferme exclue des statistiques de la console SUPER_ADMIN (ex. ferme de démonstration) :
+    // toujours listée dans « Fermes », mais jamais comptée dans les chiffres, revenus,
+    // conversion ni pertes. Nullable (ajout ddl-auto) : null = comptée. Les rappels
+    // d'abonnement, eux, ne changent pas.
+    @Column(name = "exclure_statistiques")
+    private Boolean exclureStatistiques;
+
     @OneToMany(mappedBy = "farm")
     private List<Utilisateurs> utilisateurs;
 

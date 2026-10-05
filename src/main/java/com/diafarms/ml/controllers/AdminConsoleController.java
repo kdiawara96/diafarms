@@ -93,6 +93,13 @@ public class AdminConsoleController {
         return repondre("Note ajoutée", () -> service.ajouterNote(farmUniqueId, request));
     }
 
+    // Exclure (true) ou réintégrer (false) une ferme dans les statistiques : {"exclure": true}
+    @PostMapping("/fermes/{farmUniqueId}/statistiques")
+    public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> statistiques(@PathVariable String farmUniqueId,
+            @RequestBody(required = false) com.diafarms.ml.request.others.AdminStatistiquesRequest request) {
+        return repondre("Statistiques mises à jour", () -> service.statistiques(farmUniqueId, request));
+    }
+
     @GetMapping("/finances")
     public ResponseEntity<ApiResponse<AdminConsoleDTO.Finances>> finances(@RequestParam(required = false) Integer annee) {
         return repondre("Finances", () -> service.finances(annee));

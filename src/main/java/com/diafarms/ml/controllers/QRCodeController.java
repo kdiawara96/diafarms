@@ -34,6 +34,7 @@ public class QRCodeController {
     private final QRCodeService qrCodeService;
     private final UtilisateursRepo utilisateursRepo;
     private final FarmAppSettingsRepo farmAppSettingsRepo;
+    private final com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile;
 
     private void ensureMobileAccessAllowed(Utilisateurs user) {
         if (user.getFarm() == null) return; // SUPER_ADMIN sans ferme : jamais restreint
@@ -42,6 +43,12 @@ public class QRCodeController {
         FarmAppSettings settings = farmAppSettingsRepo.findByFarm_Id(user.getFarm().getId()).orElse(null);
         if (!AppAccessRules.canAccessMobile(settings, roles)) {
             throw new RuntimeException("L'accès à l'application mobile n'est pas activé pour ce rôle. Contactez votre administrateur.");
+        }
+        // Ferme suspendue, ou expirée après la grâce : ni nouveau QR, ni scan accepté
+        // (voir AbonnementAccesMobile ; les téléphones déjà connectés ne sont pas touchés).
+        String refus = abonnementAccesMobile.motifRefus(user);
+        if (refus != null) {
+            throw new RuntimeException(refus);
         }
     }
 

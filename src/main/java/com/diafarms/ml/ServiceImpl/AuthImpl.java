@@ -41,6 +41,7 @@ public class AuthImpl implements AuthServices {
     private final JwtDecoder jwtDecoder;
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
+    private final com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile;
 
     @Autowired
     public AuthImpl(
@@ -49,8 +50,10 @@ public class AuthImpl implements AuthServices {
             AuthenticationManager authenticationManager,
             UserDetailsService userDetailsService,
             UtilisateursRepo repo,
-            FarmAppSettingsRepo farmAppSettingsRepo
+            FarmAppSettingsRepo farmAppSettingsRepo,
+            com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile
     ) {
+        this.abonnementAccesMobile = abonnementAccesMobile;
         this.jwtEncoder = jwtEncoder;
         this.jwtDecoder = jwtDecoder;
         this.authenticationManager = authenticationManager;
@@ -154,6 +157,15 @@ public class AuthImpl implements AuthServices {
                         ? "L'accès à l'application mobile n'est pas activé pour votre rôle. Contactez votre administrateur."
                         : "L'accès à l'application web n'est pas activé pour votre rôle. Contactez votre administrateur.";
                 return new ResponseEntity<>(Map.of("errorMessage", message), HttpStatus.FORBIDDEN);
+            }
+            // Abonnement suspendu, ou expiré après la grâce : plus de NOUVELLE connexion
+            // mobile (le refresh et tous les autres appels restent ouverts, un téléphone
+            // déjà connecté continue d'envoyer ses saisies). Le web reste ouvert.
+            if (isMobile) {
+                String refus = abonnementAccesMobile.motifRefus(currentUser);
+                if (refus != null) {
+                    return new ResponseEntity<>(Map.of("errorMessage", refus), HttpStatus.FORBIDDEN);
+                }
             }
         }
 

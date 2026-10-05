@@ -37,7 +37,8 @@ public final class AdminConsoleDTO {
             long sujetsVivants,
             LocalDateTime derniereActivite,
             double totalPaye,
-            boolean paiementEnAttente) {}
+            boolean paiementEnAttente,
+            boolean exclureStatistiques) {}
 
     public record MoisValeur(String mois, double montant, long nombre) {}
 

@@ -67,6 +67,17 @@ public class AdminConsoleService {
 
     public static final String ENTITE_ADMIN_FERME = "AdminFerme";
 
+    // Paiements comptés dans les statistiques : ceux des fermes NON exclues
+    // (Farm.exclureStatistiques, ex. ferme de démonstration). Colonnes non qualifiées
+    // utilisables comme sur paiements_abonnement.
+    private static final String PAIEMENTS_STATS = "(SELECT p.* FROM paiements_abonnement p "
+            + "JOIN abonnements a ON a.id = p.abonnement_id JOIN farms f ON f.id = a.farm_id "
+            + "WHERE COALESCE(f.exclure_statistiques, false) = false) ps";
+
+    private static boolean exclue(Farm f) {
+        return Boolean.TRUE.equals(f.getExclureStatistiques());
+    }
+
     private final JdbcTemplate jdbc;
     private final AbonnementRepo abonnementRepo;
     private final AbonnementConfigRepo configRepo;
@@ -76,6 +87,8 @@ public class AdminConsoleService {
     private final AbonnementServiceImpl abonnementService;
     private final OtherService otherService;
     private final LogsServices logs;
+    private final com.diafarms.ml.repository.UtilisateursRepo utilisateursRepo;
+    private final com.diafarms.ml.services.EmailService emailService;
 
     // ------------------------------------------------------------------ sécurité
 
@@ -268,7 +281,8 @@ public class AdminConsoleService {
                 pr[1],
                 max(ag.dernierLog().get(id), ag.derniereConnexion().get(id)),
                 ag.totalPaye().getOrDefault(id, 0.0),
-                Boolean.TRUE.equals(ag.enAttente().get(id)));
+                Boolean.TRUE.equals(ag.enAttente().get(id)),
+                exclue(f));
     }
 
     // ------------------------------------------------------------------ lecture
@@ -291,7 +305,7 @@ public class AdminConsoleService {
     // Paiements validés par mois (date de validation) : "2026-10" -> [montant, nombre].
     private Map<String, double[]> revenusParMois(LocalDate du, LocalDate au) {
         Map<String, double[]> m = new HashMap<>();
-        jdbc.query("SELECT to_char(date_validation, 'YYYY-MM'), SUM(montant), COUNT(*) FROM paiements_abonnement "
+        jdbc.query("SELECT to_char(date_validation, 'YYYY-MM'), SUM(montant), COUNT(*) FROM " + PAIEMENTS_STATS + " "
                 + "WHERE statut = 'VALIDE' AND date_validation >= ? AND date_validation < ? GROUP BY 1",
                 rs -> {
                     m.put(rs.getString(1), new double[] { rs.getDouble(2), rs.getLong(3) });
@@ -303,7 +317,8 @@ public class AdminConsoleService {
     public AdminConsoleDTO.TableauDeBord tableauDeBord() {
         superAdmin();
         LocalDate auj = LocalDate.now();
-        List<Ligne> lignes = lignes();
+        // Fermes hors statistiques (ex. démonstration) : jamais comptées ici.
+        List<Ligne> lignes = lignes().stream().filter(li -> !exclue(li.farm())).toList();
 
         long essai = 0, actives = 0, grace = 0, expirees = 0, suspendues = 0, aucun = 0;
         long nouvelles = 0, actives7 = 0, actives30 = 0, sujets = 0;
@@ -462,6 +477,45 @@ public class AdminConsoleService {
         return n.isEmpty() ? f.getUniqueId() : n.get(0);
     }
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(AdminConsoleService.class);
+    private static final String WHATSAPP = "Une question ? Écrivez-nous sur WhatsApp au +223 83 91 86 99.";
+
+    // E-mail aux ADMIN et RESPONSABLE actifs de la ferme (mêmes destinataires que les
+    // rappels, voir UtilisateursRepo.findAdminsActifsByFarmId), signé Cocorico. Envoyé
+    // APRÈS le commit (jamais pour une action annulée, et sans garder le verrou pendant
+    // l'envoi). Un échec d'envoi ne fait jamais échouer l'action.
+    private void emailFerme(Farm f, String sujet, String message) {
+        try {
+            List<String[]> dest = utilisateursRepo.findAdminsActifsByFarmId(f.getId()).stream()
+                    .filter(u -> u.getEmail() != null && !u.getEmail().isBlank())
+                    .map(u -> new String[] { u.getEmail(), u.getFullName() })
+                    .toList();
+            if (dest.isEmpty()) return;
+            Runnable envoi = () -> {
+                for (String[] d : dest) {
+                    try {
+                        emailService.sendRappelAbonnement(d[0], d[1], sujet, message);
+                    } catch (Exception e) {
+                        LOG.warn("E-mail de la console à {} non envoyé : {}", d[0], e.getMessage());
+                    }
+                }
+            };
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                envoi.run();
+                            }
+                        });
+            } else {
+                envoi.run();
+            }
+        } catch (Exception e) {
+            LOG.warn("E-mails de la console non préparés pour la ferme {} : {}", f.getId(), e.getMessage());
+        }
+    }
+
     // Durée en jours, même convention que la validation d'un paiement
     // (AbonnementServiceImpl.valider) : 1 mois = 30 jours, 12 mois = 365 jours.
     static int joursPourMois(int mois) {
@@ -557,6 +611,13 @@ public class AdminConsoleService {
                 + AbonnementEcheance.date(nouvelleFin)
                 + (req.getMontant() != null ? ", paiement reçu hors application enregistré" : "")
                 + (etaitSuspendu ? ", suspension levée" : ""));
+        String nomFerme = nom(f);
+        emailFerme(f, "Votre abonnement Cocorico est actif jusqu'au " + AbonnementEcheance.date(nouvelleFin),
+                "L'abonnement de la ferme " + nomFerme + " est actif jusqu'au " + AbonnementEcheance.date(nouvelleFin)
+                        + " (formule " + (periodicite == Periodicite.ANNUEL ? "annuelle" : "mensuelle") + ")."
+                        + (req.getMontant() != null ? "\n\nPaiement enregistré : " + AbonnementEcheance.fcfa(req.getMontant()) + "." : "")
+                        + (etaitSuspendu ? "\n\nL'accès de votre ferme est rétabli." : "")
+                        + "\n\nMerci pour votre confiance. " + WHATSAPP);
         return detailFerme(farmUniqueId);
     }
 
@@ -574,6 +635,10 @@ public class AdminConsoleService {
         a.setSuspenduLe(LocalDateTime.now());
         abonnementRepo.save(a);
         journaliser(sa, f, "Suspension de la ferme " + nom(f)); // motif : dans abonnements seulement
+        // Le motif est déjà montré à la ferme sur son écran de blocage : il figure aussi ici.
+        emailFerme(f, "L'accès de votre ferme à Cocorico est suspendu",
+                "L'accès de la ferme " + nom(f) + " à Cocorico est suspendu.\n\nMotif : " + motif
+                        + "\n\nContactez-nous sur WhatsApp au +223 83 91 86 99.");
         return detailFerme(farmUniqueId);
     }
 
@@ -588,6 +653,9 @@ public class AdminConsoleService {
         a.setSuspenduLe(null);
         abonnementRepo.save(a);
         journaliser(sa, f, "Réactivation de la ferme " + nom(f) + " (fin de la suspension)");
+        emailFerme(f, "L'accès de votre ferme à Cocorico est rétabli",
+                "L'accès de la ferme " + nom(f) + " à Cocorico est rétabli. Vous pouvez de nouveau utiliser "
+                        + "l'application web et l'application mobile.\n\n" + WHATSAPP);
         return detailFerme(farmUniqueId);
     }
 
@@ -607,6 +675,9 @@ public class AdminConsoleService {
         abonnementRepo.save(a);
         journaliser(sa, f, "Prolongation de l'essai de la ferme " + nom(f) + " : " + jours + " jour(s), jusqu'au "
                 + AbonnementEcheance.date(a.getDateFin()));
+        emailFerme(f, "Votre période d'essai Cocorico est prolongée",
+                "La période d'essai de la ferme " + nom(f) + " est prolongée jusqu'au "
+                        + AbonnementEcheance.date(a.getDateFin()) + ".\n\n" + WHATSAPP);
         return detailFerme(farmUniqueId);
     }
 
@@ -626,6 +697,25 @@ public class AdminConsoleService {
         n.setCreeLe(LocalDateTime.now());
         noteRepo.save(n);
         journaliser(sa, f, "Note interne ajoutée sur la ferme " + nom(f)); // contenu : dans notes_admin_ferme seulement
+        return detailFerme(farmUniqueId);
+    }
+
+    // Exclure une ferme des statistiques (ou l'y réintégrer). Journalisé, sans e-mail.
+    @Transactional
+    public AdminConsoleDTO.FermeDetail statistiques(String farmUniqueId, com.diafarms.ml.request.others.AdminStatistiquesRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        if (req == null || req.getExclure() == null) {
+            throw new IllegalArgumentException("Indiquez si la ferme doit être exclue des statistiques (exclure : true ou false).");
+        }
+        boolean exclure = req.getExclure();
+        if (exclure == exclue(f)) {
+            throw new IllegalArgumentException(exclure ? "Cette ferme est déjà hors statistiques." : "Cette ferme est déjà comptée dans les statistiques.");
+        }
+        f.setExclureStatistiques(exclure ? Boolean.TRUE : null);
+        farmsRepo.save(f);
+        journaliser(sa, f, exclure ? "Ferme " + nom(f) + " exclue des statistiques"
+                : "Ferme " + nom(f) + " réintégrée dans les statistiques");
         return detailFerme(farmUniqueId);
     }
 
@@ -651,19 +741,19 @@ public class AdminConsoleService {
         }
 
         List<AdminConsoleDTO.CleValeur> parAnnee = jdbc.query(
-                "SELECT to_char(date_validation, 'YYYY'), SUM(montant), COUNT(*) FROM paiements_abonnement "
+                "SELECT to_char(date_validation, 'YYYY'), SUM(montant), COUNT(*) FROM " + PAIEMENTS_STATS + " "
                         + "WHERE statut = 'VALIDE' AND date_validation IS NOT NULL GROUP BY 1 ORDER BY 1",
                 (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)));
         double totalDepuisDebut = parAnnee.stream().mapToDouble(AdminConsoleDTO.CleValeur::montant).sum();
 
         List<AdminConsoleDTO.CleValeur> parPeriodicite = jdbc.query(
-                "SELECT periodicite, SUM(montant), COUNT(*) FROM paiements_abonnement WHERE statut = 'VALIDE' "
+                "SELECT periodicite, SUM(montant), COUNT(*) FROM " + PAIEMENTS_STATS + " WHERE statut = 'VALIDE' "
                         + "AND date_validation >= ? AND date_validation < ? GROUP BY 1 ORDER BY 2 DESC",
                 (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)),
                 d1.atStartOfDay(), d2.atStartOfDay());
         // Moyen de paiement en texte libre : regroupé sans tenir compte des majuscules ni des espaces.
         List<AdminConsoleDTO.CleValeur> parMoyen = jdbc.query(
-                "SELECT MIN(TRIM(moyen_paiement)), SUM(montant), COUNT(*) FROM paiements_abonnement WHERE statut = 'VALIDE' "
+                "SELECT MIN(TRIM(moyen_paiement)), SUM(montant), COUNT(*) FROM " + PAIEMENTS_STATS + " WHERE statut = 'VALIDE' "
                         + "AND date_validation >= ? AND date_validation < ? GROUP BY LOWER(TRIM(moyen_paiement)) ORDER BY 2 DESC",
                 (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)),
                 d1.atStartOfDay(), d2.atStartOfDay());
@@ -679,6 +769,7 @@ public class AdminConsoleService {
         List<AdminConsoleDTO.FermeCourte> listePerdues = new ArrayList<>();
         Map<Long, String> noms = nomsInscription();
         for (Abonnement a : abonnementRepo.findAllAvecFerme()) {
+            if (exclue(a.getFarm())) continue; // hors statistiques
             AbonnementEcheance.Etat etat = AbonnementEcheance.calculer(a, config, auj);
             boolean aPaye = paiementsValides.containsKey(a.getId()) || a.getPeriodicite() != null;
             if (aPaye) {
@@ -772,6 +863,7 @@ public class AdminConsoleService {
             + "WHEN l.action LIKE 'Activation%' THEN 'ACTIVATION' "
             + "WHEN l.action LIKE 'Prolongation de l''essai%' THEN 'ESSAI' "
             + "WHEN l.action LIKE 'Note interne%' THEN 'NOTE' "
+            + "WHEN l.action LIKE 'Ferme % statistiques' THEN 'STATISTIQUES' "
             + "ELSE 'AUTRE' END";
 
     @Transactional(readOnly = true)
