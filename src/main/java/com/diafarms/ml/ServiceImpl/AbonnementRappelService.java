@@ -88,7 +88,9 @@ public class AbonnementRappelService {
     public void tacheQuotidienne() {
         try {
             List<RappelDTO> envoyes = executer(true);
+            long sansEmail = envoyes.stream().filter(r -> r.destinataires() != null && !r.destinataires().isEmpty() && r.emailsEnvoyes() == 0).count();
             log.info("Rappels d'abonnement : {} rappel(s) envoyé(s)", envoyes.size());
+            if (sansEmail > 0) log.warn("Rappels d'abonnement : {} rappel(s) sans aucun e-mail parti (vérifier le serveur d'e-mails)", sansEmail);
         } catch (Exception e) {
             log.error("Tâche des rappels d'abonnement en échec : {}", e.getMessage(), e);
         }
@@ -152,6 +154,7 @@ public class AbonnementRappelService {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
         List<Candidat> candidats = new ArrayList<>();
         for (Abonnement a : abonnementRepo.findAllAvecFerme()) {
+          try {
             AbonnementEcheance.Etat etat = AbonnementEcheance.calculer(a, config, aujourdHui);
             String type = etat.rappelDuJour();
             if (type == null) continue;
@@ -168,6 +171,10 @@ public class AbonnementRappelService {
                     AbonnementEcheance.sujetEmail(etat),
                     AbonnementEcheance.messageComplet(etat, farmNom, config, paiementEnAttente),
                     admins.stream().map(u -> new Destinataire(u.getFullName(), u.getEmail())).toList()));
+          } catch (Exception e) {
+            // Une ferme en erreur ne bloque pas les rappels des autres.
+            log.warn("Rappel d'abonnement ignoré pour l'abonnement {} : {}", a.getId(), e.getMessage());
+          }
         }
         return candidats;
     }

@@ -327,7 +327,11 @@ public class AbonnementServiceImpl implements AbonnementService {
         // À partir de la plus tardive entre l'échéance actuelle et aujourd'hui : ne
         // fait jamais perdre de jours déjà payés (renouvellement en avance), ne
         // repart jamais dans le passé (ferme qui a laissé expirer).
-        LocalDate base = abonnement.getDateFin().isAfter(LocalDate.now()) ? abonnement.getDateFin() : LocalDate.now();
+        // Payé pendant les jours de grâce : on repart de l'échéance (les jours de grâce
+        // ne sont pas offerts en plus). Au-delà de la grâce : à partir d'aujourd'hui.
+        LocalDate auj = LocalDate.now();
+        int grace = AbonnementEcheance.delaiGraceJours(configRepo.findFirstByOrderByIdAsc());
+        LocalDate base = !auj.isAfter(abonnement.getDateFin().plusDays(grace)) ? abonnement.getDateFin() : auj;
         abonnement.setDateFin(base.plusDays(joursAjoutes));
         abonnement.setPeriodicite(paiement.getPeriodicite());
         abonnement.setStatut(StatutAbonnement.ACTIF);
