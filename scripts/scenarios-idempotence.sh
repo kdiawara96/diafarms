@@ -129,9 +129,16 @@ api POST /magasins/create "{\"nom\":\"Boutique idem $SUFFIXE\",\"type\":\"VENTE\
 BOUTIQUE="$(jval "d['data']['uniqueId']")"
 api POST /magasins/create "{\"nom\":\"Stock idem $SUFFIXE\",\"type\":\"STOCKAGE\",\"magasinVenteParDefautUniqueId\":\"$BOUTIQUE\"}"
 STOCK="$(jval "d['data']['uniqueId']")"
-api POST /clients/create "{\"nom\":\"Client idem $SUFFIXE\",\"telephone\":\"7$(python3 -c 'import random; print(random.randint(1000000, 9999999))')\"}"
+TEL_CLIENT="7$(python3 -c 'import random; print(random.randint(1000000, 9999999))')"
+api POST /clients/create "{\"nom\":\"Client idem $SUFFIXE\",\"telephone\":\"$TEL_CLIENT\"}"
 CLIENT="$(jval "d['data']['uniqueId']")"
 check "préparation : magasins et client créés" "code in (200, 201) and d['data']['uniqueId']"
+# Même nom et même numéro (saisie du téléphone déjà créée ailleurs) : le client existant est renvoyé.
+api POST /clients/create "{\"nom\":\"client IDEM $SUFFIXE\",\"telephone\":\"$TEL_CLIENT\"}"
+check "client identique renvoyé : même client, pas de doublon" "code in (200, 201) and d['data']['uniqueId'] == '$CLIENT'"
+# Même numéro, autre nom : refus qui nomme le client existant.
+api POST /clients/create "{\"nom\":\"Autre client $SUFFIXE\",\"telephone\":\"$TEL_CLIENT\"}"
+check "numéro déjà pris : refus avec le nom du client" "code == 400 and 'Client idem' in ' '.join(d.get('errors') or [])"
 
 collecte_corps() { # $1 = jour, $2 = œufs collectés
   echo "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"magasinStockageUniqueId\":\"$STOCK\",\"date\":\"$1\",\"oeufsCollectes\":$2,\"oeufsCasses\":0,\"oeufsNonUtilisables\":0}"

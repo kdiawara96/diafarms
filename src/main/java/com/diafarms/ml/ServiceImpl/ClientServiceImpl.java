@@ -128,11 +128,26 @@ public class ClientServiceImpl implements ClientService {
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Votre compte n'est rattaché à aucune ferme.");
         }
-        if (clientRepo.existsByNomIgnoreCaseAndFarmId(data.getNom().trim(), currentUser.getFarm().getId())) {
-            throw new IllegalArgumentException("Un client portant ce nom existe déjà.");
+        String nomVoulu = data.getNom().trim();
+        String telVoulu = data.getTelephone().trim();
+        Client memeNom = null, memeTel = null;
+        for (Client existant : clientRepo.findAllActiveByFarmId(currentUser.getFarm().getId())) {
+            if (memeNom == null && existant.getNom() != null && existant.getNom().trim().equalsIgnoreCase(nomVoulu)) memeNom = existant;
+            if (memeTel == null && existant.getTelephone() != null && existant.getTelephone().trim().equals(telVoulu)) memeTel = existant;
         }
-        if (clientRepo.existsByTelephoneAndFarmId(data.getTelephone().trim(), currentUser.getFarm().getId())) {
-            throw new IllegalArgumentException("Un client avec ce numéro de téléphone existe déjà.");
+        // Même nom ET même numéro : c'est le même client (souvent une saisie du téléphone
+        // déjà créée sur le web, ou renvoyée). On renvoie le client existant au lieu de
+        // bloquer la saisie pour toujours.
+        if (memeNom != null && memeNom == memeTel) {
+            return ClientDTO.fromEntity(memeNom);
+        }
+        if (memeNom != null) {
+            throw new IllegalArgumentException("Un client portant ce nom existe déjà (téléphone " + memeNom.getTelephone()
+                    + "). Choisissez ce client ou changez le nom.");
+        }
+        if (memeTel != null) {
+            throw new IllegalArgumentException("Ce numéro de téléphone est déjà celui du client « " + memeTel.getNom()
+                    + " ». Choisissez ce client ou changez le numéro.");
         }
 
         Client c = new Client();
