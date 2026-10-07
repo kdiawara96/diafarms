@@ -66,11 +66,14 @@ public class SoinsImpl implements SoinsService {
         if (type == null || type.isBlank()) {
             throw new IllegalArgumentException("Le type de soins est requis (VACCINATION, MEDICAMENT ou AUTRE).");
         }
-        try {
-            return TypeSoin.valueOf(type.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Type de soins invalide : " + type);
+        // Le téléphone envoie le libellé affiché (« Médicament », avec accent) : on
+        // accepte le code comme le libellé, accents et casse ignorés.
+        String cle = java.text.Normalizer.normalize(type.trim(), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").toUpperCase();
+        for (TypeSoin t : TypeSoin.values()) {
+            if (t.name().equals(cle)) return t;
         }
+        throw new IllegalArgumentException("Type de soins invalide : " + type);
     }
 
     private String joinModeAdministration(List<String> modes) {

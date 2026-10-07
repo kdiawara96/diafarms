@@ -365,6 +365,8 @@ api POST /soins/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$
 check "1.34 vaccination : acceptée" "code == 201"
 api POST /soins/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"type\":\"MEDICAMENT\",\"produit\":\"Vitamine coh $SUFFIXE\",\"quantite\":1,\"depuisStock\":true,\"unite\":\"sachet\"}"
 check "soin pris dans le stock du projet : accepté" "code == 201"
+api POST /soins/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"type\":\"Médicament\",\"produit\":\"Antistress coh $SUFFIXE\",\"quantite\":2}"
+check "téléphone : type « Médicament » (libellé accentué) accepté" "code == 201"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
