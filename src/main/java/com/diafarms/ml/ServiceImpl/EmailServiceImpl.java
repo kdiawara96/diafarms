@@ -316,6 +316,34 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Override
+    public boolean sendMessageCocorico(String to, String fullName, String titre, String sujet, String message) {
+        try {
+            MimeMessage mime = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
+            helper.setFrom(fromAddress, "Cocorico");
+            helper.setTo(to);
+            helper.setReplyTo(fromAddress);
+            helper.setSubject(sujet);
+            String bonjour = "Bonjour " + (fullName != null ? fullName : "") + ",";
+            String texte = bonjour + "\n\n" + message + "\n\nL'équipe Cocorico\n";
+            StringBuilder html = new StringBuilder()
+                    .append("<div style=\"font-family: Arial, sans-serif; max-width: 520px; margin: auto; color: #1f2937;\">")
+                    .append("<h2 style=\"color: #b45309;\">").append(escapeHtml(titre)).append("</h2>")
+                    .append("<p>").append(escapeHtml(bonjour)).append("</p>");
+            for (String paragraphe : message.split("\n\n")) {
+                html.append("<p>").append(escapeHtml(paragraphe).replace("\n", "<br>")).append("</p>");
+            }
+            html.append("<p>L'équipe Cocorico</p></div>");
+            helper.setText(texte, html.toString());
+            mailSender.send(mime);
+            return true;
+        } catch (Exception e) {
+            log.error("Échec de l'envoi de l'e-mail « {} » à {} : {}", sujet, to, e.getMessage());
+            return false;
+        }
+    }
+
     private static String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");

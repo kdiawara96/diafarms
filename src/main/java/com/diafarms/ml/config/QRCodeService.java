@@ -23,6 +23,7 @@ public class QRCodeService {
     private final JwtDecoder jwtDecoder;
     private final UtilisateursRepo utilisateursRepo;
     private final AESService aesService;
+    private final com.diafarms.ml.repository.FarmsRepo farmsRepo;
 
     public String generateAndEncryptQRCode(String username, String uniqueId, String fullName,
                                           String rolesPipe, Instant expiresAt, Instant now, boolean permanent) {
@@ -103,6 +104,7 @@ public class QRCodeService {
     public void marquerConnexion(Utilisateurs user) {
         try {
             utilisateursRepo.marquerConnexion(user.getId(), LocalDateTime.now());
+            farmsRepo.marquerConnexionMobile(user.getId());
         } catch (Exception e) {
             log.warn("Dernière connexion (QR) non enregistrée pour l'utilisateur {} : {}", user.getId(), e.getMessage());
         }

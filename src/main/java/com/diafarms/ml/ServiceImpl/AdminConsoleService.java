@@ -91,6 +91,8 @@ public class AdminConsoleService {
     private final com.diafarms.ml.services.EmailService emailService;
     private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
     private final AbonnementTarifService tarifService;
+    private final ParrainageService parrainageService;
+    private final GuideDemarrageService guideService;
 
     // ------------------------------------------------------------------ sécurité
 
@@ -108,6 +110,10 @@ public class AdminConsoleService {
             throw new AccessDeniedException("Seul un SUPER_ADMIN peut effectuer cette action.");
         }
         return u;
+    }
+
+    public void verifierSuperAdmin() {
+        superAdmin();
     }
 
     // ------------------------------------------------------------------ outils SQL
@@ -160,7 +166,9 @@ public class AdminConsoleService {
             Map<Long, long[]> projets,                 // [projets en cours, sujets vivants]
             Map<Long, LocalDateTime> dernierLog,
             Map<Long, Double> totalPaye,
-            Map<Long, Boolean> enAttente) {}
+            Map<Long, Boolean> enAttente,
+            Map<Long, GuideDemarrageService.Etapes> etapes,
+            Map<Long, long[]> parrainages) {}         // [filleuls, mois gagnés, 1 si parrainée]
 
     // farmId null : toutes les fermes (liste, tableau de bord) ; sinon UNE ferme (fiche),
     // filtre passé en paramètre lié, sans parcourir les données des autres fermes.
@@ -232,7 +240,19 @@ public class AdminConsoleService {
                     totalPaye.put(rs.getLong(1), rs.getDouble(2));
                     enAttente.put(rs.getLong(1), rs.getBoolean(3));
                 }, args);
-        return new Agregats(proprios, utilisateurs, premiere, derniereCo, projets, dernierLog, totalPaye, enAttente);
+        // Guide « Bien démarrer » : une requête pour toutes les fermes (voir GuideDemarrageService).
+        Map<Long, GuideDemarrageService.Etapes> etapes = guideService.etapes(farmId);
+        Map<Long, long[]> parrainages = new HashMap<>();
+        jdbc.query("SELECT parrain_farm_id, COUNT(*), COUNT(recompense_le) FROM parrainages "
+                + (une ? "WHERE parrain_farm_id = ? " : "") + "GROUP BY parrain_farm_id", rs -> {
+                    parrainages.computeIfAbsent(rs.getLong(1), k -> new long[3])[0] = rs.getLong(2);
+                    parrainages.get(rs.getLong(1))[1] = rs.getLong(3);
+                }, args);
+        jdbc.query("SELECT filleul_farm_id FROM parrainages" + (une ? " WHERE filleul_farm_id = ?" : ""), rs -> {
+            parrainages.computeIfAbsent(rs.getLong(1), k -> new long[3])[2] = 1;
+        }, args);
+        return new Agregats(proprios, utilisateurs, premiere, derniereCo, projets, dernierLog, totalPaye, enAttente,
+                etapes, parrainages);
     }
 
     // Une ligne par ferme, avec son abonnement (et son état du jour) s'il existe.
@@ -266,6 +286,8 @@ public class AdminConsoleService {
         if (inscription == null && a != null && a.getInitialisation() != null) inscription = a.getInitialisation().getCreatedAt();
         long[] u = ag.utilisateurs().getOrDefault(id, new long[] { 0 });
         long[] pr = ag.projets().getOrDefault(id, new long[] { 0, 0 });
+        GuideDemarrageService.Etapes et = ag.etapes().getOrDefault(id, GuideDemarrageService.Etapes.vide());
+        long[] pa = ag.parrainages().getOrDefault(id, new long[3]);
         return new AdminConsoleDTO.Ferme(
                 f.getUniqueId(),
                 nomFerme(f, p != null ? p.nomFermeInscription() : null),
@@ -294,7 +316,17 @@ public class AdminConsoleService {
                 tarif.poulesComptees(),
                 tarif.prixMensuel(),
                 tarif.prixAnnuel(),
-                tarif.prixFixe());
+                tarif.prixFixe(),
+                inscription != null ? java.time.temporal.ChronoUnit.DAYS.between(inscription.toLocalDate(), LocalDate.now()) : null,
+                et.faites(),
+                GuideDemarrageService.TOTAL,
+                et.saisie(),
+                etat != null && etat.estEssai() && !etat.bloque() && !et.saisie() && !exclue(f),
+                p != null ? com.diafarms.ml.commons.Telephone.international(p.telephone()) : null,
+                f.getCodeParrainage(),
+                pa[0],
+                pa[1],
+                pa[2] == 1);
     }
 
     // ------------------------------------------------------------------ lecture
@@ -451,7 +483,10 @@ public class AdminConsoleService {
 
         List<AdminConsoleDTO.JournalEntree> journal = journal(null, null, null, f.getUniqueId(), 0, 50).data();
 
-        return new AdminConsoleDTO.FermeDetail(dto, new ArrayList<>(users.values()), paiements, rappels, notes, journal, tarif);
+        List<GuideDemarrageService.EtapeDTO> etapes = GuideDemarrageService.liste(
+                guideService.etapes(f.getId()).getOrDefault(f.getId(), GuideDemarrageService.Etapes.vide()));
+        return new AdminConsoleDTO.FermeDetail(dto, new ArrayList<>(users.values()), paiements, rappels, notes, journal, tarif,
+                etapes, parrainageService.pourLaConsole(f));
     }
 
     // ------------------------------------------------------------------ actions
@@ -612,6 +647,8 @@ public class AdminConsoleService {
             p.setHorsApplication(true);
             p.setInitialisation(Initialisation.init());
             paiementRepo.save(p);
+            // Parrainage : un paiement reçu compte comme une validation (après le commit).
+            parrainageService.apresPaiementValide(f.getId(), p.getId(), sa.getId());
         }
         journaliser(sa, f, "Activation de l'abonnement de la ferme " + nom(f) + " : "
                 + (periodicite == Periodicite.ANNUEL ? "annuel" : "mensuel") + " jusqu'au "
@@ -901,6 +938,7 @@ public class AdminConsoleService {
             + "WHEN l.action LIKE 'Note interne%' THEN 'NOTE' "
             + "WHEN l.action LIKE 'Ferme % statistiques' THEN 'STATISTIQUES' "
             + "WHEN l.action LIKE 'Tarif spécial%' THEN 'TARIF' "
+            + "WHEN l.action LIKE 'Parrainage%' THEN 'PARRAINAGE' "
             + "ELSE 'AUTRE' END";
 
     @Transactional(readOnly = true)

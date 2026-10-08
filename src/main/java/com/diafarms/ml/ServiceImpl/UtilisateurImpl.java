@@ -62,6 +62,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     private final AbonnementService abonnementService;
     // Contrôle d'accès aux comptes par uniqueId (même ferme, ADMIN), voir AccesCompte.
     private final com.diafarms.ml.commons.AccesCompte acces;
+    private final ParrainageService parrainageService;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // tenterSuppressionReelle passe par le proxy Spring (un appel this.xxx()
@@ -88,6 +89,10 @@ public class UtilisateurImpl implements UtilisateursServices {
             throw new IllegalArgumentException("Le numéro de téléphone '" + data.getTelephone() + "' existe déjà.");
         }
 
+        // Code de parrainage (facultatif) vérifié AVANT toute création : un code inconnu
+        // refuse l'inscription avec un message clair, rien n'est créé.
+        Farm parrain = parrainageService.fermeDuCode(data.getCodeParrainage());
+
         // Create new user
         Utilisateurs user = new Utilisateurs();
         user.setFullName(data.getFullName());
@@ -111,6 +116,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         Farm savedFarm = farmsRepo.save(newFarm);
 
         abonnementService.creerEssaiPourFarm(savedFarm);
+        parrainageService.enregistrer(parrain, savedFarm, data.getCodeParrainage());
 
         // On lie la ferme à l'utilisateur (on suppose que votre entité Utilisateurs possède la méthode setFarm)
         user.setFarm(savedFarm); 

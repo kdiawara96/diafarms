@@ -36,4 +36,12 @@ public interface EmailService {
      * vide. Ne lève jamais d'exception : false si l'envoi échoue.
      */
     boolean sendRappelAbonnement(String to, String fullName, String sujet, String message);
+
+    /**
+     * E-mail simple signé « L'équipe Cocorico » (démarrage pendant l'essai, parrainage,
+     * résumé de la semaine). titre = gros titre en haut de l'e-mail ; message = texte brut,
+     * paragraphes séparés par une ligne vide. Ne lève jamais d'exception : false si l'envoi
+     * échoue.
+     */
+    boolean sendMessageCocorico(String to, String fullName, String titre, String sujet, String message);
 }

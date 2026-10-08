@@ -18,4 +18,6 @@ public class UserCreate {
     private List<String> roles; 
     // Compte en consultation seule (voir Utilisateurs.consultationSeule) : réservé à l'admin qui crée le compte.
     private Boolean consultationSeule;
+    // Inscription d'une nouvelle ferme : code de parrainage facultatif (voir ParrainageService).
+    private String codeParrainage;
 }

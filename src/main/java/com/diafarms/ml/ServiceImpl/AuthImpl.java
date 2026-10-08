@@ -42,6 +42,7 @@ public class AuthImpl implements AuthServices {
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile;
+    private final com.diafarms.ml.repository.FarmsRepo farmsRepo;
 
     @Autowired
     public AuthImpl(
@@ -51,8 +52,10 @@ public class AuthImpl implements AuthServices {
             UserDetailsService userDetailsService,
             UtilisateursRepo repo,
             FarmAppSettingsRepo farmAppSettingsRepo,
-            com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile
+            com.diafarms.ml.commons.AbonnementAccesMobile abonnementAccesMobile,
+            com.diafarms.ml.repository.FarmsRepo farmsRepo
     ) {
+        this.farmsRepo = farmsRepo;
         this.abonnementAccesMobile = abonnementAccesMobile;
         this.jwtEncoder = jwtEncoder;
         this.jwtDecoder = jwtDecoder;
@@ -181,6 +184,9 @@ public class AuthImpl implements AuthServices {
         if (grantType.equals("password")) {
             try {
                 repo.marquerConnexion(currentUser.getId(), java.time.LocalDateTime.now());
+                if ("mobile".equalsIgnoreCase(clientType) && currentUser.getFarm() != null) {
+                    farmsRepo.marquerConnexionMobile(currentUser.getId()); // guide « Bien démarrer »
+                }
             } catch (Exception e) {
                 // la connexion passe quand même
                 org.slf4j.LoggerFactory.getLogger(AuthImpl.class)

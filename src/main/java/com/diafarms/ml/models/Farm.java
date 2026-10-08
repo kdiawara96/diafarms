@@ -78,6 +78,27 @@ public class Farm {
     @Column(name = "exclure_statistiques")
     private Boolean exclureStatistiques;
 
+    // Croissance (lot 2), colonnes nullables (ajout ddl-auto sur une table existante) :
+    //  - guideDemarrageMasqueLe : l'ADMIN a fermé la carte « Bien démarrer » du tableau de
+    //    bord (null = carte affichée tant que les étapes ne sont pas toutes faites) ;
+    //  - resumeHebdo : résumé de la semaine par e-mail le lundi (null ou true = oui,
+    //    false = le propriétaire de la ferme l'a coupé dans Paramètres) ;
+    //  - codeParrainage : code à partager pour parrainer une autre ferme, créé à la
+    //    première demande (voir ParrainageService) ;
+    //  - mobileConnecteLe : première connexion d'un compte de la ferme sur l'application
+    //    mobile (scan du QR ou connexion mobile), étape « Installer l'application mobile ».
+    @Column(name = "guide_demarrage_masque_le")
+    private java.time.LocalDateTime guideDemarrageMasqueLe;
+
+    @Column(name = "resume_hebdo")
+    private Boolean resumeHebdo;
+
+    @Column(name = "code_parrainage", length = 20, unique = true)
+    private String codeParrainage;
+
+    @Column(name = "mobile_connecte_le")
+    private java.time.LocalDateTime mobileConnecteLe;
+
     @OneToMany(mappedBy = "farm")
     private List<Utilisateurs> utilisateurs;
 
