@@ -55,6 +55,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     private final LogsServices logs;
     private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
     private final AbonnementTarifService tarifService;
+    private final ParrainageService parrainageService;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
@@ -390,6 +391,9 @@ public class AbonnementServiceImpl implements AbonnementService {
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
                 "Validation du paiement d'abonnement de la ferme " + resoudreFarmNom(abonnement.getFarm(),
                         paiement.getDeclarePar() != null ? paiement.getDeclarePar().getFarmName() : null));
+
+        // Parrainage : 1 mois offert au parrain au premier paiement validé (après le commit).
+        parrainageService.apresPaiementValide(abonnement.getFarm().getId(), saved.getId(), currentUser.getId());
 
         if (paiement.getDeclarePar() != null) {
             String farmNom = resoudreFarmNom(abonnement.getFarm(), paiement.getDeclarePar().getFarmName());

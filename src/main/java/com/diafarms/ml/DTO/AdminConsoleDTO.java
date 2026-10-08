@@ -44,7 +44,21 @@ public final class AdminConsoleDTO {
             int poulesComptees,
             double prixMensuel,
             double prixAnnuel,
-            boolean prixFixe) {}
+            boolean prixFixe,
+            // Démarrage (guide « Bien démarrer », voir GuideDemarrageService) : jours depuis
+            // l'inscription, étapes faites sur 6, au moins une saisie, essai sans saisie.
+            Long joursDepuisInscription,
+            int etapesFaites,
+            int etapesTotal,
+            boolean aSaisi,
+            boolean essaiInactif,
+            // Téléphone du propriétaire au format international pour wa.me (8 chiffres = Mali).
+            String proprietaireWhatsapp,
+            // Parrainage : code de la ferme, nombre de fermes parrainées, mois gagnés.
+            String codeParrainage,
+            long nbFilleuls,
+            long moisGagnes,
+            boolean parrainee) {}
 
     public record MoisValeur(String mois, double montant, long nombre) {}
 
@@ -108,7 +122,10 @@ public final class AdminConsoleDTO {
             List<Note> notes,
             List<JournalEntree> journal,
             // Détail du calcul du prix et tarif spécial éventuel.
-            AbonnementTarifDTO tarif) {}
+            AbonnementTarifDTO tarif,
+            // Étapes du guide « Bien démarrer » et parrainage (parrain, filleuls, récompenses).
+            List<com.diafarms.ml.ServiceImpl.GuideDemarrageService.EtapeDTO> etapes,
+            com.diafarms.ml.ServiceImpl.ParrainageService.ParrainageFerme parrainage) {}
 
     public record Finances(
             int annee,

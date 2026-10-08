@@ -146,7 +146,30 @@ public class ReportingService {
         boolean vueFerme = filtre == null && autorises == null;
         Contexte ctx = new Contexte(farmId, projets, parId, idParUid, scope, vueFerme,
                 aRole(u, ROLES_SALAIRES), autorises == null);
+        return assembler(ctx, deb, fin, jours, filtre);
+    }
 
+    // Ferme entière SANS utilisateur connecté (résumé de la semaine, tâche planifiée) :
+    // mêmes chiffres que la page Reporting d'un ADMIN (vue ferme, main-d'œuvre comprise),
+    // période précédente de même durée. La devise de la ferme doit être posée par
+    // l'appelant (Devise.definir) : les arrondis en dépendent.
+    @Transactional(readOnly = true)
+    public ReportingDTO rapportFerme(Long farmId, LocalDate deb, LocalDate fin) {
+        if (fin.isBefore(deb)) throw new IllegalArgumentException("La date de fin précède la date de début.");
+        long jours = ChronoUnit.DAYS.between(deb, fin) + 1;
+        List<Projets> projets = projetsRepo.findAllActiveByFarm(farmId);
+        Map<Long, Projets> parId = new HashMap<>();
+        Map<String, Long> idParUid = new HashMap<>();
+        for (Projets p : projets) {
+            parId.put(p.getId(), p);
+            idParUid.put(p.getUniqueId(), p.getId());
+        }
+        Contexte ctx = new Contexte(farmId, projets, parId, idParUid, new HashSet<>(parId.keySet()), true, true, true);
+        return assembler(ctx, deb, fin, jours, null);
+    }
+
+    private ReportingDTO assembler(Contexte ctx, LocalDate deb, LocalDate fin, long jours, String filtre) {
+        boolean vueFerme = ctx.vueFerme();
         LocalDate precFin = deb.minusDays(1);
         LocalDate precDeb = precFin.minusDays(jours - 1);
         Calcul cur = calculer(ctx, deb, fin);

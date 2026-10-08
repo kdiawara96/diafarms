@@ -46,8 +46,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
 
-    private static final int RECENT_CONSO_WINDOW_DAYS = 7;
-    private static final int STOCK_WARNING_DAYS_THRESHOLD = 3;
     private static final double MORTALITE_WARNING_PCT = 2.0;
     private static final double MORTALITE_CRITIQUE_PCT = 5.0;
     private static final double ECHEANCE_WARNING_MIN_PCT = 0.10;
@@ -72,6 +70,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final com.diafarms.ml.repository.AbonnementConfigRepo abonnementConfigRepo;
     private final AbonnementTarifService abonnementTarifService;
     private final com.diafarms.ml.repository.AbonnementRappelRepo abonnementRappelRepo;
+    private final AlertesElevage alertesElevage;
 
     // Un rôle est son SEUL rôle (pas de cumul) : un compte qui cumule les rôles garde
     // les notifications complètes, un autre rôle justifiant déjà l'accès non restreint
@@ -128,9 +127,14 @@ public class NotificationServiceImpl implements NotificationService {
             } else {
                 projets = projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent();
             }
+            // Chiffres d'élevage de tous les projets en 5 requêtes groupées (voir AlertesElevage).
+            LocalDate auj = LocalDate.now();
+            java.util.Map<Long, AlertesElevage.Indicateurs> indicateurs = alertesElevage.charger(projets, auj);
             for (Projets p : projets) {
-                addStockNotification(result, p);
-                addMortaliteNotification(result, p);
+                AlertesElevage.Indicateurs x = indicateurs.get(p.getId());
+                addStockNotification(result, p, x);
+                addMortaliteNotification(result, p, x);
+                result.addAll(alertesElevage.nouvelles(p, x, auj));
                 addMeteoNotification(result, p);
                 addEcheanceNotification(result, p);
             }
@@ -204,8 +208,11 @@ public class NotificationServiceImpl implements NotificationService {
         return projetsRepo.findByUniqueId(projetUniqueId)
             .map(p -> {
                 List<NotificationDTO> result = new ArrayList<>();
-                addStockNotification(result, p);
-                addMortaliteNotification(result, p);
+                LocalDate auj = LocalDate.now();
+                AlertesElevage.Indicateurs x = alertesElevage.charger(List.of(p), auj).get(p.getId());
+                addStockNotification(result, p, x);
+                addMortaliteNotification(result, p, x);
+                result.addAll(alertesElevage.nouvelles(p, x, auj));
                 addMeteoNotification(result, p);
                 addEcheanceNotification(result, p);
                 result.sort(Comparator.comparing((NotificationDTO n) -> "CRITIQUE".equals(n.getLevel()) ? 0 : 1));
@@ -293,26 +300,19 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    private void addStockNotification(List<NotificationDTO> result, Projets p) {
-        double achete = nz(alimentationRepo.sumAcheteByProjetId(p.getId()));
-        if (achete <= 0) return; // pas encore d'achat : rien à signaler
-
-        double consomme = nz(consommationAlimentRepo.sumConsommeByProjetId(p.getId()));
-        double restant = achete - consomme;
-        double recent = nz(consommationAlimentRepo.sumConsommeByProjetIdSince(p.getId(), LocalDate.now().minusDays(RECENT_CONSO_WINDOW_DAYS)));
-        double dailyAvg = recent / RECENT_CONSO_WINDOW_DAYS;
-
+    // Stock épuisé (CRITIQUE). Le stock bas (moins de 5 jours) est l'alerte
+    // AlertesElevage.stockAlimentBas, qui remplace l'ancienne alerte « moins de 3 jours ».
+    private void addStockNotification(List<NotificationDTO> result, Projets p, AlertesElevage.Indicateurs x) {
+        if (x == null || x.getAchete() <= 0) return; // pas encore d'achat : rien à signaler
+        double restant = x.getAchete() - x.getConsomme();
         if (restant <= 0) {
             result.add(stockNotif(p, "CRITIQUE", "Stock d'aliment épuisé : " + p.getCode()));
-        } else if (dailyAvg > 0 && restant / dailyAvg < STOCK_WARNING_DAYS_THRESHOLD) {
-            long jours = Math.round(restant / dailyAvg);
-            result.add(stockNotif(p, "WARNING", "Stock d'aliment faible : " + p.getCode() + " (~" + jours + " j restants)"));
         }
     }
 
-    private void addMortaliteNotification(List<NotificationDTO> result, Projets p) {
-        if (p.getNbSujets() == null || p.getNbSujets() <= 0) return;
-        int morts = mortaliteRepo.sumMortsByProjetId(p.getId()) == null ? 0 : mortaliteRepo.sumMortsByProjetId(p.getId());
+    private void addMortaliteNotification(List<NotificationDTO> result, Projets p, AlertesElevage.Indicateurs x) {
+        if (p.getNbSujets() == null || p.getNbSujets() <= 0 || x == null) return;
+        long morts = x.getMortsTotal();
         double taux = (morts * 100.0) / p.getNbSujets();
 
         if (taux >= MORTALITE_CRITIQUE_PCT) {

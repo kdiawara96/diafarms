@@ -117,6 +117,8 @@ public class SecurityConfiguration {
                     "/diafarms/api/v1/users/create",
                     // Simulation du prix d'abonnement (page d'inscription, FAQ) : aucune donnée de ferme.
                     "/diafarms/api/v1/abonnements/tarif-simulation",
+                    // Vérification d'un code de parrainage (page d'inscription) : oui / non seulement.
+                    "/diafarms/api/v1/parrainage/verifier",
                     "/diafarms/api/v1/test"
                 )
                 .csrf(AbstractHttpConfigurer::disable)

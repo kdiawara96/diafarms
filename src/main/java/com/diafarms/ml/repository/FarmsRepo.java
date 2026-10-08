@@ -20,4 +20,12 @@ public interface FarmsRepo extends JpaRepository<Farm, Long> {
     @Query("select f.devise from Utilisateurs u join u.farm f where u.uniqueId = :uid")
     String findDeviseByUtilisateur(@Param("uid") String uid);
 
+    // Première connexion mobile d'un compte de la ferme (guide « Bien démarrer »,
+    // étape « Installer l'application mobile ») : posée une seule fois, jamais modifiée.
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = "UPDATE farms SET mobile_connecte_le = now() WHERE id = (SELECT u.farm_id FROM utilisateurs u WHERE u.id = :userId) "
+            + "AND mobile_connecte_le IS NULL", nativeQuery = true)
+    int marquerConnexionMobile(@Param("userId") Long userId);
+
 }
