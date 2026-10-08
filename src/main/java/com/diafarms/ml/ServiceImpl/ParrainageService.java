@@ -199,6 +199,12 @@ public class ParrainageService {
         Utilisateurs u = otherService.getCurrentUser();
         if (u == null || u.getFarm() == null) return null;
         Long farmId = u.getFarm().getId();
+        // Le code (créé à la première demande) et la liste des fermes parrainées ne
+        // concernent que l'administrateur, jamais un compte en consultation seule (démo).
+        boolean admin = u.getRoles() != null && u.getRoles().stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()));
+        if (!admin || Boolean.TRUE.equals(u.getConsultationSeule())) {
+            throw new org.springframework.security.access.AccessDeniedException("Réservé à l'administrateur de la ferme.");
+        }
         String code = codeDeLaFerme(farmId);
         Map<Long, String> noms = nomsInscription();
         List<FilleulDTO> liste = new ArrayList<>();
@@ -303,6 +309,16 @@ public class ParrainageService {
             List<Long> paiements = jdbc.queryForList("SELECT p.id FROM paiements_abonnement p JOIN abonnements a ON a.id = p.abonnement_id "
                     + "WHERE a.farm_id = ? AND p.statut = 'VALIDE' ORDER BY p.date_validation, p.id", Long.class, filleulFarmId);
             if (paiements.isEmpty()) return null;
+            // Parrain suspendu, hors statistiques (démo) ou sans abonnement : la récompense reste
+            // en attente ; le rattrapage quotidien la donnera quand la situation le permet.
+            List<Map<String, Object>> etatParrain = jdbc.queryForList(
+                    "SELECT COALESCE(a.suspendu, false) AS suspendu, COALESCE(f.exclure_statistiques, false) AS exclue "
+                    + "FROM farms f LEFT JOIN abonnements a ON a.farm_id = f.id WHERE f.id = ?", parrainId);
+            if (etatParrain.isEmpty() || Boolean.TRUE.equals(etatParrain.get(0).get("suspendu"))
+                    || Boolean.TRUE.equals(etatParrain.get(0).get("exclue"))
+                    || jdbc.queryForObject("SELECT COUNT(*) FROM abonnements WHERE farm_id = ?", Integer.class, parrainId) == 0) {
+                return null;
+            }
             if (repo.reserverRecompense(id) == 0) return null; // déjà donnée (exécution concurrente)
 
             // Abonnement du parrain verrouillé : une action simultanée passe avant ou après.

@@ -53,7 +53,7 @@ public class AlertesElevage {
     public static final double MORTS_PCT_CRITIQUE = 1.0;
     public static final double STOCK_JOURS_MIN = 5.0;
     public static final double PONTE_BAISSE_POINTS = 8.0;
-    private static final int JOURS_HISTO = 10; // aujourd'hui + 9 jours avant
+    private static final int JOURS_HISTO = 11; // aujourd'hui + 10 jours avant
 
     private final JdbcTemplate jdbc;
 
@@ -189,8 +189,10 @@ public class AlertesElevage {
     public NotificationDTO ponteEnBaisse(Projets p, Indicateurs x, LocalDate auj) {
         if (x == null || !enCours(p, auj)) return null;
         if (p.getObjectif() != Objectif.PONTE && p.getObjectif() != Objectif.MIXTE) return null;
-        double[] recent = taux(p, x, auj, 0, 2);
-        double[] avant = taux(p, x, auj, 3, 9);
+        // Jours complets seulement (hier et avant) : aujourd'hui, la collecte du soir n'est
+        // souvent pas encore saisie, ce qui ferait croire à une baisse chaque jour.
+        double[] recent = taux(p, x, auj, 1, 3);
+        double[] avant = taux(p, x, auj, 4, 10);
         if (recent[2] < 2 || avant[2] < 3 || recent[1] <= 0 || avant[1] <= 0) return null;
         double tRecent = recent[0] * 100.0 / recent[1];
         double tAvant = avant[0] * 100.0 / avant[1];
