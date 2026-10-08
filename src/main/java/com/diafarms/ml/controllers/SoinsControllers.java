@@ -33,6 +33,9 @@ public class SoinsControllers {
         try {
             PaginatedResponse<SoinsDTO> response = service.list(page, size, search, projetUniqueId, batimentUniqueId, type);
             return ApiResponse.createResponse("Liste des soins récupérée", HttpStatus.OK, response, null);
+        } catch (IllegalArgumentException e) {
+            // Filtre inconnu (type ou niveau) : 400 avec le message, comme à la création.
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors de la récupération des soins", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }

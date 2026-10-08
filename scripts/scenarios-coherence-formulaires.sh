@@ -368,6 +368,32 @@ check "soin pris dans le stock du projet : accepté" "code == 201"
 api POST /soins/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"date\":\"$AUJ\",\"type\":\"Médicament\",\"produit\":\"Antistress coh $SUFFIXE\",\"quantite\":2}"
 check "téléphone : type « Médicament » (libellé accentué) accepté" "code == 201"
 
+
+echo "== 8. Plafond journalier des collectes à la modification, filtres de liste invalides"
+J2="$(date -d '2 days ago' +%F)"; J3="$(date -d '3 days ago' +%F)"
+collecte_j() { api POST /collectes-oeufs/create "{\"projetUniqueId\":\"$PROJET\",\"batimentUniqueId\":\"$BATIMENT\",\"magasinStockageUniqueId\":\"$STOCK\",\"date\":\"$1\",\"oeufsCollectes\":$2,\"oeufsCasses\":0,\"oeufsNonUtilisables\":0}"; }
+collecte_j "$J2" 100000000
+check "collecte au-dessus de l'effectif : 400" "code == 400 and 'effectif vivant' in err"
+# Reste du jour = plafond - déjà collecté (la ferme de ce script sert d'un passage à l'autre).
+RESTE="$(python3 -c 'import json,re,sys; m=re.search(r"\((\d+) \+ \d+\) dépasserait l.effectif vivant \((\d+) poule", json.load(open(sys.argv[1]))["errors"][0]); print(int(m.group(2)) - int(m.group(1)))' "$TMP/body")"
+if [ "$RESTE" -gt 0 ]; then
+  collecte_j "$J2" "$RESTE"; check "collecte qui remplit le jour J-2 ($RESTE œufs) : acceptée" "code == 201"
+else
+  check_eq "jour J-2 déjà plein (passage précédent)" "plein" "plein"
+fi
+collecte_j "$J3" 10; check "collecte de 10 œufs à J-3 : acceptée" "code == 201"; COL_J3="$(jval "d['data']['uniqueId']")"
+api PUT "/collectes-oeufs/update/$COL_J3" "{\"date\":\"$J2\"}"
+check "déplacer la collecte (même quantité) vers un jour déjà plein : 400" "code == 400 and 'effectif vivant' in err"
+check_eq "collecte non déplacée" "$J3|10" "$(psql_run "SELECT date || '|' || oeufs_collectes FROM collectes_oeufs WHERE unique_id = '$COL_J3'")"
+api PUT "/collectes-oeufs/update/$COL_J3" "{\"oeufsCollectes\":20}"
+check "changer la quantité le même jour (sous le plafond) : acceptée" "code == 200"
+api PUT "/collectes-oeufs/update/$COL_J3" "{\"oeufsCasses\":1}"
+check "corriger les cassés seulement : acceptée" "code == 200"
+api GET "/soins/list?type=INCONNU"; check "/soins/list type inconnu : 400 avec le message" "code == 400 and 'INCONNU' in err"
+api GET "/soins/list?type=MEDICAMENT"; check "/soins/list type connu : 200" "code == 200"
+api GET "/entretiens/list?niveau=XYZ"; check "/entretiens/list niveau inconnu : 400" "code == 400"
+api GET "/entretiens/list?type=XYZ"; check "/entretiens/list type inconnu : 400" "code == 400"
+
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
 [ "$FAIL" -eq 0 ]

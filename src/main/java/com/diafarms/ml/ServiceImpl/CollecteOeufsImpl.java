@@ -206,18 +206,27 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
                 .filter(x -> com.diafarms.ml.commons.FermeScope.memeFerme(x.getFarm(), getCurrentUserSafe()))
                 .orElseThrow(() -> new IllegalArgumentException("Collecte introuvable : " + uniqueId));
 
+        LocalDate ancienneDate = c.getDate();
+        Long ancienBatimentId = c.getBatiment() != null ? c.getBatiment().getId() : null;
+        Integer ancienneQuantite = c.getOeufsCollectes();
         c.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), c.getDate()));
         if (data.getHeure() != null) c.setHeure(data.getHeure().isBlank() ? null : LocalTime.parse(data.getHeure()));
         c.setBatiment(poulaillerObligatoire.resoudrePourModification(c.getProjet(), c.getBatiment(), data.getBatimentUniqueId()));
-        if (data.getOeufsCollectes() != null) {
-            if (data.getOeufsCollectes() <= 0) {
-                throw new IllegalArgumentException("Le nombre d'œufs collectés doit être supérieur à 0.");
-            }
-            // Validé avec la date/le bâtiment déjà à jour ci-dessus (au cas où l'un des
-            // deux change en même temps que la quantité) — voir validerPlafondJournalier.
-            validerPlafondJournalier(c.getProjet(), c.getBatiment(), c.getDate(), data.getOeufsCollectes(), c.getId());
-            c.setOeufsCollectes(data.getOeufsCollectes());
+        if (data.getOeufsCollectes() != null && data.getOeufsCollectes() <= 0) {
+            throw new IllegalArgumentException("Le nombre d'œufs collectés doit être supérieur à 0.");
         }
+        int quantite = data.getOeufsCollectes() != null ? data.getOeufsCollectes()
+                : (ancienneQuantite != null ? ancienneQuantite : 0);
+        Long batimentId = c.getBatiment() != null ? c.getBatiment().getId() : null;
+        // Plafond du jour revérifié dès que la date, le poulailler OU la quantité change,
+        // avec la quantité effective : avant, déplacer une collecte (sans toucher à la
+        // quantité) vers un jour déjà plein passait sans contrôle. Rien ne change : pas de
+        // contrôle (corriger les cassés d'une ancienne collecte reste possible).
+        if (!java.util.Objects.equals(ancienneDate, c.getDate()) || !java.util.Objects.equals(ancienBatimentId, batimentId)
+                || !java.util.Objects.equals(ancienneQuantite, quantite)) {
+            validerPlafondJournalier(c.getProjet(), c.getBatiment(), c.getDate(), quantite, c.getId());
+        }
+        c.setOeufsCollectes(quantite);
         if (data.getOeufsCasses() != null) c.setOeufsCasses(data.getOeufsCasses());
         if (data.getOeufsNonUtilisables() != null) c.setOeufsNonUtilisables(data.getOeufsNonUtilisables());
         if (data.getOeufsCollectes() != null || data.getOeufsCasses() != null || data.getOeufsNonUtilisables() != null) {

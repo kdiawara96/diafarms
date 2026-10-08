@@ -33,6 +33,9 @@ public class EntretienControllers {
         try {
             PaginatedResponse<EntretienDTO> response = service.list(page, size, search, batimentUniqueId, niveau, type);
             return ApiResponse.createResponse("Liste des entretiens récupérée", HttpStatus.OK, response, null);
+        } catch (IllegalArgumentException e) {
+            // Filtre inconnu (type ou niveau) : 400 avec le message, comme à la création.
+            return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur lors de la récupération des entretiens", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
         }
