@@ -187,7 +187,10 @@ public class MortaliteImpl implements MortaliteService {
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
 
-        Page<Mortalite> resultPage = mortaliteRepo.search(farmId, projetParam, batimentParam, searchParam, pageable);
+        Page<Mortalite> resultPage = mortaliteRepo.search(farmId,
+                projetParam != null, projetParam != null ? projetParam : "",
+                batimentParam != null, batimentParam != null ? batimentParam : "",
+                searchParam != null, searchParam != null ? searchParam : "", pageable);
 
         List<MortaliteDTO> dtoList = resultPage.getContent().stream()
                 .map(MortaliteDTO::fromEntity)

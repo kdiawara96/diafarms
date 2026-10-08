@@ -262,8 +262,11 @@ public class ProjetImpl implements ProjetServices {
         // Fenêtre de EXACTEMENT TAUX_PONTE_WINDOW_DAYS jours, aujourd'hui compris : le
         // filtre est "date >= since", donc since = aujourd'hui - (N - 1). Avant, since =
         // aujourd'hui - N comptait N + 1 jours d'œufs divisés par N (taux surévalué de
-        // jusqu'à 14 % pour N = 7).
-        Integer oeufsRecents = collecteOeufsRepo.sumOeufsByProjetIdSince(p.getId(), LocalDate.now().minusDays(TAUX_PONTE_WINDOW_DAYS - 1L));
+        // jusqu'à 14 % pour N = 7). La fin est bornée à aujourd'hui : une collecte datée de
+        // demain (tolérée à la saisie) faisait compter N + 1 jours d'œufs (100,8 % vu).
+        LocalDate aujourdhui = LocalDate.now();
+        Integer oeufsRecents = collecteOeufsRepo.sumOeufsByProjetIdEntre(p.getId(),
+                aujourdhui.minusDays(TAUX_PONTE_WINDOW_DAYS - 1L), aujourdhui);
         double moyenneJournaliere = (oeufsRecents == null ? 0 : oeufsRecents) / (double) TAUX_PONTE_WINDOW_DAYS;
         double taux = (moyenneJournaliere / effectifActuel) * 100;
         return Math.round(taux * 10) / 10.0;
@@ -373,7 +376,9 @@ public class ProjetImpl implements ProjetServices {
         }
         
         // Appel du repo
-        Page<Projets> projetsPage = projetsRepo.searchProjets(farmId, isArchive, searchParam, pageable);
+        Page<Projets> projetsPage = projetsRepo.searchProjets(farmId,
+                isArchive != null, isArchive != null && isArchive,
+                searchParam != null, searchParam != null ? searchParam : "", pageable);
 
         // Mapping des entités vers le DTO de listage
         List<ProjetsDTO> dtoList = projetsPage.getContent().stream()

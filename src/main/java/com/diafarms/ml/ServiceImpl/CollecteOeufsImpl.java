@@ -279,7 +279,9 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
 
-        Page<CollecteOeufs> resultPage = collecteOeufsRepo.search(farmId, projetParam, batimentParam, pageable);
+        Page<CollecteOeufs> resultPage = collecteOeufsRepo.search(farmId,
+                projetParam != null, projetParam != null ? projetParam : "",
+                batimentParam != null, batimentParam != null ? batimentParam : "", pageable);
 
         List<CollecteOeufsDTO> dtoList = resultPage.getContent().stream()
                 .map(CollecteOeufsDTO::fromEntity)

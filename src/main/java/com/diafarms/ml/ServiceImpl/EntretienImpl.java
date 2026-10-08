@@ -221,7 +221,11 @@ public class EntretienImpl implements EntretienService {
         NiveauEntretien niveauParam = (niveau == null || niveau.isBlank()) ? null : parseNiveau(niveau);
         TypeEntretien typeParam = (type == null || type.isBlank()) ? null : parseType(type);
 
-        Page<Entretien> resultPage = entretienRepo.search(farmId, batimentParam, niveauParam, typeParam, searchParam, pageable);
+        Page<Entretien> resultPage = entretienRepo.search(farmId,
+                batimentParam != null, batimentParam != null ? batimentParam : "",
+                niveauParam != null, niveauParam != null ? niveauParam : NiveauEntretien.BATIMENT,
+                typeParam != null, typeParam != null ? typeParam : TypeEntretien.AUTRE,
+                searchParam != null, searchParam != null ? searchParam : "", pageable);
 
         List<EntretienDTO> dtoList = resultPage.getContent().stream()
                 .map(EntretienDTO::fromEntity)

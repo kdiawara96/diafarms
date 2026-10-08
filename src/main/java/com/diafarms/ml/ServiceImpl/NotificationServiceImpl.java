@@ -122,11 +122,11 @@ public class NotificationServiceImpl implements NotificationService {
             if (isPureProduction(currentUser)) {
                 projets = projetsRepo.findAssignedToUser(farmId, currentUser.getUniqueId());
             } else if (isPureResponsable(currentUser)) {
-                projets = projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent().stream()
+                projets = projetsRepo.searchProjets(farmId, true, false, false, "", Pageable.unpaged()).getContent().stream()
                         .filter(p -> p.getResponsable() != null && currentUser.getUniqueId().equals(p.getResponsable().getUniqueId()))
                         .toList();
             } else {
-                projets = projetsRepo.searchProjets(farmId, false, null, Pageable.unpaged()).getContent();
+                projets = projetsRepo.searchProjets(farmId, true, false, false, "", Pageable.unpaged()).getContent();
             }
             for (Projets p : projets) {
                 addStockNotification(result, p);
@@ -299,7 +299,11 @@ public class NotificationServiceImpl implements NotificationService {
 
         double consomme = nz(consommationAlimentRepo.sumConsommeByProjetId(p.getId()));
         double restant = achete - consomme;
-        double recent = nz(consommationAlimentRepo.sumConsommeByProjetIdSince(p.getId(), LocalDate.now().minusDays(RECENT_CONSO_WINDOW_DAYS)));
+        // EXACTEMENT RECENT_CONSO_WINDOW_DAYS jours finissant aujourd'hui (avant : N + 1 jours
+        // et sans borne de fin, une saisie datée de demain comptait aussi).
+        LocalDate aujourdhui = LocalDate.now();
+        double recent = nz(consommationAlimentRepo.sumConsommeByProjetIdEntre(p.getId(),
+                aujourdhui.minusDays(RECENT_CONSO_WINDOW_DAYS - 1L), aujourdhui));
         double dailyAvg = recent / RECENT_CONSO_WINDOW_DAYS;
 
         if (restant <= 0) {

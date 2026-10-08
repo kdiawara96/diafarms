@@ -69,8 +69,9 @@ public class EffectifVivantHelper {
 
     // Œufs déjà collectés CE JOUR-LÀ dans le même périmètre que plafond().
     public int oeufsDejaCollectes(Projets projet, Batiment batiment, LocalDate date, Long excludeId) {
+        long exclure = excludeId != null ? excludeId : -1L; // -1 = aucune (création)
         return nz(batiment != null
-                ? collecteOeufsRepo.sumOeufsByBatimentIdAndDateExcluding(batiment.getId(), date, excludeId)
-                : collecteOeufsRepo.sumOeufsByProjetIdAndDateExcluding(projet.getId(), date, excludeId));
+                ? collecteOeufsRepo.sumOeufsByBatimentIdAndDateExcluding(batiment.getId(), date, exclure)
+                : collecteOeufsRepo.sumOeufsByProjetIdAndDateExcluding(projet.getId(), date, exclure));
     }
 }

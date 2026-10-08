@@ -19,29 +19,36 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
 
     // LEFT JOIN explicite sur projet/batiment : un chemin implicite dans le WHERE
     // forcerait un INNER JOIN et ferait disparaître les lignes à FK bâtiment nulle.
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel, valeur
+    // factice non nulle quand hasX = false : jamais de "(:x IS NULL OR ...)" (plantage
+    // Postgres dès que le type du paramètre nul est inconnu, voir CommandeRepo.search).
     @Query("SELECT c FROM CollecteOeufs c LEFT JOIN c.projet p LEFT JOIN c.batiment b WHERE c.farm.id = :farmId " +
         "AND c.initialisation.removed = false " +
-        "AND (:projetUniqueId IS NULL OR p.uniqueId = :projetUniqueId) " +
-        "AND (:batimentUniqueId IS NULL OR b.uniqueId = :batimentUniqueId)")
+        "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId) " +
+        "AND (:hasBatiment = false OR b.uniqueId = :batimentUniqueId)")
     Page<CollecteOeufs> search(@Param("farmId") Long farmId,
-                                @Param("projetUniqueId") String projetUniqueId,
-                                @Param("batimentUniqueId") String batimentUniqueId,
+                                @Param("hasProjet") boolean hasProjet, @Param("projetUniqueId") String projetUniqueId,
+                                @Param("hasBatiment") boolean hasBatiment, @Param("batimentUniqueId") String batimentUniqueId,
                                 Pageable pageable);
 
     // Sert au calcul du taux de ponte récent (moyenne journalière des N derniers jours).
+    // Fenêtre FERMÉE [debut, fin] : une saisie datée de demain (tolérée, voir DateSaisie)
+    // ne doit pas entrer dans les N jours qui finissent aujourd'hui.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
-        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
-    Integer sumOeufsByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false " +
+        "AND c.date >= :debut AND c.date <= :fin")
+    Integer sumOeufsByProjetIdEntre(@Param("projetId") Long projetId, @Param("debut") LocalDate debut, @Param("fin") LocalDate fin);
 
     // Cumul déjà collecté CE JOUR-LÀ, pour le projet entier (aucun bâtiment
     // sélectionné) — une poule ne pond qu'un œuf par JOUR, pas par collecte : deux
     // collectes le même jour (matin + soir) doivent être cumulées avant comparaison
     // à l'effectif vivant, voir CollecteOeufsImpl.effectifVivant/create/update.
     // excludeId : exclut la collecte en cours d'édition (update), sinon elle se
-    // compterait deux fois contre elle-même.
+    // compterait deux fois contre elle-même. Jamais nul : -1 quand il n'y a rien à exclure
+    // (création), voir EffectifVivantHelper.oeufsDejaCollectes.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.projet.id = :projetId AND c.date = :date AND c.initialisation.removed = false " +
-        "AND (:excludeId IS NULL OR c.id <> :excludeId)")
+        "AND c.id <> :excludeId")
     Integer sumOeufsByProjetIdAndDateExcluding(@Param("projetId") Long projetId, @Param("date") LocalDate date, @Param("excludeId") Long excludeId);
 
     // Même chose mais scopé à UN bâtiment précis (quand un bâtiment est sélectionné à
@@ -49,7 +56,7 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     // donc leur propre plafond, indépendant de celui-ci.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.batiment.id = :batimentId AND c.date = :date AND c.initialisation.removed = false " +
-        "AND (:excludeId IS NULL OR c.id <> :excludeId)")
+        "AND c.id <> :excludeId")
     Integer sumOeufsByBatimentIdAndDateExcluding(@Param("batimentId") Long batimentId, @Param("date") LocalDate date, @Param("excludeId") Long excludeId);
 
     // Totaux vie-entière (pas fenêtrés) à l'échelle de TOUTE LA FERME : plafond global

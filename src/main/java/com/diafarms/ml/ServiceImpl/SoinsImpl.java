@@ -233,7 +233,11 @@ public class SoinsImpl implements SoinsService {
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
         TypeSoin typeParam = (type == null || type.isBlank()) ? null : parseType(type);
 
-        Page<Soins> resultPage = soinsRepo.search(farmId, projetParam, batimentParam, typeParam, searchParam, pageable);
+        Page<Soins> resultPage = soinsRepo.search(farmId,
+                projetParam != null, projetParam != null ? projetParam : "",
+                batimentParam != null, batimentParam != null ? batimentParam : "",
+                typeParam != null, typeParam != null ? typeParam : TypeSoin.AUTRE,
+                searchParam != null, searchParam != null ? searchParam : "", pageable);
 
         List<SoinsDTO> dtoList = resultPage.getContent().stream()
                 .map(SoinsDTO::fromEntity)

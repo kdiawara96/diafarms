@@ -191,7 +191,7 @@ public class RolesImpl implements RolesServices{
     @Override
     public PaginatedResponse<RoleDTO> search(String search) {
 
-        List<Roles> roles = repo.searchRoles(search.trim());
+        List<Roles> roles = repo.searchRoles(search == null ? "" : search.trim());
         List<RoleDTO> dtos = roleMapper.toDtoList(roles); // 🔥 
 
         return new PaginatedResponse<>(

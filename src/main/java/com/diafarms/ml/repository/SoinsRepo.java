@@ -19,17 +19,20 @@ public interface SoinsRepo extends JpaRepository<Soins, Long> {
 
     // LEFT JOIN explicite sur projet/batiment : un chemin implicite dans le WHERE
     // forcerait un INNER JOIN et ferait disparaître les lignes à FK bâtiment nulle.
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel, valeur
+    // factice non nulle quand hasX = false : jamais de "(:x IS NULL OR ...)" (plantage
+    // Postgres dès que le type du paramètre nul est inconnu, voir CommandeRepo.search).
     @Query("SELECT s FROM Soins s LEFT JOIN s.projet p LEFT JOIN s.batiment b WHERE s.farm.id = :farmId " +
         "AND s.initialisation.removed = false " +
-        "AND (:projetUniqueId IS NULL OR p.uniqueId = :projetUniqueId) " +
-        "AND (:batimentUniqueId IS NULL OR b.uniqueId = :batimentUniqueId) " +
-        "AND (:type IS NULL OR s.type = :type) " +
-        "AND (:search IS NULL OR LOWER(s.produit) LIKE :search OR LOWER(s.observations) LIKE :search)")
+        "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId) " +
+        "AND (:hasBatiment = false OR b.uniqueId = :batimentUniqueId) " +
+        "AND (:hasType = false OR s.type = :type) " +
+        "AND (:hasSearch = false OR LOWER(s.produit) LIKE :search OR LOWER(s.observations) LIKE :search)")
     Page<Soins> search(@Param("farmId") Long farmId,
-                        @Param("projetUniqueId") String projetUniqueId,
-                        @Param("batimentUniqueId") String batimentUniqueId,
-                        @Param("type") com.diafarms.ml.enums.TypeSoin type,
-                        @Param("search") String search,
+                        @Param("hasProjet") boolean hasProjet, @Param("projetUniqueId") String projetUniqueId,
+                        @Param("hasBatiment") boolean hasBatiment, @Param("batimentUniqueId") String batimentUniqueId,
+                        @Param("hasType") boolean hasType, @Param("type") com.diafarms.ml.enums.TypeSoin type,
+                        @Param("hasSearch") boolean hasSearch, @Param("search") String search,
                         Pageable pageable);
 
     @Query("SELECT s FROM Soins s WHERE s.projet.uniqueId = :projetUniqueId AND s.initialisation.removed = false")

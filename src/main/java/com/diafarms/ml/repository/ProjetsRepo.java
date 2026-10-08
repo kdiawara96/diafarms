@@ -30,17 +30,20 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
 
    List<Projets> findByUniqueIdIn(List<String> uniqueIds);
 
+   // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel, valeur
+   // factice non nulle quand hasX = false : jamais de "(:x IS NULL OR ...)" (plantage
+   // Postgres dès que le type du paramètre nul est inconnu, voir CommandeRepo.search).
    @Query("SELECT p FROM Projets p LEFT JOIN p.responsable r WHERE p.farm.id = :farmId " +
         "AND p.initialisation.removed = false " +
-        "AND (:isArchive IS NULL OR p.initialisation.archive = :isArchive) " +
-        "AND (:search IS NULL OR LOWER(p.titre) LIKE :search " +
+        "AND (:hasArchive = false OR p.initialisation.archive = :isArchive) " +
+        "AND (:hasSearch = false OR LOWER(p.titre) LIKE :search " +
         "OR LOWER(p.uniqueId) LIKE :search " +
         "OR LOWER(p.code) LIKE :search " +
         "OR LOWER(r.fullName) LIKE :search " +
         "OR LOWER(p.fournisseurs_poussins) LIKE :search)")
-    Page<Projets> searchProjets(@Param("farmId") Long farmId, 
-                                @Param("isArchive") Boolean isArchive, 
-                                @Param("search") String search, 
+    Page<Projets> searchProjets(@Param("farmId") Long farmId,
+                                @Param("hasArchive") boolean hasArchive, @Param("isArchive") boolean isArchive,
+                                @Param("hasSearch") boolean hasSearch, @Param("search") String search,
                                 Pageable pageable);
 
     @Query("SELECT COUNT(p) > 0 FROM Projets p WHERE p.code = :code")

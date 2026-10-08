@@ -25,9 +25,9 @@ public interface RolesRepo extends JpaRepository<Roles, Long> {
 
     Page<Roles> findByInitialisationRemovedTrue(Pageable pageable);
 
-    // 🔍 Nouvelle méthode de recherche par nom
+    // Recherche par nom. searchTerm jamais nul ("" = tous) : pas de "(:x IS NULL OR ...)".
     @Query(value = "SELECT * FROM roles r WHERE " +
-            "(:searchTerm IS NULL OR LOWER(r.role) LIKE LOWER(CONCAT('%', :searchTerm, '%')))",
+            "LOWER(r.role) LIKE LOWER(CONCAT('%', :searchTerm, '%'))",
             nativeQuery = true)
     List<Roles> searchRoles(@Param("searchTerm") String searchTerm);
 }

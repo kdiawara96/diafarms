@@ -390,7 +390,10 @@ public class AlimentationImpl implements AlimentationService {
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
 
-        Page<Alimentation> resultPage = alimentationRepo.search(farmId, projetParam, batimentParam, searchParam, pageable);
+        Page<Alimentation> resultPage = alimentationRepo.search(farmId,
+                projetParam != null, projetParam != null ? projetParam : "",
+                batimentParam != null, batimentParam != null ? batimentParam : "",
+                searchParam != null, searchParam != null ? searchParam : "", pageable);
 
         List<AlimentationDTO> dtoList = resultPage.getContent().stream()
                 .map(AlimentationDTO::fromEntityList)

@@ -19,13 +19,16 @@ public interface ConsommationAlimentRepo extends JpaRepository<ConsommationAlime
 
     // LEFT JOIN explicite sur projet/batiment : un chemin implicite dans le WHERE
     // forcerait un INNER JOIN et ferait disparaître les lignes à FK bâtiment nulle.
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel, valeur
+    // factice non nulle quand hasX = false : jamais de "(:x IS NULL OR ...)" (plantage
+    // Postgres dès que le type du paramètre nul est inconnu, voir CommandeRepo.search).
     @Query("SELECT c FROM ConsommationAliment c LEFT JOIN c.projet p LEFT JOIN c.batiment b WHERE c.farm.id = :farmId " +
         "AND c.initialisation.removed = false " +
-        "AND (:projetUniqueId IS NULL OR p.uniqueId = :projetUniqueId) " +
-        "AND (:batimentUniqueId IS NULL OR b.uniqueId = :batimentUniqueId)")
+        "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId) " +
+        "AND (:hasBatiment = false OR b.uniqueId = :batimentUniqueId)")
     Page<ConsommationAliment> search(@Param("farmId") Long farmId,
-                                      @Param("projetUniqueId") String projetUniqueId,
-                                      @Param("batimentUniqueId") String batimentUniqueId,
+                                      @Param("hasProjet") boolean hasProjet, @Param("projetUniqueId") String projetUniqueId,
+                                      @Param("hasBatiment") boolean hasBatiment, @Param("batimentUniqueId") String batimentUniqueId,
                                       Pageable pageable);
 
     @Query("SELECT COALESCE(SUM(c.quantiteKg), 0.0) FROM ConsommationAliment c " +
@@ -34,9 +37,11 @@ public interface ConsommationAlimentRepo extends JpaRepository<ConsommationAlime
 
     // Moyenne journalière récente : sert à estimer le nombre de jours de stock
     // restants (stockRestant / (somme récente / nb jours)).
+    // Fenêtre FERMÉE [debut, fin], même règle que CollecteOeufsRepo.sumOeufsByProjetIdEntre.
     @Query("SELECT COALESCE(SUM(c.quantiteKg), 0.0) FROM ConsommationAliment c " +
-        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false AND c.date >= :since")
-    Double sumConsommeByProjetIdSince(@Param("projetId") Long projetId, @Param("since") LocalDate since);
+        "WHERE c.projet.id = :projetId AND c.initialisation.removed = false " +
+        "AND c.date >= :debut AND c.date <= :fin")
+    Double sumConsommeByProjetIdEntre(@Param("projetId") Long projetId, @Param("debut") LocalDate debut, @Param("fin") LocalDate fin);
 
     // Toutes les consommations vivantes d'un projet — sert au rapport PDF du projet
     // (ProjetRapportPdfServiceImpl), qui agrège en mémoire sur la période demandée.

@@ -167,7 +167,9 @@ public class ConsommationAlimentImpl implements ConsommationAlimentService {
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
 
-        Page<ConsommationAliment> resultPage = consommationRepo.search(farmId, projetParam, batimentParam, pageable);
+        Page<ConsommationAliment> resultPage = consommationRepo.search(farmId,
+                projetParam != null, projetParam != null ? projetParam : "",
+                batimentParam != null, batimentParam != null ? batimentParam : "", pageable);
 
         List<ConsommationAlimentDTO> dtoList = resultPage.getContent().stream()
                 .map(ConsommationAlimentDTO::fromEntity)

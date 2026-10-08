@@ -751,7 +751,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         // 3. Exécution de la recherche paginée en BDD
         Page<Utilisateurs> usersPage = utilisateursRepo.searchUsersByFarm(
                 currentUser.getFarm().getId(), 
-                searchTerm != null ? searchTerm.trim() : null, 
+                searchTerm != null ? searchTerm.trim() : "", 
                 pageable
         );
 

@@ -84,9 +84,10 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     // Liste active (page Utilisateurs) : exclut les comptes archivés (corbeille, voir
     // findArchivedByFarm) — avant ce correctif, un compte archivé restait visible ici
     // indéfiniment, la corbeille et la liste active affichant les mêmes comptes.
+    // searchTerm jamais nul ("" = pas de filtre) : pas de "(:x IS NULL OR ...)", voir CommandeRepo.search.
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND " +
            "u.initialisation.removed = false AND u.initialisation.archive = false AND " +
-           "(:searchTerm IS NULL OR :searchTerm = '' OR " +
+           "(:searchTerm = '' OR " +
            "LOWER(u.fullName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(u.telephone) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(u.email) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")

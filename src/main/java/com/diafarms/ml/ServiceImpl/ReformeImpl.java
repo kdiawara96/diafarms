@@ -234,7 +234,10 @@ public class ReformeImpl implements ReformeService {
         String projetParam = (projetUniqueId == null || projetUniqueId.isBlank()) ? null : projetUniqueId;
         String batimentParam = (batimentUniqueId == null || batimentUniqueId.isBlank()) ? null : batimentUniqueId;
 
-        Page<Reforme> resultPage = reformeRepo.search(farmId, projetParam, batimentParam, searchParam, pageable);
+        Page<Reforme> resultPage = reformeRepo.search(farmId,
+                projetParam != null, projetParam != null ? projetParam : "",
+                batimentParam != null, batimentParam != null ? batimentParam : "",
+                searchParam != null, searchParam != null ? searchParam : "", pageable);
 
         List<ReformeDTO> dtoList = resultPage.getContent().stream()
                 .map(ReformeDTO::fromEntity)

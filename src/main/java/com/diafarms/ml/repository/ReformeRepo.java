@@ -18,15 +18,18 @@ public interface ReformeRepo extends JpaRepository<Reforme, Long> {
 
     // LEFT JOIN explicite sur projet/batiment : un chemin implicite dans le WHERE
     // forcerait un INNER JOIN et ferait disparaître les lignes à FK bâtiment nulle.
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel, valeur
+    // factice non nulle quand hasX = false : jamais de "(:x IS NULL OR ...)" (plantage
+    // Postgres dès que le type du paramètre nul est inconnu, voir CommandeRepo.search).
     @Query("SELECT r FROM Reforme r LEFT JOIN r.projet p LEFT JOIN r.batiment b WHERE r.farm.id = :farmId " +
         "AND r.initialisation.removed = false " +
-        "AND (:projetUniqueId IS NULL OR p.uniqueId = :projetUniqueId) " +
-        "AND (:batimentUniqueId IS NULL OR b.uniqueId = :batimentUniqueId) " +
-        "AND (:search IS NULL OR LOWER(r.cause) LIKE :search)")
+        "AND (:hasProjet = false OR p.uniqueId = :projetUniqueId) " +
+        "AND (:hasBatiment = false OR b.uniqueId = :batimentUniqueId) " +
+        "AND (:hasSearch = false OR LOWER(r.cause) LIKE :search)")
     Page<Reforme> search(@Param("farmId") Long farmId,
-                          @Param("projetUniqueId") String projetUniqueId,
-                          @Param("batimentUniqueId") String batimentUniqueId,
-                          @Param("search") String search,
+                          @Param("hasProjet") boolean hasProjet, @Param("projetUniqueId") String projetUniqueId,
+                          @Param("hasBatiment") boolean hasBatiment, @Param("batimentUniqueId") String batimentUniqueId,
+                          @Param("hasSearch") boolean hasSearch, @Param("search") String search,
                           Pageable pageable);
 
     @Query("SELECT COALESCE(SUM(r.nombreSujets), 0) FROM Reforme r " +
