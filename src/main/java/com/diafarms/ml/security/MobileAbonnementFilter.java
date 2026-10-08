@@ -30,7 +30,12 @@ import jakarta.servlet.http.HttpServletResponse;
 // QRCodeService). On accepte aussi X-Client-Type: mobile (futurs builds). Le web n'a
 // jamais ni l'un ni l'autre : il n'est jamais touché ici (AbonnementGate s'en charge).
 // Pendant la grâce, pour une ferme active, un SUPER_ADMIN ou un compte sans ferme : rien.
+// Signal explicite pour le téléphone (APK 1.35+) : en-tête X-Abonnement-Bloque =
+// SUSPENDU ou EXPIRE sur ces deux réponses (le 403 et l'alerte unique). Le téléphone
+// affiche alors un bandeau et masque ses chiffres en cache ; l'APK 1.34 l'ignore.
 public class MobileAbonnementFilter extends OncePerRequestFilter {
+
+    public static final String ENTETE_BLOQUE = "X-Abonnement-Bloque";
 
     private final AbonnementAccesMobile acces;
 
@@ -77,6 +82,7 @@ public class MobileAbonnementFilter extends OncePerRequestFilter {
         }
         String message = AbonnementAccesMobile.messageLecture(etat);
         response.setContentType("application/json;charset=UTF-8");
+        response.setHeader(ENTETE_BLOQUE, etat);
         if (uri.contains("/notifications/list") || uri.contains("/notifications/projet/")) {
             // Une seule alerte, clé du jour : notification Android une fois par jour.
             response.setStatus(HttpServletResponse.SC_OK);

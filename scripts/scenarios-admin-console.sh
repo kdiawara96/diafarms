@@ -652,9 +652,11 @@ print(json.loads((u.update(p) + u.finalize()).decode())["token"])
 PY
 }
 mob() { # $1=METHOD $2=chemin $3=jeton $4=JSON ; appel « téléphone » : jeton QR, sans X-Client-Type
-  curl -s -o "$TMP/body" -w '%{http_code}' -X "$1" "$BASE$2" -H "Authorization: Bearer $3" \
+  curl -s -o "$TMP/body" -D "$TMP/entetes" -w '%{http_code}' -X "$1" "$BASE$2" -H "Authorization: Bearer $3" \
     -H 'Content-Type: application/json' -H "Idempotency-Key: opta-$SUFFIXE-$RANDOM$RANDOM" ${4:+-d "$4"} > "$TMP/code"
 }
+# En-tête X-Abonnement-Bloque de la dernière réponse mob (vide = absent) : signal lu par l'APK 1.35+.
+bloque() { grep -i '^X-Abonnement-Bloque:' "$TMP/entetes" | cut -d: -f2 | tr -d ' \r'; }
 if [ -z "$AES_KEY" ]; then
   echo "(AES_SECRET_KEY ou ENV_FILE non défini : vérifications de l'option A ignorées)"
 else
@@ -672,6 +674,7 @@ else
     psql_run "update abonnements set date_fin = current_date - 1 where farm_id=$FARM_Y" >/dev/null
     mob GET /projets/select "$JWT_QR_ADMIN"; check "grâce : lecture du téléphone OK" "code == 200"
     mob GET /notifications/list "$JWT_QR_ADMIN"; check "grâce : alertes normales (pas de message de blocage)" "code == 200 and 'plus mises à jour' not in str(d)"
+    check_eq "grâce : pas d'en-tête X-Abonnement-Bloque" "" "$(bloque)"
   fi
 
   # Expirée après la grâce (le COMPTABLE n'a encore rien lu : pas de cache).
@@ -679,13 +682,16 @@ else
   for g in /projets/select /farm-settings /clients/select /ventes-oeufs/stock /magasins/list?type=VENTE /auth/me; do
     mob GET "$g" "$JWT_QR_COMPTA"
     check "expirée : lecture $g refusée (403) avec le message" "code == 403 and 'plus mises à jour' in d['errors'][0] and 'consultation seule' not in str(d).lower()"
+    check_eq "expirée : en-tête X-Abonnement-Bloque sur $g" "EXPIRE" "$(bloque)"
   done
   mob GET /notifications/list "$JWT_QR_COMPTA"
   check "expirée : /notifications/list = une alerte CRITIQUE avec le message" \
     "code == 200 and len(d['data']) == 1 and d['data'][0]['level'] == 'CRITIQUE' and d['data'][0]['read'] is False and 'rien n\\'est perdu' in d['data'][0]['message']"
+  check_eq "expirée : en-tête X-Abonnement-Bloque sur /notifications/list" "EXPIRE" "$(bloque)"
   mob GET "/notifications/projet/xyz" "$JWT_QR_COMPTA"
   check "expirée : alertes d'un projet = la même alerte (carte de l'accueil)" "code == 200 and d['data'][0]['key'].startswith('abonnement-bloque-')"
   mob GET /abonnements/moi "$JWT_QR_COMPTA"; check "expirée : /abonnements/moi reste lisible" "code == 200"
+  check_eq "expirée : /abonnements/moi sans en-tête X-Abonnement-Bloque" "" "$(bloque)"
   NB_CLIENTS_AVANT="$(psql_run "select count(*) from clients where farm_id=$FARM_Y")"
   mob POST /clients/create "$JWT_QR_ADMIN" "{\"nom\":\"Client tel $LETTRES\",\"telephone\":\"66$(python3 -c 'import random; print(random.randint(100000, 999999))')\"}"
   check "expirée : saisie client du téléphone acceptée" "code in (200, 201)"
@@ -705,6 +711,7 @@ else
   psql_run "update abonnements set date_fin = current_date + 20 where farm_id=$FARM_Y" >/dev/null
   mob GET /projets/select "$JWT_QR_ADMIN"
   check "suspendue : lecture refusée avec le message de suspension" "code == 403 and 'suspendu' in d['errors'][0]"
+  check_eq "suspendue : en-tête X-Abonnement-Bloque" "SUSPENDU" "$(bloque)"
   mob POST /clients/create "$JWT_QR_ADMIN" "{\"nom\":\"Client susp $LETTRES\",\"telephone\":\"67$(python3 -c 'import random; print(random.randint(100000, 999999))')\"}"
   check "suspendue : saisie du téléphone acceptée" "code in (200, 201)"
 
@@ -713,6 +720,7 @@ else
   mob GET /projets/select "$JWT_QR_ADMIN"; check "réactivée : lecture du téléphone rétablie tout de suite" "code == 200"
   mob GET /projets/select "$JWT_QR_COMPTA"; check "réactivée : lecture rétablie aussi pour le COMPTABLE" "code == 200"
   mob GET /notifications/list "$JWT_QR_COMPTA"; check "réactivée : plus d'alerte de blocage" "code == 200 and 'plus mises à jour' not in str(d)"
+  check_eq "réactivée : plus d'en-tête X-Abonnement-Bloque" "" "$(bloque)"
 fi
 
 echo
