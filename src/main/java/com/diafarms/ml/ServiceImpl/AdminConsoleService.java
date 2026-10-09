@@ -93,6 +93,7 @@ public class AdminConsoleService {
     private final AbonnementTarifService tarifService;
     private final ParrainageService parrainageService;
     private final GuideDemarrageService guideService;
+    private final CreditService creditService;
 
     // ------------------------------------------------------------------ sécurité
 
@@ -257,7 +258,7 @@ public class AdminConsoleService {
 
     // Une ligne par ferme, avec son abonnement (et son état du jour) s'il existe.
     private record Ligne(Farm farm, Abonnement abonnement, AbonnementEcheance.Etat etat, AdminConsoleDTO.Ferme dto,
-            com.diafarms.ml.DTO.AbonnementTarifDTO tarif) {}
+            com.diafarms.ml.DTO.AbonnementTarifDTO tarif, com.diafarms.ml.DTO.CreditDTO credit) {}
 
     private List<Ligne> lignes() {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
@@ -267,19 +268,28 @@ public class AdminConsoleService {
         Agregats ag = agregats(null);
         // Tarif de toutes les fermes : 2 requêtes au total (voir AbonnementTarifService).
         Map<Long, com.diafarms.ml.DTO.AbonnementTarifDTO> tarifs = tarifService.tarifsFermes(null, parFerme, config);
+        // Crédit de toutes les fermes : une requête pour les soldes, un comptage pour le
+        // rythme du mois (voir CreditService).
+        Map<Long, Double> soldes = creditService.soldes();
+        Map<Long, LocalDate> depuis = new HashMap<>();
+        for (Abonnement a : parFerme.values()) depuis.put(a.getFarm().getId(), a.getCreditDepuis());
+        Map<Long, CreditService.Rythme> rythmes = creditService.rythmes(null, depuis, auj);
         List<Ligne> res = new ArrayList<>();
         for (Farm f : farmsRepo.findAll()) {
             Abonnement a = parFerme.get(f.getId());
             AbonnementEcheance.Etat etat = a != null ? AbonnementEcheance.calculer(a, config, auj) : null;
             com.diafarms.ml.DTO.AbonnementTarifDTO t = tarifs.get(f.getId());
             if (t == null) t = tarifService.tarifSansPoule(a, config);
-            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag, t), t));
+            com.diafarms.ml.DTO.CreditDTO c = a == null ? null : creditService.etat(a, config,
+                    soldes.getOrDefault(a.getId(), 0.0), rythmes == null ? null : rythmes.get(f.getId()), auj,
+                    t.poulesComptees());
+            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag, t, c), t, c));
         }
         return res;
     }
 
     private AdminConsoleDTO.Ferme versDto(Farm f, Abonnement a, AbonnementEcheance.Etat etat, Agregats ag,
-            com.diafarms.ml.DTO.AbonnementTarifDTO tarif) {
+            com.diafarms.ml.DTO.AbonnementTarifDTO tarif, com.diafarms.ml.DTO.CreditDTO c) {
         Long id = f.getId();
         Proprio p = ag.proprios().get(id);
         LocalDateTime inscription = ag.premiereInscription().get(id);
@@ -326,7 +336,13 @@ public class AdminConsoleService {
                 f.getCodeParrainage(),
                 pa[0],
                 pa[1],
-                pa[2] == 1);
+                pa[2] == 1,
+                c != null ? c.solde() : 0,
+                c != null ? c.coutMensuel() : tarif.prixMensuel(),
+                c != null ? c.moyennePoulesMois() : 0,
+                c != null && c.aRecharger(),
+                c != null ? c.aChiffrer() : (!tarif.prixFixe() && tarif.surDevis()),
+                c != null && c.actif());
     }
 
     // ------------------------------------------------------------------ lecture
@@ -415,22 +431,34 @@ public class AdminConsoleService {
         // Revenu mensuel estimé : fermes payantes non bloquées (actives ou en grâce), chacune
         // à son tarif ACTUEL (prix par poule ou tarif spécial, voir AbonnementTarifService),
         // formule annuelle comptée / 12.
+        // Crédit prépayé : coût d'un mois au rythme actuel (moyenne des poules du mois, ou
+        // tarif spécial) de chaque ferme payante non bloquée.
         double mrr = 0;
-        long tarifsEnErreur = 0;
+        long tarifsEnErreur = 0, aRecharger = 0, aChiffrer = 0;
+        double creditTotal = 0;
         for (Ligne li : lignes) {
+            if (li.credit() != null) {
+                if (li.credit().aRecharger()) aRecharger++;
+                if (li.credit().aChiffrer()) aChiffrer++;
+                if (li.credit().solde() > 0) creditTotal += li.credit().solde();
+            }
             String st = li.dto().statut();
             if (li.abonnement() == null || !("ACTIF".equals(st) || "GRACE".equals(st)) || li.etat().estEssai()) continue;
-            if (!com.diafarms.ml.commons.AbonnementTarif.facturable(li.tarif())) tarifsEnErreur++;
-            mrr += li.abonnement().getPeriodicite() == Periodicite.ANNUEL
-                    ? li.tarif().prixAnnuel() / 12.0
-                    : li.tarif().prixMensuel();
+            if (li.credit() != null) {
+                if (li.credit().comptageEnErreur()) tarifsEnErreur++;
+                mrr += li.credit().coutMensuel();
+            } else {
+                if (!com.diafarms.ml.commons.AbonnementTarif.facturable(li.tarif())) tarifsEnErreur++;
+                mrr += li.tarif().prixMensuel();
+            }
         }
 
         Long attente = jdbc.queryForObject("SELECT COUNT(*) FROM paiements_abonnement WHERE statut = 'EN_ATTENTE'", Long.class);
 
         return new AdminConsoleDTO.TableauDeBord(lignes.size(), essai, actives, grace, expirees, suspendues, aucun,
                 nouvelles, actives7, actives30, sujets, revMois, revPrec, revAnnee, Math.round(mrr),
-                attente == null ? 0 : attente, essaisFin, revenus12, nouvelles12, tarifsEnErreur);
+                attente == null ? 0 : attente, essaisFin, revenus12, nouvelles12, tarifsEnErreur, aRecharger, aChiffrer,
+                Math.round(creditTotal));
     }
 
     private Farm fermeOu400(String farmUniqueId) {
@@ -447,7 +475,8 @@ public class AdminConsoleService {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
         AbonnementEcheance.Etat etat = a != null ? AbonnementEcheance.calculer(a, config, LocalDate.now()) : null;
         com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(f.getId(), a, config);
-        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats(f.getId()), tarif);
+        com.diafarms.ml.DTO.CreditDTO credit = a != null ? creditService.etat(a, config, tarif.poulesComptees()) : null;
+        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats(f.getId()), tarif, credit);
 
         // Utilisateurs de la ferme, rôles groupés en une requête.
         Map<Long, AdminConsoleDTO.Utilisateur> users = new LinkedHashMap<>();
@@ -465,8 +494,15 @@ public class AdminConsoleService {
                             ldt(rs.getTimestamp(10))));
                 }, f.getId());
 
+        com.diafarms.ml.commons.AbonnementCredit.Regles rc = com.diafarms.ml.commons.AbonnementCredit.regles(config);
         List<PaiementAbonnementDTO> paiements = paiementRepo.findByAbonnement_Farm_IdOrderByDateDeclarationDesc(f.getId())
-                .stream().map(PaiementAbonnementDTO::fromEntity).toList();
+                .stream().map(p -> {
+                    PaiementAbonnementDTO d = PaiementAbonnementDTO.fromEntity(p);
+                    if (p.getStatut() == StatutPaiementAbonnement.EN_ATTENTE) {
+                        d.setBonusPrevu(com.diafarms.ml.commons.AbonnementCredit.bonus(p.getMontant(), rc));
+                    }
+                    return d;
+                }).toList();
 
         List<AdminConsoleDTO.RappelEnvoye> rappels = new ArrayList<>();
         if (a != null) {
@@ -486,7 +522,8 @@ public class AdminConsoleService {
         List<GuideDemarrageService.EtapeDTO> etapes = GuideDemarrageService.liste(
                 guideService.etapes(f.getId()).getOrDefault(f.getId(), GuideDemarrageService.Etapes.vide()));
         return new AdminConsoleDTO.FermeDetail(dto, new ArrayList<>(users.values()), paiements, rappels, notes, journal, tarif,
-                etapes, parrainageService.pourLaConsole(f));
+                etapes, parrainageService.pourLaConsole(f), credit,
+                a != null ? creditService.mouvements(a.getId(), true) : List.of());
     }
 
     // ------------------------------------------------------------------ actions
@@ -564,104 +601,88 @@ public class AdminConsoleService {
         return (mois / 12) * 365 + (mois % 12) * 30;
     }
 
+    // « Recharger » (crédit prépayé) : argent reçu en dehors de l'application, enregistré
+    // directement comme une recharge VALIDÉE (bonus compris), comme une déclaration
+    // validée. Lève une suspension, comme l'ancien « Activer / prolonger ». Le montant est
+    // obligatoire : offrir du crédit sans paiement se fait par un ajustement.
     @Transactional
     public AdminConsoleDTO.FermeDetail activer(String farmUniqueId, AdminActiverAbonnementRequest req) {
         Utilisateurs sa = superAdmin();
         Farm f = fermeOu400(farmUniqueId);
         // Toutes les vérifications AVANT la moindre modification.
-        if (req == null || req.getPeriodicite() == null) {
-            throw new IllegalArgumentException("Choisissez la formule (mensuelle ou annuelle).");
+        if (req == null || req.getMontant() == null) {
+            throw new IllegalArgumentException("Indiquez le montant reçu (FCFA) : il est ajouté au crédit de la ferme. "
+                    + "Pour offrir du crédit sans paiement, utilisez un ajustement.");
         }
-        Periodicite periodicite;
-        try {
-            periodicite = Periodicite.valueOf(req.getPeriodicite().trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Formule invalide (attendu MENSUEL ou ANNUEL) : " + req.getPeriodicite());
+        if (req.getMontant().isNaN() || req.getMontant() <= 0 || req.getMontant() > AbonnementServiceImpl.RECHARGE_MAX) {
+            throw new IllegalArgumentException("Le montant reçu doit être supérieur à 0 et au plus 10 000 000 FCFA.");
         }
-        String moyen = null;
-        if (req.getMontant() != null) {
-            if (req.getMontant() <= 0) throw new IllegalArgumentException("Le montant reçu doit être supérieur à 0.");
-            if (req.getMoyenPaiement() == null || req.getMoyenPaiement().isBlank()) {
-                throw new IllegalArgumentException("Indiquez le moyen de paiement.");
-            }
-            moyen = req.getMoyenPaiement().trim();
-            if (moyen.length() > 50) moyen = moyen.substring(0, 50);
+        if (req.getMoyenPaiement() == null || req.getMoyenPaiement().isBlank()) {
+            throw new IllegalArgumentException("Indiquez le moyen de paiement.");
         }
-        LocalDate dateExplicite = parseDate(req.getDateFin(), "la date de fin");
-        int mois = req.getMois() == null ? 0 : req.getMois();
-        int jours = req.getJours() == null ? 0 : req.getJours();
-        if (dateExplicite == null) {
-            if (mois < 0 || jours < 0 || (mois == 0 && jours == 0)) {
-                throw new IllegalArgumentException("Indiquez une durée (mois ou jours) ou une date de fin.");
-            }
-            if (mois > 120 || jours > 3650) {
-                throw new IllegalArgumentException("Durée trop longue (10 ans au plus).");
-            }
-        }
+        String moyen = req.getMoyenPaiement().trim();
+        if (moyen.length() > 50) moyen = moyen.substring(0, 50);
+        double montant = Math.round(req.getMontant());
 
-        LocalDate auj = LocalDate.now();
         Abonnement a = abonnementVerrouille(f);
-        LocalDate nouvelleFin;
-        if (dateExplicite != null) {
-            if (dateExplicite.isBefore(auj)) {
-                throw new IllegalArgumentException("La date de fin doit être aujourd'hui ou plus tard.");
-            }
-            if (dateExplicite.isBefore(a.getDateFin())) {
-                throw new IllegalArgumentException("La date choisie (" + AbonnementEcheance.date(dateExplicite)
-                        + ") est avant la fin actuelle (" + AbonnementEcheance.date(a.getDateFin())
-                        + ") : l'abonnement ne peut pas être raccourci ici.");
-            }
-            nouvelleFin = dateExplicite;
-        } else {
-            // Même règle que la validation d'un paiement : pendant la grâce on repart de
-            // l'échéance, après la grâce à partir d'aujourd'hui, jamais de jours perdus.
-            int grace = AbonnementEcheance.delaiGraceJours(configRepo.findFirstByOrderByIdAsc());
-            LocalDate base = !auj.isAfter(a.getDateFin().plusDays(grace)) ? a.getDateFin() : auj;
-            nouvelleFin = base.plusDays(joursPourMois(mois) + (long) jours);
-        }
-
         boolean etaitSuspendu = a.estSuspendu();
-        a.setDateFin(nouvelleFin);
-        a.setPeriodicite(periodicite);
-        a.setStatut(StatutAbonnement.ACTIF);
         a.setSuspendu(null);
         a.setMotifSuspension(null);
         a.setSuspenduLe(null);
         if (a.getInitialisation() != null) Initialisation.updateDate(a.getInitialisation());
         abonnementRepo.save(a);
 
-        if (req.getMontant() != null) {
-            PaiementAbonnement p = new PaiementAbonnement();
-            p.setUniqueId(UUID.randomUUID().toString());
-            p.setAbonnement(a);
-            p.setMontant(req.getMontant());
-            p.setPeriodicite(periodicite);
-            p.setMoyenPaiement(moyen);
-            String ref = req.getReference() == null || req.getReference().isBlank() ? null : req.getReference().trim();
-            p.setReference(ref != null && ref.length() > 100 ? ref.substring(0, 100) : ref);
-            p.setStatut(StatutPaiementAbonnement.VALIDE);
-            LocalDateTime maintenant = LocalDateTime.now();
-            p.setDateDeclaration(maintenant);
-            p.setDateValidation(maintenant);
-            p.setValidePar(sa);
-            p.setHorsApplication(true);
-            p.setInitialisation(Initialisation.init());
-            paiementRepo.save(p);
-            // Parrainage : un paiement reçu compte comme une validation (après le commit).
-            parrainageService.apresPaiementValide(f.getId(), p.getId(), sa.getId());
-        }
-        journaliser(sa, f, "Activation de l'abonnement de la ferme " + nom(f) + " : "
-                + (periodicite == Periodicite.ANNUEL ? "annuel" : "mensuel") + " jusqu'au "
-                + AbonnementEcheance.date(nouvelleFin)
-                + (req.getMontant() != null ? ", paiement reçu hors application enregistré" : "")
+        PaiementAbonnement p = new PaiementAbonnement();
+        p.setUniqueId(UUID.randomUUID().toString());
+        p.setAbonnement(a);
+        p.setMontant(montant);
+        p.setPeriodicite(Periodicite.MENSUEL);
+        p.setRecharge(true);
+        p.setMoyenPaiement(moyen);
+        String ref = req.getReference() == null || req.getReference().isBlank() ? null : req.getReference().trim();
+        p.setReference(ref != null && ref.length() > 100 ? ref.substring(0, 100) : ref);
+        p.setStatut(StatutPaiementAbonnement.VALIDE);
+        LocalDateTime maintenant = LocalDateTime.now();
+        p.setDateDeclaration(maintenant);
+        p.setDateValidation(maintenant);
+        p.setValidePar(sa);
+        p.setHorsApplication(true);
+        p.setInitialisation(Initialisation.init());
+        paiementRepo.save(p);
+        CreditService.Recharge r = creditService.appliquerRecharge(a, p, sa);
+        paiementRepo.save(p);
+        // Parrainage : une recharge reçue compte comme une validation (après le commit).
+        parrainageService.apresPaiementValide(f.getId(), p.getId(), sa.getId());
+
+        journaliser(sa, f, "Recharge du crédit de la ferme " + nom(f) + " enregistrée (reçue hors application)"
                 + (etaitSuspendu ? ", suspension levée" : ""));
         String nomFerme = nom(f);
-        emailFerme(f, "Votre abonnement Cocorico est actif jusqu'au " + AbonnementEcheance.date(nouvelleFin),
-                "L'abonnement de la ferme " + nomFerme + " est actif jusqu'au " + AbonnementEcheance.date(nouvelleFin)
-                        + " (formule " + (periodicite == Periodicite.ANNUEL ? "annuelle" : "mensuelle") + ")."
-                        + (req.getMontant() != null ? "\n\nPaiement enregistré : " + AbonnementEcheance.fcfa(req.getMontant()) + "." : "")
+        emailFerme(f, "Votre recharge de " + AbonnementEcheance.fcfa(r.montant()) + " est validée",
+                "La recharge de la ferme " + nomFerme + " est validée : " + AbonnementEcheance.fcfa(r.montant())
+                        + " ajoutés à votre crédit."
+                        + (r.bonus() > 0 ? "\n\nBonus offert : " + AbonnementEcheance.fcfa(r.bonus()) + " de crédit en plus." : "")
+                        + "\n\n" + CreditService.phraseSolde(r.solde(), r.finEstimee(), r.phraseMois())
                         + (etaitSuspendu ? "\n\nL'accès de votre ferme est rétabli." : "")
                         + "\n\nMerci pour votre confiance. " + WHATSAPP);
+        return detailFerme(farmUniqueId);
+    }
+
+    // Ajustement manuel du crédit (en plus ou en moins), avec la raison (visible par la
+    // ferme dans son historique). Journalisé sans le montant ni la raison.
+    @Transactional
+    public AdminConsoleDTO.FermeDetail ajuster(String farmUniqueId, com.diafarms.ml.request.others.AdminAjustementRequest req) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        Double montant = req == null ? null : req.getMontant();
+        String motif = req == null || req.getMotif() == null ? "" : req.getMotif().trim();
+        if (montant == null || montant.isNaN() || Math.round(montant) == 0 || Math.abs(montant) > AbonnementServiceImpl.RECHARGE_MAX) {
+            throw new IllegalArgumentException("Indiquez le montant de l'ajustement en FCFA (positif pour ajouter, négatif pour retirer).");
+        }
+        if (motif.isEmpty()) throw new IllegalArgumentException("Indiquez la raison de l'ajustement (elle est montrée à la ferme).");
+        if (motif.length() > 300) throw new IllegalArgumentException("Raison trop longue (300 caractères au plus).");
+        Abonnement a = abonnementVerrouille(f);
+        creditService.ajuster(a, (double) Math.round(montant), motif, sa);
+        journaliser(sa, f, "Ajustement du crédit de la ferme " + nom(f) + (montant > 0 ? " (ajout)" : " (retrait)"));
         return detailFerme(farmUniqueId);
     }
 
@@ -716,7 +737,13 @@ public class AdminConsoleService {
         LocalDate auj = LocalDate.now();
         LocalDate base = a.getDateFin().isBefore(auj) ? auj : a.getDateFin();
         a.setDateFin(base.plusDays(jours));
+        // Crédit prépayé : le crédit commence au lendemain du nouvel essai. Une ferme
+        // inscrite sans essai (essai déjà utilisé) reçoit ici un essai décidé par l'équipe.
+        a.setEssaiRefuse(null);
+        a.setCreditDepuis(a.getDateFin().plusDays(1));
+        if (creditService.solde(a.getId()) <= 0) a.setCreditEpuiseLe(a.getCreditDepuis());
         abonnementRepo.save(a);
+        creditService.recalculerApresChangement(a);
         journaliser(sa, f, "Prolongation de l'essai de la ferme " + nom(f) + " : " + jours + " jour(s), jusqu'au "
                 + AbonnementEcheance.date(a.getDateFin()));
         emailFerme(f, "Votre période d'essai Cocorico est prolongée",
@@ -768,6 +795,7 @@ public class AdminConsoleService {
         a.setMotifPrixFixe(prix == null ? null : motif);
         a.setPrixFixeLe(prix == null ? null : LocalDateTime.now());
         abonnementRepo.save(a);
+        creditService.recalculerApresChangement(a); // estimation de la fin au nouveau prix
         journaliser(sa, f, prix == null ? "Tarif spécial retiré pour la ferme " + nom(f) + " (retour au prix par poule)"
                 : "Tarif spécial fixé pour la ferme " + nom(f));
         return detailFerme(farmUniqueId);
@@ -820,7 +848,8 @@ public class AdminConsoleService {
         double totalDepuisDebut = parAnnee.stream().mapToDouble(AdminConsoleDTO.CleValeur::montant).sum();
 
         List<AdminConsoleDTO.CleValeur> parPeriodicite = jdbc.query(
-                "SELECT periodicite, SUM(montant), COUNT(*) FROM " + PAIEMENTS_STATS + " WHERE statut = 'VALIDE' "
+                "SELECT CASE WHEN COALESCE(recharge, false) THEN 'RECHARGE' ELSE periodicite END, SUM(montant), COUNT(*) FROM "
+                        + PAIEMENTS_STATS + " WHERE statut = 'VALIDE' "
                         + "AND date_validation >= ? AND date_validation < ? GROUP BY 1 ORDER BY 2 DESC",
                 (rs, i) -> new AdminConsoleDTO.CleValeur(rs.getString(1), rs.getDouble(2), rs.getLong(3)),
                 d1.atStartOfDay(), d2.atStartOfDay());
@@ -934,6 +963,8 @@ public class AdminConsoleService {
             + "WHEN l.action LIKE 'Suspension%' THEN 'SUSPENSION' "
             + "WHEN l.action LIKE 'Réactivation%' THEN 'REACTIVATION' "
             + "WHEN l.action LIKE 'Activation%' THEN 'ACTIVATION' "
+            + "WHEN l.action LIKE 'Recharge%' THEN 'RECHARGE' "
+            + "WHEN l.action LIKE 'Ajustement%' THEN 'AJUSTEMENT' "
             + "WHEN l.action LIKE 'Prolongation de l''essai%' THEN 'ESSAI' "
             + "WHEN l.action LIKE 'Note interne%' THEN 'NOTE' "
             + "WHEN l.action LIKE 'Ferme % statistiques' THEN 'STATISTIQUES' "

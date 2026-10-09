@@ -61,4 +61,19 @@ public class AbonnementConfig {
 
     @Column(name = "arrondi_prix")
     private Integer arrondi;
+
+    // Crédit prépayé (voir commons/AbonnementCredit). Nullables, null = valeur par défaut :
+    // bonus de 20 % pour une recharge de 50 000 FCFA ou plus (remplace les « mois offerts
+    // sur l'an »), tarif sur devis au-delà de 10 000 poules, 5 000 FCFA de crédit au parrain.
+    @Column(name = "bonus_seuil")
+    private Double bonusSeuil;
+
+    @Column(name = "bonus_pourcent")
+    private Double bonusPourcent;
+
+    @Column(name = "seuil_sur_devis")
+    private Integer seuilSurDevis;
+
+    @Column(name = "credit_parrainage")
+    private Double creditParrainage;
 }

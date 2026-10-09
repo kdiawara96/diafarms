@@ -11,4 +11,7 @@ public class DeclarerPaiementAbonnementRequest {
     // diffère du tarif actuel du serveur, la déclaration est refusée pour que la ferme
     // revoie le prix avant de déclarer.
     private Double montantAffiche;
+    // Crédit prépayé : montant rechargé (« J'ai rechargé »), choisi par la ferme. Absent
+    // (ancien client) : le prix du mois ou de l'an affiché devient le montant rechargé.
+    private Double montant;
 }

@@ -16,4 +16,9 @@ public class AbonnementConfigUpdateRequest {
     private Double prixMinimumMensuel;
     private Integer moisOffertsAnnuel;
     private Integer arrondi;
+    // Crédit prépayé.
+    private Double bonusSeuil;
+    private Double bonusPourcent;
+    private Integer seuilSurDevis;
+    private Double creditParrainage;
 }

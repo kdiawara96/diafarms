@@ -445,7 +445,8 @@ public class NotificationServiceImpl implements NotificationService {
                         .type("ABONNEMENT")
                         .level(etat.enGrace() ? "CRITIQUE" : "WARNING")
                         .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat)
-                            + (com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)
+                            + (etat.credit() ? " Rechargez votre crédit depuis la page Abonnement."
+                                : com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)
                                 ? " " + com.diafarms.ml.commons.AbonnementTarif.phraseMontant(tarif) : ""))
                         .actionPath("/abonnement")
                         .build());

@@ -59,6 +59,10 @@ public class Parrainage {
     @Column(name = "recompense_jours")
     private Integer recompenseJours;
 
+    // Crédit prépayé : récompense en FCFA de crédit (null = ancienne récompense en jours).
+    @Column(name = "recompense_credit")
+    private Double recompenseCredit;
+
     // Date de fin du parrain avant et après la récompense (trace pour la console).
     @Column(name = "parrain_date_fin_avant")
     private LocalDate parrainDateFinAvant;

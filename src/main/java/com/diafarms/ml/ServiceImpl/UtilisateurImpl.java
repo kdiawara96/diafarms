@@ -115,7 +115,8 @@ public class UtilisateurImpl implements UtilisateursServices {
         // On sauvegarde d'abord la ferme pour générer son ID
         Farm savedFarm = farmsRepo.save(newFarm);
 
-        abonnementService.creerEssaiPourFarm(savedFarm);
+        // Un seul essai gratuit par propriétaire (téléphone ou e-mail déjà vus : pas d'essai).
+        boolean essaiDonne = abonnementService.creerEssaiPourFarm(savedFarm, data.getTelephone(), data.getEmail());
         parrainageService.enregistrer(parrain, savedFarm, data.getCodeParrainage());
 
         // On lie la ferme à l'utilisateur (on suppose que votre entité Utilisateurs possède la méthode setFarm)
@@ -162,7 +163,9 @@ public class UtilisateurImpl implements UtilisateursServices {
         // (Login.tsx), ce qui exposait le mot de passe temporaire à l'écran — voir
         // resetPasswordAndNotify pour le cas "email non reçu" (l'admin déclenche un
         // renvoi plutôt que de lire le mot de passe affiché).
-        return UtilisateursDTO.fromEntity(user, null, emailSent);
+        UtilisateursDTO dto = UtilisateursDTO.fromEntity(user, null, emailSent);
+        dto.setEssaiRefuse(!essaiDonne);
+        return dto;
     }
 
     /**

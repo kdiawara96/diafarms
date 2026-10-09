@@ -56,6 +56,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
     private final AbonnementTarifService tarifService;
     private final ParrainageService parrainageService;
+    private final CreditService creditService;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
@@ -128,7 +129,11 @@ public class AbonnementServiceImpl implements AbonnementService {
         return configRepo.save(nouveau);
     }
 
-    private void construireEtSauvegarderAbonnementEssai(Farm farm) {
+    // Crédit prépayé : l'essai reste gratuit, le crédit commence au lendemain de l'essai
+    // (creditDepuis), à zéro. essaiRefuse : pas d'essai (téléphone ou e-mail du
+    // propriétaire déjà utilisé pour une autre ferme) : la ferme est tout de suite « à
+    // recharger » (page Abonnement ouverte, le reste du web bloqué jusqu'à la recharge).
+    private void construireEtSauvegarderAbonnementEssai(Farm farm, boolean essaiRefuse) {
         AbonnementConfig config = getOuCreerConfig();
         Abonnement abonnement = new Abonnement();
         abonnement.setUniqueId(UUID.randomUUID().toString());
@@ -136,7 +141,18 @@ public class AbonnementServiceImpl implements AbonnementService {
         abonnement.setStatut(StatutAbonnement.ESSAI);
         LocalDate aujourdHui = LocalDate.now();
         abonnement.setDateDebut(aujourdHui);
-        abonnement.setDateFin(aujourdHui.plusDays(config.getDureeEssaiJours()));
+        if (essaiRefuse) {
+            // Premier jour non couvert placé avant le délai de grâce : bloqué dès aujourd'hui.
+            LocalDate epuise = aujourdHui.minusDays(AbonnementEcheance.delaiGraceJours(config));
+            abonnement.setEssaiRefuse(true);
+            abonnement.setCreditDepuis(aujourdHui);
+            abonnement.setCreditEpuiseLe(epuise);
+            abonnement.setDateFin(epuise.minusDays(1));
+        } else {
+            abonnement.setDateFin(aujourdHui.plusDays(config.getDureeEssaiJours()));
+            abonnement.setCreditDepuis(abonnement.getDateFin().plusDays(1));
+            abonnement.setCreditEpuiseLe(abonnement.getCreditDepuis());
+        }
         abonnement.setInitialisation(Initialisation.init());
         abonnementRepo.save(abonnement);
     }
@@ -150,7 +166,19 @@ public class AbonnementServiceImpl implements AbonnementService {
     @Override
     @Transactional
     public void creerEssaiPourFarm(Farm farm) {
-        construireEtSauvegarderAbonnementEssai(farm);
+        construireEtSauvegarderAbonnementEssai(farm, false);
+    }
+
+    // Inscription d'une nouvelle ferme : un seul essai gratuit par propriétaire (téléphone
+    // ou e-mail déjà vus sur une autre ferme, même supprimée : pas d'essai). true si
+    // l'essai est donné.
+    @Override
+    @Transactional
+    public boolean creerEssaiPourFarm(Farm farm, String telephone, String email) {
+        boolean refuse = creditService.essaiDejaUtilise(farm.getId(), telephone, email);
+        construireEtSauvegarderAbonnementEssai(farm, refuse);
+        creditService.memoriserEssai(farm.getId(), telephone, email, !refuse);
+        return !refuse;
     }
 
     // Variante utilisée UNIQUEMENT par le chemin de création paresseuse ci-dessous,
@@ -162,7 +190,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     // ce @Transactional inerte.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void creerEssaiPourFarmIsole(Farm farm) {
-        construireEtSauvegarderAbonnementEssai(farm);
+        construireEtSauvegarderAbonnementEssai(farm, false);
     }
 
     // Création paresseuse pour les fermes créées avant ce déploiement (voir spec,
@@ -216,9 +244,15 @@ public class AbonnementServiceImpl implements AbonnementService {
                 .findByAbonnement_IdAndStatut(abonnement.getId(), StatutPaiementAbonnement.EN_ATTENTE)
                 .orElse(null);
 
-        AbonnementDTO dto = AbonnementDTO.of(abonnement, effectif, PaiementAbonnementDTO.fromEntity(enAttente));
-        dto.setTarif(com.diafarms.ml.commons.AbonnementTarif.pourLaFerme(
-                tarifService.tarifFerme(farm.getId(), abonnement, config)));
+        PaiementAbonnementDTO enAttenteDto = PaiementAbonnementDTO.fromEntity(enAttente);
+        if (enAttenteDto != null) {
+            enAttenteDto.setBonusPrevu(com.diafarms.ml.commons.AbonnementCredit.bonus(enAttente.getMontant(),
+                    com.diafarms.ml.commons.AbonnementCredit.regles(config)));
+        }
+        AbonnementDTO dto = AbonnementDTO.of(abonnement, effectif, enAttenteDto);
+        com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(farm.getId(), abonnement, config);
+        dto.setTarif(com.diafarms.ml.commons.AbonnementTarif.pourLaFerme(tarif));
+        dto.setCredit(creditService.etat(abonnement, config, tarif.poulesComptees()));
         return dto;
     }
 
@@ -262,6 +296,21 @@ public class AbonnementServiceImpl implements AbonnementService {
                 .toList();
     }
 
+    // Compte de crédit de la ferme courante (page Abonnement), plus récent d'abord.
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.diafarms.ml.DTO.MouvementCreditDTO> getMouvements() {
+        Utilisateurs currentUser = getCurrentUserSafe();
+        if (currentUser == null || currentUser.getFarm() == null) return List.of();
+        return abonnementRepo.findByFarm_Id(currentUser.getFarm().getId())
+                .map(a -> creditService.mouvements(a.getId(), false)).orElse(List.of());
+    }
+
+    public static final double RECHARGE_MAX = 10_000_000;
+
+    // « J'ai rechargé » (crédit prépayé) : la ferme indique le montant envoyé, le moyen et
+    // la référence ; le SUPER_ADMIN vérifie puis valide (valider) et le crédit est ajouté.
+    // Ancien client sans montant : le prix du mois ou de l'an affiché devient la recharge.
     @Override
     @Transactional
     public PaiementAbonnementDTO declarerPaiement(DeclarerPaiementAbonnementRequest request) {
@@ -272,15 +321,28 @@ public class AbonnementServiceImpl implements AbonnementService {
         if (!isAdminOuResponsable(currentUser)) {
             throw new IllegalArgumentException("Seul un administrateur ou un responsable peut déclarer un paiement.");
         }
-        if (request.getPeriodicite() == null || request.getMoyenPaiement() == null || request.getMoyenPaiement().isBlank()) {
-            throw new IllegalArgumentException("Périodicité et moyen de paiement sont obligatoires.");
+        if (request.getMoyenPaiement() == null || request.getMoyenPaiement().isBlank()) {
+            throw new IllegalArgumentException("Indiquez comment vous avez envoyé l'argent.");
         }
-        Periodicite periodicite;
-        try {
-            periodicite = Periodicite.valueOf(request.getPeriodicite().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Périodicité invalide (attendu MENSUEL ou ANNUEL) : " + request.getPeriodicite());
+        Double montantRecharge = request.getMontant();
+        if (montantRecharge != null && (montantRecharge.isNaN() || montantRecharge <= 0 || montantRecharge > RECHARGE_MAX)) {
+            throw new IllegalArgumentException("Indiquez le montant envoyé (plus de 0 et au plus 10 000 000 FCFA).");
         }
+        Periodicite periodicite = Periodicite.MENSUEL;
+        if (montantRecharge == null) {
+            if (request.getPeriodicite() == null) {
+                throw new IllegalArgumentException("Indiquez le montant envoyé.");
+            }
+            try {
+                periodicite = Periodicite.valueOf(request.getPeriodicite().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Périodicité invalide (attendu MENSUEL ou ANNUEL) : " + request.getPeriodicite());
+            }
+        }
+        String moyen = request.getMoyenPaiement().trim();
+        if (moyen.length() > 50) moyen = moyen.substring(0, 50);
+        String reference = request.getReference() == null || request.getReference().isBlank() ? null : request.getReference().trim();
+        if (reference != null && reference.length() > 100) reference = reference.substring(0, 100);
 
         Abonnement abonnement = getOuCreerAbonnement(currentUser.getFarm());
         if (abonnement.estSuspendu()) {
@@ -289,47 +351,63 @@ public class AbonnementServiceImpl implements AbonnementService {
         }
 
         if (paiementAbonnementRepo.findByAbonnement_IdAndStatut(abonnement.getId(), StatutPaiementAbonnement.EN_ATTENTE).isPresent()) {
-            throw new IllegalArgumentException("Une déclaration de paiement est déjà en attente de validation.");
+            throw new IllegalArgumentException("Une recharge est déjà en attente de vérification.");
         }
 
-        // Montant = tarif de la ferme AUJOURD'HUI (prix par poule ou tarif spécial), jamais
-        // saisi par la ferme : la période déjà payée garde son prix, le nouveau prix ne
-        // s'applique qu'à ce renouvellement.
         AbonnementConfig config = getOuCreerConfig();
         com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(currentUser.getFarm().getId(), abonnement, config);
-        // Comptage des poules en échec : jamais le minimum enregistré en silence.
-        if (!com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)) {
-            throw new IllegalArgumentException("Le prix n'a pas pu être calculé, réessayez dans un instant.");
-        }
-        double montant = periodicite == Periodicite.ANNUEL ? tarif.prixAnnuel() : tarif.prixMensuel();
-        if (request.getMontantAffiche() != null && Math.round(request.getMontantAffiche()) != Math.round(montant)) {
-            throw new IllegalArgumentException("Le prix a été mis à jour, rechargez la page.");
+        double montant;
+        if (montantRecharge != null) {
+            montant = Math.round(montantRecharge);
+        } else {
+            // Ancien client : le prix affiché (mois ou an) devient le montant rechargé.
+            if (!com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)) {
+                throw new IllegalArgumentException("Le prix n'a pas pu être calculé, réessayez dans un instant.");
+            }
+            montant = periodicite == Periodicite.ANNUEL ? tarif.prixAnnuel() : tarif.prixMensuel();
+            if (request.getMontantAffiche() != null && Math.round(request.getMontantAffiche()) != Math.round(montant)) {
+                throw new IllegalArgumentException("Le prix a été mis à jour, rechargez la page.");
+            }
         }
 
         PaiementAbonnement paiement = new PaiementAbonnement();
         paiement.setUniqueId(UUID.randomUUID().toString());
         paiement.setAbonnement(abonnement);
         paiement.setMontant(montant);
-        paiement.setMontantAttendu(montant);
+        paiement.setMontantAttendu(montantRecharge == null ? montant : null);
         paiement.setPoulesComptees(tarif.poulesComptees());
         paiement.setPeriodicite(periodicite);
-        paiement.setMoyenPaiement(request.getMoyenPaiement());
-        paiement.setReference(request.getReference());
+        paiement.setRecharge(true);
+        paiement.setMoyenPaiement(moyen);
+        paiement.setReference(reference);
         paiement.setStatut(StatutPaiementAbonnement.EN_ATTENTE);
         paiement.setDateDeclaration(LocalDateTime.now());
         paiement.setDeclarePar(currentUser);
         paiement.setInitialisation(Initialisation.init());
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
-                "Déclaration d'un paiement d'abonnement : " + montant + " FCFA (" + periodicite + ")");
+                "Déclaration d'une recharge de crédit : " + Math.round(montant) + " FCFA");
 
         String farmNom = resoudreFarmNom(currentUser.getFarm(), currentUser.getFarmName());
+        double bonusPrevu = com.diafarms.ml.commons.AbonnementCredit.bonus(montant,
+                com.diafarms.ml.commons.AbonnementCredit.regles(config));
+        String texte = "La ferme " + farmNom + " a déclaré une recharge de crédit.\n\nMontant : "
+                + AbonnementEcheance.fcfa(montant)
+                + (bonusPrevu > 0 ? "\nBonus prévu à la validation : " + AbonnementEcheance.fcfa(bonusPrevu) : "")
+                + "\nMoyen : " + moyen + (reference != null ? "\nRéférence : " + reference : "")
+                + "\n\nOuvre la console d'administration (Paiements et réglages) pour vérifier puis valider.";
         for (Utilisateurs superAdmin : utilisateursRepo.findAllSuperAdmins()) {
-            emailService.sendAbonnementAValider(superAdmin.getEmail(), farmNom, montant,
-                    periodicite.name(), request.getMoyenPaiement(), request.getReference());
+            try {
+                emailService.sendMessageCocorico(superAdmin.getEmail(), superAdmin.getFullName(), "Recharge à valider",
+                        "Recharge à valider : " + farmNom, texte);
+            } catch (Exception e) {
+                // un e-mail en échec ne bloque jamais la déclaration
+            }
         }
 
-        return PaiementAbonnementDTO.fromEntity(saved);
+        PaiementAbonnementDTO dto = PaiementAbonnementDTO.fromEntity(saved);
+        dto.setBonusPrevu(bonusPrevu);
+        return dto;
     }
 
     @Override
@@ -342,8 +420,14 @@ public class AbonnementServiceImpl implements AbonnementService {
         Page<PaiementAbonnement> resultPage = paiementAbonnementRepo
                 .findByStatutOrderByDateDeclarationAsc(StatutPaiementAbonnement.EN_ATTENTE, pageable);
 
+        com.diafarms.ml.commons.AbonnementCredit.Regles rc = com.diafarms.ml.commons.AbonnementCredit.regles(
+                configRepo.findFirstByOrderByIdAsc());
         return new PaginatedResponse<>(
-                resultPage.getContent().stream().map(PaiementAbonnementDTO::fromEntity).toList(),
+                resultPage.getContent().stream().map(p -> {
+                    PaiementAbonnementDTO d = PaiementAbonnementDTO.fromEntity(p);
+                    d.setBonusPrevu(com.diafarms.ml.commons.AbonnementCredit.bonus(p.getMontant(), rc));
+                    return d;
+                }).toList(),
                 resultPage.getNumber() + 1,
                 resultPage.getTotalPages(),
                 resultPage.getTotalElements(),
@@ -367,26 +451,17 @@ public class AbonnementServiceImpl implements AbonnementService {
         if (paiementAbonnementRepo.statutEnBase(paiement.getId()) != StatutPaiementAbonnement.EN_ATTENTE) {
             throw new IllegalArgumentException("Cette déclaration a déjà été traitée.");
         }
-        // Une ferme suspendue le reste : valider un paiement ne lève jamais la suspension
-        // (seuls « Réactiver » et « Activer / prolonger » de la console la lèvent).
-        int joursAjoutes = paiement.getPeriodicite() == Periodicite.ANNUEL ? 365 : 30;
-        // À partir de la plus tardive entre l'échéance actuelle et aujourd'hui : ne
-        // fait jamais perdre de jours déjà payés (renouvellement en avance), ne
-        // repart jamais dans le passé (ferme qui a laissé expirer).
-        // Payé pendant les jours de grâce : on repart de l'échéance (les jours de grâce
-        // ne sont pas offerts en plus). Au-delà de la grâce : à partir d'aujourd'hui.
-        LocalDate auj = LocalDate.now();
-        int grace = AbonnementEcheance.delaiGraceJours(configRepo.findFirstByOrderByIdAsc());
-        LocalDate base = !auj.isAfter(abonnement.getDateFin().plusDays(grace)) ? abonnement.getDateFin() : auj;
-        abonnement.setDateFin(base.plusDays(joursAjoutes));
-        abonnement.setPeriodicite(paiement.getPeriodicite());
-        abonnement.setStatut(StatutAbonnement.ACTIF);
-        abonnementRepo.save(abonnement);
-        accesMobile.invaliderApresCommit(abonnement.getFarm().getId()); // lectures mobiles rétablies tout de suite
-
+        // Crédit prépayé : toute déclaration validée (recharge, ou ancien paiement d'une
+        // période déclaré avant le passage au crédit) ajoute son montant au crédit, plus le
+        // bonus éventuel ; l'échéance est recalculée (voir CreditService.appliquerRecharge).
+        // Une ferme suspendue le reste : valider ne lève jamais la suspension.
         paiement.setStatut(StatutPaiementAbonnement.VALIDE);
         paiement.setDateValidation(LocalDateTime.now());
         paiement.setValidePar(currentUser);
+        paiement.setRecharge(true);
+        paiementAbonnementRepo.save(paiement);
+        CreditService.Recharge recharge = creditService.appliquerRecharge(abonnement, paiement, currentUser);
+        accesMobile.invaliderApresCommit(abonnement.getFarm().getId()); // lectures mobiles rétablies tout de suite
         PaiementAbonnement saved = paiementAbonnementRepo.save(paiement);
         logs.addLogs(currentUser.getId(), saved.getId(), "PaiementAbonnement",
                 "Validation du paiement d'abonnement de la ferme " + resoudreFarmNom(abonnement.getFarm(),
@@ -395,11 +470,10 @@ public class AbonnementServiceImpl implements AbonnementService {
         // Parrainage : 1 mois offert au parrain au premier paiement validé (après le commit).
         parrainageService.apresPaiementValide(abonnement.getFarm().getId(), saved.getId(), currentUser.getId());
 
-        if (paiement.getDeclarePar() != null) {
-            String farmNom = resoudreFarmNom(abonnement.getFarm(), paiement.getDeclarePar().getFarmName());
-            emailService.sendAbonnementValide(paiement.getDeclarePar().getEmail(),
-                    paiement.getDeclarePar().getFullName(), farmNom, abonnement.getDateFin());
-        }
+        String farmNom = resoudreFarmNom(abonnement.getFarm(),
+                paiement.getDeclarePar() != null ? paiement.getDeclarePar().getFarmName() : null);
+        Long farmId = abonnement.getFarm().getId();
+        creditService.apresCommit(() -> creditService.emailRechargeValidee(farmId, farmNom, recharge));
 
         return PaiementAbonnementDTO.fromEntity(saved);
     }
@@ -470,6 +544,22 @@ public class AbonnementServiceImpl implements AbonnementService {
         if (request.getArrondi() != null && (request.getArrondi() < 1 || request.getArrondi() > 100_000)) {
             throw new IllegalArgumentException("L'arrondi doit être compris entre 1 et 100 000 FCFA.");
         }
+        if (request.getBonusSeuil() != null && (request.getBonusSeuil() < 0 || request.getBonusSeuil() > 100_000_000)) {
+            throw new IllegalArgumentException("Le seuil du bonus doit être compris entre 0 et 100 000 000 FCFA.");
+        }
+        if (request.getBonusPourcent() != null && (request.getBonusPourcent() < 0 || request.getBonusPourcent() > 100)) {
+            throw new IllegalArgumentException("Le bonus doit être compris entre 0 et 100 %.");
+        }
+        if (request.getSeuilSurDevis() != null && (request.getSeuilSurDevis() < 1 || request.getSeuilSurDevis() > 1_000_000)) {
+            throw new IllegalArgumentException("Le seuil « sur devis » doit être compris entre 1 et 1 000 000 poules.");
+        }
+        if (request.getCreditParrainage() != null && (request.getCreditParrainage() < 0 || request.getCreditParrainage() > 1_000_000)) {
+            throw new IllegalArgumentException("Le crédit de parrainage doit être compris entre 0 et 1 000 000 FCFA.");
+        }
+        if (request.getBonusSeuil() != null) config.setBonusSeuil(request.getBonusSeuil());
+        if (request.getBonusPourcent() != null) config.setBonusPourcent(request.getBonusPourcent());
+        if (request.getSeuilSurDevis() != null) config.setSeuilSurDevis(request.getSeuilSurDevis());
+        if (request.getCreditParrainage() != null) config.setCreditParrainage(request.getCreditParrainage());
         if (request.getPrixParPoule() != null) config.setPrixParPoule(request.getPrixParPoule());
         if (request.getPrixMinimumMensuel() != null) config.setPrixMinimumMensuel(request.getPrixMinimumMensuel());
         if (request.getMoisOffertsAnnuel() != null) config.setMoisOffertsAnnuel(request.getMoisOffertsAnnuel());

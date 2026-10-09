@@ -100,6 +100,16 @@ public class PaiementAbonnement {
     @Column(name = "poules_comptees")
     private Integer poulesComptees;
 
+    // Crédit prépayé : true = recharge (« J'ai rechargé », montant choisi par la ferme).
+    // periodicite vaut alors MENSUEL (colonne NOT NULL existante, sans signification ici).
+    // bonus = crédit offert ajouté à la validation (null tant que non validé, 0 si aucun).
+    // Nullables : null = ancien paiement d'une période (mois ou an).
+    @Column(name = "recharge")
+    private Boolean recharge;
+
+    @Column(name = "bonus")
+    private Double bonus;
+
     @Embedded
     private Initialisation initialisation;
 }

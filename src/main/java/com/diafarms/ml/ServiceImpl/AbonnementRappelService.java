@@ -51,12 +51,14 @@ public class AbonnementRappelService {
     private final TransactionTemplate txLecture;
     private final com.diafarms.ml.services.LogsServices logs;
     private final AbonnementTarifService tarifService;
+    private final CreditService creditService;
 
     public AbonnementRappelService(AbonnementRepo abonnementRepo, AbonnementConfigRepo configRepo,
             AbonnementRappelRepo rappelRepo, PaiementAbonnementRepo paiementAbonnementRepo,
             UtilisateursRepo utilisateursRepo, EmailService emailService, OtherService otherService,
             PlatformTransactionManager transactionManager, com.diafarms.ml.services.LogsServices logs,
-            AbonnementTarifService tarifService) {
+            AbonnementTarifService tarifService, CreditService creditService) {
+        this.creditService = creditService;
         this.logs = logs;
         this.tarifService = tarifService;
         this.abonnementRepo = abonnementRepo;
@@ -91,7 +93,12 @@ public class AbonnementRappelService {
     // Candidat lu en base, avant le calcul de son prix (fait ensuite pour tous en une fois).
     private record Lu(Long abonnementId, Long farmId, String farmUniqueId, String farmNom, String type,
             LocalDate dateFin, AbonnementEcheance.Etat etat, boolean paiementEnAttente, Double prixMensuelFixe,
-            String motifPrixFixe, List<Destinataire> admins) {}
+            String motifPrixFixe, List<Destinataire> admins, LocalDate creditDepuis, double solde) {}
+
+    // Crédit prépayé : « crédit bas », un e-mail quand il reste moins d'environ 30 jours
+    // (et plus de 7 : ensuite les rappels J-7 et J-1 prennent le relais). Une fois par
+    // échéance estimée (même unicité que les autres rappels).
+    public static final String RAPPEL_CREDIT_BAS = "CREDIT_BAS";
 
     // Tous les jours à 8 h, heure de Bamako (= UTC).
     @Scheduled(cron = "${abonnement.rappels.cron:0 0 8 * * *}", zone = "Africa/Bamako")
@@ -174,10 +181,16 @@ public class AbonnementRappelService {
     private List<Lu> listerCandidats(LocalDate aujourdHui) {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
         List<Lu> candidats = new ArrayList<>();
+        java.util.Map<Long, Double> soldes = creditService.soldes();
         for (Abonnement a : abonnementRepo.findAllAvecFerme()) {
           try {
             AbonnementEcheance.Etat etat = AbonnementEcheance.calculer(a, config, aujourdHui);
             String type = etat.rappelDuJour();
+            double solde = soldes.getOrDefault(a.getId(), 0.0);
+            if (type == null && etat.credit() && !etat.bloque() && solde > 0 && etat.joursRestants() > 7
+                    && etat.joursRestants() < com.diafarms.ml.commons.AbonnementCredit.CREDIT_BAS_JOURS) {
+                type = RAPPEL_CREDIT_BAS;
+            }
             if (type == null) continue;
             if (rappelRepo.existsByAbonnement_IdAndTypeAndDateFin(a.getId(), type, a.getDateFin())) continue;
 
@@ -190,7 +203,8 @@ public class AbonnementRappelService {
                     .findByAbonnement_IdAndStatut(a.getId(), StatutPaiementAbonnement.EN_ATTENTE).isPresent();
             candidats.add(new Lu(a.getId(), farm.getId(), farm.getUniqueId(), farmNom, type, a.getDateFin(), etat,
                     paiementEnAttente, a.getPrixMensuelFixe(), a.getMotifPrixFixe(),
-                    admins.stream().map(u -> new Destinataire(u.getFullName(), u.getEmail())).toList()));
+                    admins.stream().map(u -> new Destinataire(u.getFullName(), u.getEmail())).toList(),
+                    a.getCreditDepuis(), solde));
           } catch (Exception e) {
             // Une ferme en erreur ne bloque pas les rappels des autres.
             log.warn("Rappel d'abonnement ignoré pour l'abonnement {} : {}", a.getId(), e.getMessage());
@@ -220,8 +234,48 @@ public class AbonnementRappelService {
         } catch (Exception e) {
             log.error("Rappels d'abonnement : calcul des prix en échec, prix minimum utilisé : {}", e.getMessage(), e);
         }
+        // Crédit prépayé : coût d'un mois au rythme du mois en cours (un seul comptage).
+        java.util.Map<Long, CreditService.Rythme> rythmes = null;
+        try {
+            java.util.Map<Long, LocalDate> depuis = new java.util.HashMap<>();
+            for (Lu l : lus) depuis.put(l.farmId(), l.creditDepuis());
+            rythmes = creditService.rythmes(depuis.keySet(), depuis, LocalDate.now());
+        } catch (Exception e) {
+            log.error("Rappels d'abonnement : rythme du mois en échec : {}", e.getMessage(), e);
+        }
+        com.diafarms.ml.commons.AbonnementTarif.Regles regles = com.diafarms.ml.commons.AbonnementTarif.regles(config);
         List<Candidat> res = new ArrayList<>();
         for (Lu l : lus) {
+            if (l.etat().credit()) {
+                CreditService.Rythme r = rythmes == null ? null : rythmes.get(l.farmId());
+                boolean fixe = l.prixMensuelFixe() != null && l.prixMensuelFixe() > 0;
+                Double cout = r == null && !fixe ? null
+                        : com.diafarms.ml.commons.AbonnementCredit.coutMensuel(r == null ? 0 : r.moyenne(), regles, l.prixMensuelFixe());
+                String lignePrix = cout == null ? null
+                        : "Au rythme actuel, votre ferme coûte environ " + AbonnementEcheance.fcfa(cout) + " par mois.";
+                if (RAPPEL_CREDIT_BAS.equals(l.type())) {
+                    String phrase = com.diafarms.ml.commons.AbonnementCredit.phraseMois(
+                            com.diafarms.ml.commons.AbonnementCredit.moisRestants(l.solde(), cout == null ? regles.prixMinimumMensuel() : cout));
+                    String msg = "Le crédit Cocorico de la ferme " + l.farmNom() + " est de " + AbonnementEcheance.fcfa(l.solde())
+                            + " : " + phrase + " au rythme actuel. Il sera épuisé vers le " + AbonnementEcheance.date(l.dateFin()) + ".\n\n"
+                            + (lignePrix != null ? lignePrix + "\n\n" : "")
+                            + (l.paiementEnAttente() ? "Vous avez déjà déclaré une recharge : elle est en cours de vérification.\n\n"
+                                    : "Pour recharger : envoyez le montant de votre choix par mobile money au +223 83 91 86 99, puis ouvrez "
+                                    + "la page Abonnement dans Cocorico et cliquez sur « J'ai rechargé ». Une recharge de "
+                                    + AbonnementEcheance.fcfa(com.diafarms.ml.commons.AbonnementCredit.regles(config).bonusSeuil())
+                                    + " ou plus reçoit un bonus de " + CreditService.pourcent(com.diafarms.ml.commons.AbonnementCredit.regles(config).bonusPourcent())
+                                    + " %.\n\n")
+                            + "Une question ? Écrivez-nous sur WhatsApp au +223 83 91 86 99.";
+                    res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
+                            "Votre crédit Cocorico sera bientôt épuisé", msg, l.admins()));
+                } else {
+                    res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
+                            AbonnementEcheance.sujetEmail(l.etat()),
+                            AbonnementEcheance.messageCompletCredit(l.etat(), l.farmNom(), lignePrix, l.paiementEnAttente()),
+                            l.admins()));
+                }
+                continue;
+            }
             com.diafarms.ml.DTO.AbonnementTarifDTO t = tarifs.get(l.farmId());
             if (t == null) {
                 // Échec : le prix fixe reste connu, le prix par poule non.

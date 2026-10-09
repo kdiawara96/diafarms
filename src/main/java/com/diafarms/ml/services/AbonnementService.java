@@ -18,6 +18,13 @@ public interface AbonnementService {
     // aujourd'hui, dateFin = aujourd'hui + config.dureeEssaiJours).
     void creerEssaiPourFarm(Farm farm);
 
+    // Inscription : un seul essai gratuit par téléphone ou e-mail de propriétaire. true si
+    // l'essai est donné (voir CreditService.essaiDejaUtilise).
+    boolean creerEssaiPourFarm(Farm farm, String telephone, String email);
+
+    // Compte de crédit (crédit prépayé) de la ferme courante.
+    List<com.diafarms.ml.DTO.MouvementCreditDTO> getMouvements();
+
     // Ferme de l'utilisateur courant (OtherService.getCurrentUser()). Si la ferme
     // n'a pas encore d'Abonnement (fermes créées avant ce déploiement), en crée un
     // à la volée avec un essai complet à partir d'aujourd'hui (jamais rétroactif).

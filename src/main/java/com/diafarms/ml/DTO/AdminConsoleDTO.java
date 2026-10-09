@@ -58,7 +58,16 @@ public final class AdminConsoleDTO {
             String codeParrainage,
             long nbFilleuls,
             long moisGagnes,
-            boolean parrainee) {}
+            boolean parrainee,
+            // Crédit prépayé (voir CreditService) : crédit restant (négatif = dû), coût d'un
+            // mois au rythme actuel, moyenne des poules du mois, crédit à recharger, ferme au-
+            // dessus du seuil « sur devis » sans tarif spécial (« à chiffrer »).
+            double credit,
+            double coutMensuel,
+            double moyennePoulesMois,
+            boolean aRecharger,
+            boolean aChiffrer,
+            boolean creditActif) {}
 
     public record MoisValeur(String mois, double montant, long nombre) {}
 
@@ -88,7 +97,12 @@ public final class AdminConsoleDTO {
             List<MoisValeur> nouvellesFermesParMois,
             // Fermes payantes dont le prix n'a pas pu être calculé (comptage des poules en
             // échec) : revenuMensuelEstime les compte au minimum, il est alors incomplet.
-            long tarifsEnErreur) {}
+            long tarifsEnErreur,
+            // Crédit prépayé : fermes à recharger (crédit à zéro ou moins), « à chiffrer »
+            // (au-dessus du seuil sur devis sans tarif spécial), crédit total des fermes.
+            long aRecharger,
+            long aChiffrer,
+            double creditTotal) {}
 
     public record Utilisateur(
             String uniqueId,
@@ -125,7 +139,10 @@ public final class AdminConsoleDTO {
             AbonnementTarifDTO tarif,
             // Étapes du guide « Bien démarrer » et parrainage (parrain, filleuls, récompenses).
             List<com.diafarms.ml.ServiceImpl.GuideDemarrageService.EtapeDTO> etapes,
-            com.diafarms.ml.ServiceImpl.ParrainageService.ParrainageFerme parrainage) {}
+            com.diafarms.ml.ServiceImpl.ParrainageService.ParrainageFerme parrainage,
+            // Crédit prépayé : état du crédit et compte complet (plus récent d'abord).
+            CreditDTO credit,
+            List<MouvementCreditDTO> mouvements) {}
 
     public record Finances(
             int annee,

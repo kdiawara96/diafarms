@@ -32,5 +32,10 @@ public record AbonnementTarifDTO(
         int moisOffertsAnnuel,
         int arrondi,
         // true : le comptage des poules a échoué, le prix minimum est appliqué par sécurité.
-        boolean calculEnErreur) {
+        boolean calculEnErreur,
+        // Crédit prépayé : au-delà de seuilSurDevis poules, tarif sur devis (la simulation
+        // n'annonce plus de prix ; une ferme au-dessus sans tarif spécial est « à chiffrer »
+        // dans la console, sa mensualité suit la règle en attendant).
+        boolean surDevis,
+        int seuilSurDevis) {
 }

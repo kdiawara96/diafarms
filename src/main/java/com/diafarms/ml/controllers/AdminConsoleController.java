@@ -38,6 +38,7 @@ public class AdminConsoleController {
     private final com.diafarms.ml.ServiceImpl.EssaiEmailsService essaiEmails;
     private final com.diafarms.ml.ServiceImpl.ResumeHebdoService resumeHebdo;
     private final com.diafarms.ml.ServiceImpl.ParrainageService parrainage;
+    private final com.diafarms.ml.ServiceImpl.CreditService credit;
 
     private <T> ResponseEntity<ApiResponse<T>> repondre(String message, Supplier<T> action) {
         try {
@@ -94,6 +95,25 @@ public class AdminConsoleController {
     public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> note(@PathVariable String farmUniqueId,
             @RequestBody(required = false) AdminNoteRequest request) {
         return repondre("Note ajoutée", () -> service.ajouterNote(farmUniqueId, request));
+    }
+
+    // Ajustement du crédit (crédit prépayé) : {"montant": 5000, "motif": "..."} ; montant
+    // négatif pour retirer du crédit.
+    @PostMapping("/fermes/{farmUniqueId}/ajustement")
+    public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> ajustement(@PathVariable String farmUniqueId,
+            @RequestBody(required = false) com.diafarms.ml.request.others.AdminAjustementRequest request) {
+        return repondre("Crédit ajusté", () -> service.ajuster(farmUniqueId, request));
+    }
+
+    // Tâche du crédit (chaque jour à 00 h 30 UTC : mensualités des mois terminés, échéances,
+    // e-mails). executer=false (par défaut) : simulation, rien n'est écrit ni envoyé.
+    @PostMapping("/credit/tache")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.ServiceImpl.CreditService.ResultatTache>> tacheCredit(
+            @RequestParam(defaultValue = "false") boolean executer) {
+        return repondre(executer ? "Tâche du crédit exécutée" : "Simulation de la tâche du crédit", () -> {
+            service.verifierSuperAdmin();
+            return credit.executer(executer);
+        });
     }
 
     // Exclure (true) ou réintégrer (false) une ferme dans les statistiques : {"exclure": true}

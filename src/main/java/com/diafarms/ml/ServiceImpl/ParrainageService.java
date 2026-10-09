@@ -35,11 +35,12 @@ import lombok.extern.slf4j.Slf4j;
 //    nouvelle ferme (filleul) à la ferme du code (parrain). Règles : le code doit exister,
 //    une ferme ne se parraine pas elle-même, une ferme n'est parrainée qu'une fois
 //    (uk_parrainage_filleul).
-//  - Récompense : au PREMIER paiement validé du filleul (validation d'une déclaration par
-//    le SUPER_ADMIN, ou « Activer » de la console avec un montant reçu), le parrain gagne
-//    1 mois offert : +30 jours sur sa date de fin, mêmes règles de date qu'une validation
-//    (pendant la grâce on repart de l'échéance, après la grâce d'aujourd'hui). Une seule
-//    fois par filleul (UPDATE ... WHERE recompense_le IS NULL), e-mail au parrain.
+//  - Récompense (crédit prépayé, 2026-10-09) : à la PREMIÈRE recharge validée du filleul
+//    (validation d'une déclaration par le SUPER_ADMIN, ou recharge saisie dans la console),
+//    le parrain reçoit du crédit : AbonnementConfig.creditParrainage (5 000 FCFA par
+//    défaut), une ligne PARRAINAGE dans son compte (CreditService.crediterParrainage, clé
+//    unique par parrainage). Une seule fois par filleul (UPDATE ... WHERE recompense_le IS
+//    NULL), e-mail au parrain. Avant le crédit, c'était 1 mois offert (+30 jours).
 //  - La récompense est appliquée APRÈS le commit de la validation, dans sa propre
 //    transaction : un échec ne peut jamais annuler la validation du paiement. Un
 //    rattrapage quotidien (rattraper) donne la récompense oubliée (serveur arrêté entre
@@ -62,10 +63,13 @@ public class ParrainageService {
     private final DestinatairesAdmin destinataires;
     private final com.diafarms.ml.commons.AbonnementAccesMobile accesMobile;
     private final TransactionTemplate txNouvelle;
+    private final CreditService creditService;
 
     public ParrainageService(ParrainageRepo repo, FarmsRepo farmsRepo, JdbcTemplate jdbc, AbonnementConfigRepo configRepo,
             OtherService otherService, EmailService emailService, LogsServices logs, DestinatairesAdmin destinataires,
-            com.diafarms.ml.commons.AbonnementAccesMobile accesMobile, PlatformTransactionManager tm) {
+            com.diafarms.ml.commons.AbonnementAccesMobile accesMobile, PlatformTransactionManager tm,
+            CreditService creditService) {
+        this.creditService = creditService;
         this.repo = repo;
         this.farmsRepo = farmsRepo;
         this.jdbc = jdbc;
@@ -185,8 +189,11 @@ public class ParrainageService {
     public record FilleulDTO(String nom, LocalDate inscritLe, boolean recompense, LocalDateTime recompenseLe) {}
 
     // peutSaisirCode : la ferme n'a pas de parrain et n'a encore jamais payé.
+    // moisGagnes : anciennes récompenses (1 mois), creditGagne : FCFA de crédit gagnés,
+    // creditParFerme : récompense actuelle par ferme parrainée.
     public record MonParrainageDTO(String code, String texteAPartager, int filleuls, int moisGagnes,
-            List<FilleulDTO> liste, String parrainNom, boolean peutSaisirCode) {}
+            List<FilleulDTO> liste, String parrainNom, boolean peutSaisirCode, double creditGagne,
+            double creditParFerme) {}
 
     static String texteAPartager(String code, Integer joursEssai) {
         int j = joursEssai == null || joursEssai <= 0 ? 14 : joursEssai;
@@ -209,9 +216,11 @@ public class ParrainageService {
         Map<Long, String> noms = nomsInscription();
         List<FilleulDTO> liste = new ArrayList<>();
         int mois = 0;
+        double credit = 0;
         for (Parrainage p : repo.findByParrainId(farmId)) {
             boolean r = p.getRecompenseLe() != null;
-            if (r) mois++;
+            if (r && p.getRecompenseCredit() != null) credit += p.getRecompenseCredit();
+            else if (r) mois++;
             liste.add(new FilleulDTO(nom(p.getFilleul(), noms), p.getCreeLe().toLocalDate(), r, p.getRecompenseLe()));
         }
         String parrainNom = repo.findByFilleulId(farmId).map(p -> nom(p.getParrain(), noms)).orElse(null);
@@ -219,21 +228,22 @@ public class ParrainageService {
                 + "WHERE a.farm_id = ? AND p.statut = 'VALIDE'", Integer.class, farmId);
         boolean peutSaisir = parrainNom == null && (payes == null || payes == 0);
         com.diafarms.ml.models.AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
-        return new MonParrainageDTO(code, texteAPartager(code, config != null ? config.getDureeEssaiJours() : null), liste.size(), mois, liste, parrainNom, peutSaisir);
+        return new MonParrainageDTO(code, texteAPartager(code, config != null ? config.getDureeEssaiJours() : null), liste.size(), mois, liste, parrainNom, peutSaisir,
+                credit, com.diafarms.ml.commons.AbonnementCredit.regles(config).creditParrainage());
     }
 
     // ------------------------------------------------------------------ console SUPER_ADMIN
 
     public record LigneParrainage(String parrainUniqueId, String parrainNom, String filleulUniqueId, String filleulNom,
             String code, LocalDateTime creeLe, LocalDateTime recompenseLe, Integer recompenseJours,
-            LocalDate parrainDateFinAvant, LocalDate parrainDateFinApres) {}
+            LocalDate parrainDateFinAvant, LocalDate parrainDateFinApres, Double recompenseCredit) {}
 
     public record ParrainageFerme(String code, LigneParrainage parrain, List<LigneParrainage> filleuls) {}
 
     private LigneParrainage ligne(Parrainage p, Map<Long, String> noms) {
         return new LigneParrainage(p.getParrain().getUniqueId(), nom(p.getParrain(), noms), p.getFilleul().getUniqueId(),
                 nom(p.getFilleul(), noms), p.getCode(), p.getCreeLe(), p.getRecompenseLe(), p.getRecompenseJours(),
-                p.getParrainDateFinAvant(), p.getParrainDateFinApres());
+                p.getParrainDateFinAvant(), p.getParrainDateFinApres(), p.getRecompenseCredit());
     }
 
     // Fiche d'une ferme dans la console (dans la transaction de lecture de l'appelant).
@@ -292,7 +302,7 @@ public class ParrainageService {
     }
 
     private record Recompense(Long parrainFarmId, String parrainNom, String filleulNom, String code,
-            LocalDate avant, LocalDate apres) {}
+            LocalDate avant, LocalDate apres, double credit, double solde) {}
 
     // Applique la récompense si le filleul a un parrain non encore récompensé et au moins un
     // paiement validé. true si la récompense vient d'être donnée.
@@ -321,24 +331,24 @@ public class ParrainageService {
             }
             if (repo.reserverRecompense(id) == 0) return null; // déjà donnée (exécution concurrente)
 
-            // Abonnement du parrain verrouillé : une action simultanée passe avant ou après.
-            List<Map<String, Object>> abos = jdbc.queryForList(
-                    "SELECT id, date_fin FROM abonnements WHERE farm_id = ? FOR UPDATE", parrainId);
+            // Crédit offert au parrain (abonnement verrouillé dans CreditService, clé unique
+            // par parrainage : jamais deux fois).
+            List<Long> abos = jdbc.queryForList("SELECT id FROM abonnements WHERE farm_id = ?", Long.class, parrainId);
             LocalDate avant = null, apres = null;
+            double montant = com.diafarms.ml.commons.AbonnementCredit.regles(configRepo.findFirstByOrderByIdAsc()).creditParrainage();
+            double solde = 0;
             if (!abos.isEmpty()) {
-                Long aboId = ((Number) abos.get(0).get("id")).longValue();
-                avant = ((java.sql.Date) abos.get(0).get("date_fin")).toLocalDate();
-                LocalDate auj = LocalDate.now();
-                int grace = AbonnementEcheance.delaiGraceJours(configRepo.findFirstByOrderByIdAsc());
-                LocalDate base = !auj.isAfter(avant.plusDays(grace)) ? avant : auj;
-                apres = base.plusDays(JOURS_OFFERTS);
-                jdbc.update("UPDATE abonnements SET date_fin = ? WHERE id = ?", java.sql.Date.valueOf(apres), aboId);
-                accesMobile.invaliderApresCommit(parrainId);
+                avant = jdbc.queryForObject("SELECT date_fin FROM abonnements WHERE id = ?", LocalDate.class, abos.get(0));
+                CreditService.Ecriture e = montant > 0 ? creditService.crediterParrainage(abos.get(0), id, montant,
+                        "Parrainage : une ferme que vous avez invitée a rechargé") : null;
+                solde = e != null ? e.soldeApres() : creditService.solde(abos.get(0));
+                com.diafarms.ml.models.Abonnement apresAbo = creditService.abonnement(abos.get(0));
+                apres = apresAbo != null ? apresAbo.getDateFin() : null;
             } else {
-                log.warn("Parrainage : la ferme marraine {} n'a pas encore d'abonnement, mois offert non appliqué", parrainId);
+                log.warn("Parrainage : la ferme marraine {} n'a pas encore d'abonnement, crédit non appliqué", parrainId);
             }
-            jdbc.update("UPDATE parrainages SET recompense_jours = ?, parrain_date_fin_avant = ?, parrain_date_fin_apres = ?, "
-                    + "paiement_id = ? WHERE id = ?", JOURS_OFFERTS, avant != null ? java.sql.Date.valueOf(avant) : null,
+            jdbc.update("UPDATE parrainages SET recompense_credit = ?, parrain_date_fin_avant = ?, parrain_date_fin_apres = ?, "
+                    + "paiement_id = ? WHERE id = ?", montant, avant != null ? java.sql.Date.valueOf(avant) : null,
                     apres != null ? java.sql.Date.valueOf(apres) : null,
                     paiementId != null ? paiementId : paiements.get(0), id);
             Map<Long, String> noms = nomsInscription();
@@ -355,12 +365,13 @@ public class ParrainageService {
             if (auteur != null) {
                 try {
                     logs.addLogs(auteur, parrainId, AdminConsoleService.ENTITE_ADMIN_FERME,
-                            "Parrainage : 1 mois offert à la ferme " + parrainNom + " (ferme parrainée : " + filleulNom + ")");
+                            "Parrainage : " + AbonnementEcheance.fcfa(montant) + " de crédit offerts à la ferme " + parrainNom
+                                    + " (ferme parrainée : " + filleulNom + ")");
                 } catch (Exception e) {
                     log.warn("Parrainage : journal non écrit : {}", e.getMessage());
                 }
             }
-            return new Recompense(parrainId, parrainNom, filleulNom, code, avant, apres);
+            return new Recompense(parrainId, parrainNom, filleulNom, code, avant, apres, montant, solde);
         });
         if (r == null) return false;
         envoyerEmail(r);
@@ -369,12 +380,13 @@ public class ParrainageService {
 
     private void envoyerEmail(Recompense r) {
         try {
-            String sujet = "Merci ! Vous gagnez 1 mois offert sur Cocorico";
-            String message = "La ferme " + r.filleulNom() + ", que vous avez parrainée, vient de payer son abonnement.\n\n"
-                    + "Pour vous remercier, nous offrons 1 mois à la ferme " + r.parrainNom() + "."
-                    + (r.apres() != null ? " Votre accès va maintenant jusqu'au " + AbonnementEcheance.date(r.apres()) + "." : "")
+            String sujet = "Merci ! Vous gagnez " + AbonnementEcheance.fcfa(r.credit()) + " de crédit sur Cocorico";
+            String message = "La ferme " + r.filleulNom() + ", que vous avez parrainée, vient de faire sa première recharge.\n\n"
+                    + "Pour vous remercier, nous ajoutons " + AbonnementEcheance.fcfa(r.credit()) + " au crédit de la ferme "
+                    + r.parrainNom() + ". Votre crédit : " + AbonnementEcheance.fcfa(r.solde()) + "."
                     + "\n\nContinuez à partager votre code " + r.code()
-                    + " : chaque ferme parrainée qui paie son abonnement vous donne 1 mois de plus.\n\n"
+                    + " : chaque ferme parrainée qui fait sa première recharge vous donne " + AbonnementEcheance.fcfa(r.credit())
+                    + " de crédit.\n\n"
                     + "Une question ? Écrivez-nous sur WhatsApp au " + EssaiEmailsService.WHATSAPP + ".";
             for (DestinatairesAdmin.Destinataire d : destinataires.parFerme(List.of(r.parrainFarmId())).getOrDefault(r.parrainFarmId(), List.of())) {
                 try {

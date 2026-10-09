@@ -93,6 +93,16 @@ public class AbonnementController {
         }
     }
 
+    // Compte de crédit de la ferme (recharges, bonus, mensualités, parrainage, ajustements).
+    @GetMapping("/mouvements")
+    public ResponseEntity<ApiResponse<List<com.diafarms.ml.DTO.MouvementCreditDTO>>> mouvements() {
+        try {
+            return ApiResponse.createResponse("Compte de crédit récupéré", HttpStatus.OK, service.getMouvements(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @PostMapping("/declarer-paiement")
     public ResponseEntity<ApiResponse<PaiementAbonnementDTO>> declarerPaiement(@RequestBody DeclarerPaiementAbonnementRequest request) {
         try {

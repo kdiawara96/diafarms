@@ -38,6 +38,11 @@ public class PaiementAbonnementDTO {
     // par poule, et pour un paiement saisi par le SUPER_ADMIN).
     private Double montantAttendu;
     private Integer poulesComptees;
+    // Crédit prépayé : recharge (et non paiement d'une période), bonus ajouté à la
+    // validation, bonus prévu tant qu'elle attend (règle du moment).
+    private boolean recharge;
+    private Double bonus;
+    private Double bonusPrevu;
 
     // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
     // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
@@ -77,6 +82,8 @@ public class PaiementAbonnementDTO {
                 .horsApplication(Boolean.TRUE.equals(p.getHorsApplication()))
                 .montantAttendu(p.getMontantAttendu())
                 .poulesComptees(p.getPoulesComptees())
+                .recharge(Boolean.TRUE.equals(p.getRecharge()))
+                .bonus(p.getBonus())
                 .build();
     }
 }

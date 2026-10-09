@@ -125,16 +125,27 @@ public class AbonnementTarifService {
 
     // null si le comptage a échoué (voir l'en-tête).
     private Map<Long, Comptage> compterSansRisque(Collection<Long> farmIds) {
+        LocalDate auj = LocalDate.now();
+        Map<Long, long[]> jours = sujetsParJourSansRisque(farmIds, auj.minusDays(AbonnementTarif.FENETRE_JOURS - 1L), auj);
+        if (jours == null) return null;
+        return maxSurFenetre(jours, auj.minusDays(AbonnementTarif.FENETRE_JOURS - 1L));
+    }
+
+    // Sujets vivants de chaque ferme, jour par jour, du jour deb au jour fin inclus
+    // (index 0 = deb). Même définition que le prix (voir l'en-tête) ; même protection
+    // (point de sauvegarde JDBC). null si le comptage a échoué. farmIds null : toutes les
+    // fermes ; une ferme sans Projet est absente de la carte (0 sujet chaque jour).
+    // Utilisé aussi par le crédit (CreditService) : moyenne des poules d'un mois.
+    public Map<Long, long[]> sujetsParJourSansRisque(Collection<Long> farmIds, LocalDate deb, LocalDate fin) {
         try {
-            LocalDate auj = LocalDate.now();
-            return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Map<Long, Comptage>>) con -> {
+            return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Map<Long, long[]>>) con -> {
                 // Toutes les requêtes sur CETTE connexion (aucune autre prise dans le pool).
                 JdbcTemplate meme = new JdbcTemplate(
                         new org.springframework.jdbc.datasource.SingleConnectionDataSource(con, true));
-                if (con.getAutoCommit()) return compterPoules(meme, farmIds, auj);
+                if (con.getAutoCommit()) return sujetsParJour(meme, farmIds, deb, fin);
                 java.sql.Savepoint sp = con.setSavepoint();
                 try {
-                    Map<Long, Comptage> r = compterPoules(meme, farmIds, auj);
+                    Map<Long, long[]> r = sujetsParJour(meme, farmIds, deb, fin);
                     con.releaseSavepoint(sp);
                     return r;
                 } catch (RuntimeException e) {
@@ -143,7 +154,7 @@ public class AbonnementTarifService {
                 }
             });
         } catch (Exception e) {
-            log.error("Comptage des poules pour le tarif d'abonnement en échec : {}", e.getMessage(), e);
+            log.error("Comptage des poules (abonnement) en échec : {}", e.getMessage(), e);
             return null;
         }
     }
@@ -154,16 +165,39 @@ public class AbonnementTarifService {
 
     // farmIds null : toutes les fermes ; vide : aucune.
     Map<Long, Comptage> compterPoules(JdbcTemplate jdbc, Collection<Long> farmIds, LocalDate aujourdHui) {
-        Map<Long, Comptage> res = new HashMap<>();
-        if (farmIds != null && farmIds.isEmpty()) return res;
         LocalDate deb = aujourdHui.minusDays(AbonnementTarif.FENETRE_JOURS - 1L);
+        return maxSurFenetre(sujetsParJour(jdbc, farmIds, deb, aujourdHui), deb);
+    }
 
-        // 1. Projets commencés au plus tard aujourd'hui, avec leur fin effective.
+    // Le plus grand total d'un jour (le plus récent en cas d'égalité), et ce jour-là.
+    private static Map<Long, Comptage> maxSurFenetre(Map<Long, long[]> totaux, LocalDate deb) {
+        Map<Long, Comptage> res = new HashMap<>();
+        for (Map.Entry<Long, long[]> e : totaux.entrySet()) {
+            long max = 0;
+            int jourMax = -1;
+            long[] t = e.getValue();
+            for (int i = 0; i < t.length; i++) {
+                if (t[i] > 0 && t[i] >= max) { max = t[i]; jourMax = i; }
+            }
+            res.put(e.getKey(), new Comptage((int) Math.min(Integer.MAX_VALUE, max),
+                    jourMax >= 0 ? deb.plusDays(jourMax) : null));
+        }
+        return res;
+    }
+
+    // Sujets vivants par ferme et par jour sur [deb, fin]. 2 requêtes par paquet de 1 000
+    // fermes ou Projets, jamais une requête par ferme ni par jour.
+    Map<Long, long[]> sujetsParJour(JdbcTemplate jdbc, Collection<Long> farmIds, LocalDate deb, LocalDate fin) {
+        Map<Long, long[]> totaux = new HashMap<>();
+        if (farmIds != null && farmIds.isEmpty()) return totaux;
+        if (fin.isBefore(deb)) return totaux;
+
+        // 1. Projets commencés au plus tard le dernier jour, avec leur fin effective.
         List<Projet> projets = new ArrayList<>();
         List<List<Long>> paquetsFermes = farmIds == null ? java.util.Collections.singletonList(null) : paquets(farmIds);
         for (List<Long> paquet : paquetsFermes) {
             List<Object> args = new ArrayList<>();
-            args.add(Date.valueOf(aujourdHui));
+            args.add(Date.valueOf(fin));
             StringBuilder sql = new StringBuilder(
                     "SELECT p.id, p.farm_id, p.date_debut, COALESCE(p.nb_sujets, 0), COALESCE(p.archive, false), "
                     + "COALESCE(o.liberation, p.date_cloture, LEAST(p.date_fin_prevue, CAST(p.updated_at AS date))) "
@@ -177,28 +211,28 @@ public class AbonnementTarifService {
             }
             jdbc.query(sql.toString(), rs -> {
                 boolean cloture = rs.getBoolean(5);
-                LocalDate fin = null;
+                LocalDate f = null;
                 if (cloture) {
-                    fin = date(rs.getDate(6));
+                    f = date(rs.getDate(6));
                     // Clôturé sans aucune date : jamais compté « en cours » pour toujours.
-                    if (fin == null) fin = deb.minusDays(1);
+                    if (f == null) f = deb.minusDays(1);
                 }
-                if (fin != null && fin.isBefore(deb)) return; // terminé avant les 30 jours
-                projets.add(new Projet(rs.getLong(1), rs.getLong(2), date(rs.getDate(3)), rs.getInt(4), fin));
+                if (f != null && f.isBefore(deb)) return; // terminé avant la période
+                projets.add(new Projet(rs.getLong(1), rs.getLong(2), date(rs.getDate(3)), rs.getInt(4), f));
             }, args.toArray());
         }
-        if (projets.isEmpty()) return res;
+        if (projets.isEmpty()) return totaux;
 
-        // 2. Morts + réformés de ces Projets : cumul avant la fenêtre (date null), puis par jour.
+        // 2. Morts + réformés de ces Projets : cumul avant la période (date null), puis par jour.
         Map<Long, Long> avant = new HashMap<>();
         Map<Long, Map<LocalDate, Long>> parJour = new HashMap<>();
         List<Long> projetIds = projets.stream().map(Projet::id).toList();
         for (List<Long> paquet : paquets(projetIds)) {
             List<Object> args = new ArrayList<>();
             args.add(Date.valueOf(deb));
-            args.add(Date.valueOf(aujourdHui));
+            args.add(Date.valueOf(fin));
             args.addAll(paquet);
-            args.add(Date.valueOf(aujourdHui));
+            args.add(Date.valueOf(fin));
             args.addAll(paquet);
             String in = marques(paquet.size());
             jdbc.query("SELECT x.projet_id, CASE WHEN x.d < ? THEN NULL ELSE x.d END AS jour, SUM(x.n) FROM ("
@@ -215,9 +249,8 @@ public class AbonnementTarifService {
                     }, args.toArray());
         }
 
-        // 3. Jour par jour : total de la ferme, et son maximum sur la fenêtre.
-        Map<Long, long[]> totaux = new HashMap<>(); // farmId -> sujets vivants par jour (index 0 = deb)
-        int nbJours = AbonnementTarif.FENETRE_JOURS;
+        // 3. Jour par jour : total de la ferme.
+        int nbJours = (int) java.time.temporal.ChronoUnit.DAYS.between(deb, fin) + 1;
         for (Projet p : projets) {
             long[] t = totaux.computeIfAbsent(p.farmId(), k -> new long[nbJours]);
             long cumul = avant.getOrDefault(p.id(), 0L);
@@ -229,17 +262,7 @@ public class AbonnementTarifService {
                 if (enCours) t[i] += Math.max(0, p.nbSujets() - cumul);
             }
         }
-        for (Map.Entry<Long, long[]> e : totaux.entrySet()) {
-            long max = 0;
-            int jourMax = -1;
-            long[] t = e.getValue();
-            for (int i = 0; i < t.length; i++) {
-                if (t[i] > 0 && t[i] >= max) { max = t[i]; jourMax = i; }
-            }
-            res.put(e.getKey(), new Comptage((int) Math.min(Integer.MAX_VALUE, max),
-                    jourMax >= 0 ? deb.plusDays(jourMax) : null));
-        }
-        return res;
+        return totaux;
     }
 
     private static LocalDate date(Date d) {

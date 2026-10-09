@@ -28,6 +28,11 @@ public class AbonnementConfigDTO {
     private Double prixMinimumMensuel;
     private Integer moisOffertsAnnuel;
     private Integer arrondi;
+    // Crédit prépayé (voir commons/AbonnementCredit), toujours renseignés.
+    private Double bonusSeuil;
+    private Double bonusPourcent;
+    private Integer seuilSurDevis;
+    private Double creditParrainage;
 
     public static AbonnementConfigDTO fromEntity(AbonnementConfig c) {
         if (c == null) return null;
@@ -42,6 +47,10 @@ public class AbonnementConfigDTO {
                 .prixMinimumMensuel(r.prixMinimumMensuel())
                 .moisOffertsAnnuel(r.moisOffertsAnnuel())
                 .arrondi(r.arrondi())
+                .bonusSeuil(com.diafarms.ml.commons.AbonnementCredit.regles(c).bonusSeuil())
+                .bonusPourcent(com.diafarms.ml.commons.AbonnementCredit.regles(c).bonusPourcent())
+                .seuilSurDevis(com.diafarms.ml.commons.AbonnementCredit.regles(c).seuilSurDevis())
+                .creditParrainage(com.diafarms.ml.commons.AbonnementCredit.regles(c).creditParrainage())
                 .build();
     }
 }

@@ -94,8 +94,33 @@ public class Abonnement {
     @Column(name = "prix_fixe_le")
     private java.time.LocalDateTime prixFixeLe;
 
+    // Modèle du crédit prépayé (décision du 2026-10-09, voir CreditService et
+    // commons/AbonnementCredit). Colonnes nullables ajoutées par ddl-auto :
+    //   creditDepuis   : premier jour payé par le crédit (lendemain de la fin de l'essai,
+    //                    ou de la fin de la période déjà payée pour une ferme d'avant le
+    //                    crédit). null = ferme pas encore passée au crédit (voir
+    //                    CreditService.convertirAnciennesFermes).
+    //   creditEpuiseLe : premier jour NON couvert quand le crédit est à zéro ou en dessous
+    //                    (null tant que le crédit est positif). dateFin = ce jour - 1 : les
+    //                    rappels, la grâce et le blocage existants s'appliquent tels quels.
+    //   essaiRefuse    : pas d'essai gratuit (téléphone ou e-mail du propriétaire déjà
+    //                    utilisé par une autre ferme), voir CreditService.essaiDejaUtilise.
+    // Le solde lui-même n'est pas stocké ici : c'est la somme des MouvementCredit.
+    @Column(name = "credit_depuis")
+    private LocalDate creditDepuis;
+
+    @Column(name = "credit_epuise_le")
+    private LocalDate creditEpuiseLe;
+
+    @Column(name = "essai_refuse")
+    private Boolean essaiRefuse;
+
     @Embedded
     private Initialisation initialisation;
+
+    public boolean estEnCredit() {
+        return creditDepuis != null;
+    }
 
     public boolean estSuspendu() {
         return Boolean.TRUE.equals(suspendu);

@@ -28,7 +28,13 @@ public final class AbonnementTarif {
 
     private AbonnementTarif() {}
 
-    public record Regles(double prixParPoule, double prixMinimumMensuel, int moisOffertsAnnuel, int arrondi) {}
+    public record Regles(double prixParPoule, double prixMinimumMensuel, int moisOffertsAnnuel, int arrondi,
+            // Au-delà de ce nombre de poules : tarif sur devis (voir AbonnementCredit).
+            int seuilSurDevis) {
+        public Regles(double prixParPoule, double prixMinimumMensuel, int moisOffertsAnnuel, int arrondi) {
+            this(prixParPoule, prixMinimumMensuel, moisOffertsAnnuel, arrondi, AbonnementCredit.SEUIL_SUR_DEVIS_DEFAUT);
+        }
+    }
 
     public static Regles regles(AbonnementConfig c) {
         Double ppp = c != null ? c.getPrixParPoule() : null;
@@ -39,13 +45,14 @@ public final class AbonnementTarif {
                 ppp == null || ppp < 0 ? PRIX_PAR_POULE_DEFAUT : ppp,
                 min == null || min < 0 ? PRIX_MINIMUM_MENSUEL_DEFAUT : min,
                 mois == null || mois < 0 || mois > 11 ? MOIS_OFFERTS_ANNUEL_DEFAUT : mois,
-                arr == null || arr < 1 ? ARRONDI_DEFAUT : arr);
+                arr == null || arr < 1 ? ARRONDI_DEFAUT : arr,
+                AbonnementCredit.regles(c).seuilSurDevis());
     }
 
     // Arrondi au-dessus au multiple de « arrondi » (5004 -> 5100 avec 100). Petite
     // tolérance pour qu'un calcul en virgule flottante (ex. 8100.0000001) ne monte pas
     // d'un cran de trop.
-    static double arrondirAuDessus(double montant, int arrondi) {
+    public static double arrondirAuDessus(double montant, int arrondi) {
         if (montant <= 0) return 0;
         return Math.ceil(montant / arrondi - 1e-9) * arrondi;
     }
@@ -68,7 +75,8 @@ public final class AbonnementTarif {
         return new AbonnementTarifDTO(n, n > 0 ? dateMax : null, FENETRE_JOURS, mensuel, prixAnnuel(mensuel, r),
                 brut, arrondi, minimum, selonPoules, prixFixe, prixFixe ? fixe : null,
                 prixFixe ? abonnement.getMotifPrixFixe() : null,
-                r.prixParPoule(), r.prixMinimumMensuel(), r.moisOffertsAnnuel(), r.arrondi(), calculEnErreur);
+                r.prixParPoule(), r.prixMinimumMensuel(), r.moisOffertsAnnuel(), r.arrondi(), calculEnErreur,
+                n > r.seuilSurDevis(), r.seuilSurDevis());
     }
 
     // Tarif qu'on peut facturer ou annoncer : calcul réussi, ou prix fixe (qui ne dépend
@@ -84,7 +92,8 @@ public final class AbonnementTarif {
         return new AbonnementTarifDTO(t.poulesComptees(), t.dateMax(), t.fenetreJours(), t.prixMensuel(),
                 t.prixAnnuel(), t.montantParPoules(), t.montantArrondi(), t.minimumApplique(),
                 t.prixMensuelSelonPoules(), t.prixFixe(), t.prixMensuelFixe(), null, t.prixParPoule(),
-                t.prixMinimumMensuel(), t.moisOffertsAnnuel(), t.arrondi(), t.calculEnErreur());
+                t.prixMinimumMensuel(), t.moisOffertsAnnuel(), t.arrondi(), t.calculEnErreur(), t.surDevis(),
+                t.seuilSurDevis());
     }
 
     public static String poules(int n) {

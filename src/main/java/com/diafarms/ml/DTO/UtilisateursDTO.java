@@ -38,6 +38,9 @@ public class UtilisateursDTO {
     // Non nul seulement dans la réponse de création de compte : indique si l'email
     // contenant les identifiants a réellement pu être envoyé.
     private Boolean emailSent;
+    // Réponse de l'inscription seulement : true si la ferme n'a pas d'essai gratuit
+    // (téléphone ou e-mail déjà utilisé pour une autre ferme).
+    private Boolean essaiRefuse;
 
     private String infoQrcodeEncrypte;
 

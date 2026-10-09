@@ -44,6 +44,9 @@ public class AbonnementDTO {
     // Prix de la ferme (prix par poule, ou tarif spécial) : ce qu'elle paiera au prochain
     // renouvellement. Voir AbonnementTarifService. Champ ajouté, rien n'a été retiré.
     private AbonnementTarifDTO tarif;
+    // Crédit prépayé (voir CreditService) : crédit restant, estimation, mois en cours.
+    // Champ ajouté, les anciens restent (dateFin = dernier jour couvert par le crédit).
+    private CreditDTO credit;
 
     public static AbonnementDTO of(Abonnement a, AbonnementEcheance.Etat etat, PaiementAbonnementDTO paiementEnAttente) {
         AbonnementDTO dto = of(a, etat.statut(), etat.enGrace(), etat.joursRestants(), paiementEnAttente);
