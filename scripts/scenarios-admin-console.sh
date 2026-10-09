@@ -209,52 +209,51 @@ check "liste : ferme X avec propriétaire, téléphone, email" \
 check "liste : X en essai, 1 utilisateur, 1 projet en cours, 480 sujets, inscrite aujourd'hui, activité récente" \
   "[(f['statut'], f['nbUtilisateurs'], f['projetsEnCours'], f['sujetsVivants'], f['inscriteLe'], f['derniereActivite'][:10], f['totalPaye']) for f in d['data'] if f['farmUniqueId']=='$UID_X'] == [('ESSAI', 1, 1, 480, '$AUJ', '$AUJ', 0.0)]"
 
-echo "--- activer / prolonger"
-api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL"}'
-check "activer sans durée ni date : refusé" "code == 400"
-api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","dateFin":"2020-01-01"}'
-check "activer avec date passée : refusé" "code == 400"
-api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12,"montant":-5,"moyenPaiement":"Espèces"}'
-check "activer avec montant négatif : refusé" "code == 400"
-api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"BIMENSUEL","mois":1}'
-check "activer avec formule inconnue : refusé" "code == 400"
+echo "--- recharger (ancien « activer / prolonger »)"
+# Crédit prépayé (2026-10-09) : « Activer / prolonger » de la console devient une RECHARGE
+# reçue hors application : le montant (obligatoire) est ajouté au crédit, avec le bonus de
+# 20 % dès 50 000 ; durée, date de fin et formule ne sont plus utilisées (la fin découle du
+# crédit). Les contrôles « date passée », « formule inconnue » et « raccourcissement » n'ont
+# donc plus d'objet : remplacés par les refus du montant.
+api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12}'
+check "recharger sans montant (durée seule) : refusé" "code == 400"
+api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","dateFin":"2030-01-01"}'
+check "recharger avec une date de fin seule : refusé" "code == 400"
+api POST "/admin/fermes/$UID_X/activer" '{"montant":-5,"moyenPaiement":"Espèces"}'
+check "recharger avec montant négatif : refusé" "code == 400"
+api POST "/admin/fermes/$UID_X/activer" '{"montant":0,"moyenPaiement":"Espèces"}'
+check "recharger avec montant nul : refusé" "code == 400"
 check_eq "aucun paiement créé par les refus" "0" "$(psql_run "select count(*) from paiements_abonnement p join abonnements a on a.id=p.abonnement_id where a.farm_id=$FARM_X")"
 
 FIN_ESSAI="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
-# 12 mois = 365 jours (même convention que la validation d'un paiement : 1 mois = 30 jours).
-ATTENDU="$(python3 -c "import datetime; print(datetime.date.fromisoformat('$FIN_ESSAI') + datetime.timedelta(days=365))")"
-# Vérifications AVANT toute modification : paiement sans moyen refusé, rien n'a changé.
-api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12,"montant":5000}'
-check "activer avec montant mais sans moyen de paiement : refusé" "code == 400"
+api POST "/admin/fermes/$UID_X/activer" '{"montant":5000}'
+check "recharger avec montant mais sans moyen de paiement : refusé" "code == 400"
 check_eq "refus sans moyen : abonnement inchangé (toujours en essai, même fin)" "$FIN_ESSAI|" \
   "$(psql_run "select date_fin || '|' || coalesce(periodicite,'') from abonnements where farm_id=$FARM_X")"
 api POST "/admin/fermes/$UID_X/activer" '{"periodicite":"ANNUEL","mois":12,"montant":123456,"moyenPaiement":"Espèces","reference":"REC-ADMIN-1"}'
-check "activer 12 mois + paiement hors application : ACTIF annuel" \
-  "code == 200 and d['data']['ferme']['statut'] == 'ACTIF' and d['data']['ferme']['periodicite'] == 'ANNUEL' and d['data']['ferme']['dateFin'] == '$ATTENDU'"
-check "activer : paiement VALIDE hors application dans la fiche" \
+check "recharge de 123 456 hors application : ACTIF, crédit 123 456 + bonus 24 691, fin = fin estimée" \
+  "code == 200 and d['data']['ferme']['statut'] == 'ACTIF' and d['data']['credit']['solde'] == 148147 and d['data']['ferme']['dateFin'] == d['data']['credit']['finEstimee'] and d['data']['ferme']['dateFin'] > '$FIN_ESSAI'"
+check "recharge : paiement VALIDE hors application dans la fiche" \
   "[(p['montant'], p['statut'], p['horsApplication'], p['reference']) for p in d['data']['paiements']] == [(123456.0, 'VALIDE', True, 'REC-ADMIN-1')]"
-check "activer : total payé de la ferme" "d['data']['ferme']['totalPaye'] == 123456.0"
+check "recharge : total payé de la ferme (sans le bonus)" "d['data']['ferme']['totalPaye'] == 123456.0"
 
 api GET /admin/tableau-de-bord
 cp "$TMP/body" "$TMP/tdb2"
 check_eq "revenu du mois : +123456" "123456.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuCeMois)"
 check_eq "revenu de l'année : +123456" "123456.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuCetteAnnee)"
-# Revenu mensuel estimé = tarif ACTUEL de la ferme (prix par poule, voir
-# scenarios-tarif-poules.sh), annuel / 12 : X a 500 poules (max des 30 jours), donc le
-# minimum 5 000 par mois, 50 000 par an, soit 4 166,67 par mois (totaux arrondis).
+# Revenu mensuel estimé = coût d'un mois au rythme actuel (crédit) : X a 480 poules en
+# moyenne ce mois-ci, donc le minimum, 5 000 par mois (plus de division d'un tarif annuel).
 ECART_MRR="$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuMensuelEstime)"
 api GET "/admin/fermes/$UID_X"
-check "revenu mensuel estimé : + tarif annuel de X / 12 ($ECART_MRR)" \
-  "d['data']['tarif']['poulesComptees'] == 500 and d['data']['tarif']['prixAnnuel'] == 50000 and abs($ECART_MRR - 50000 / 12) < 1"
+check "revenu mensuel estimé : + coût de X au rythme actuel ($ECART_MRR)" \
+  "d['data']['credit']['coutMensuel'] == 5000 and abs($ECART_MRR - 5000) < 1"
 check_eq "fermes actives payantes : +1" "1" "$(ecart "$TMP/tdb1" "$TMP/tdb2" activesPayantes)"
 
-FIN_ACTUELLE="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
-api POST "/admin/fermes/$UID_X/activer" "{\"periodicite\":\"MENSUEL\",\"dateFin\":\"$(date -d '+10 days' +%F)\"}"
-check "activer avec une date de fin avant la fin actuelle : refusé (pas de raccourcissement)" "code == 400 and 'raccourci' in str(d)"
-check_eq "refus du raccourcissement : fin inchangée" "$FIN_ACTUELLE" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
-api POST "/admin/fermes/$UID_X/activer" "{\"periodicite\":\"MENSUEL\",\"dateFin\":\"2030-06-30\"}"
-check "activer avec date de fin explicite, sans paiement" \
-  "code == 200 and d['data']['ferme']['dateFin'] == '2030-06-30' and d['data']['ferme']['periodicite'] == 'MENSUEL' and len(d['data']['paiements']) == 1"
+# Remplace « date de fin explicite, sans paiement » : un geste sans paiement se fait par un
+# ajustement du crédit (raison obligatoire), visible dans le compte de la ferme.
+api POST "/admin/fermes/$UID_X/ajustement" '{"montant":1000,"motif":"Geste commercial"}'
+check "ajustement sans paiement : +1 000 au crédit, aucun paiement de plus" \
+  "code == 200 and d['data']['credit']['solde'] == 149147 and len(d['data']['paiements']) == 1 and [m['type'] for m in d['data']['mouvements']] == ['AJUSTEMENT', 'BONUS', 'RECHARGE']"
 TOKEN="$TOKEN_X"; api GET /abonnements/historique
 check "la ferme voit le paiement hors application dans son historique" "len(d['data']) == 1 and d['data'][0]['montant'] == 123456.0"
 
@@ -269,11 +268,11 @@ m = lambda x: [v for v in x["parMois"] if v["mois"] == mois][0]
 cle = lambda x, l, k: next((v for v in x[l] if (v["cle"] or "").lower() == k.lower()), {"montant": 0, "nombre": 0})
 print(round(m(b)["montant"] - m(a)["montant"], 2), m(b)["nombre"] - m(a)["nombre"],
       round(b["totalAnnee"] - a["totalAnnee"], 2),
-      round(cle(b, "parPeriodicite", "ANNUEL")["montant"] - cle(a, "parPeriodicite", "ANNUEL")["montant"], 2),
+      round(cle(b, "parPeriodicite", "RECHARGE")["montant"] - cle(a, "parPeriodicite", "RECHARGE")["montant"], 2),
       round(cle(b, "parMoyen", "Espèces")["montant"] - cle(a, "parMoyen", "Espèces")["montant"], 2),
       b["essaisConvertis"] - a["essaisConvertis"], len(b["parMois"]))
 PY
-check_eq "finances : mois courant +123456 (1 paiement), année +123456, annuel +123456, espèces +123456, +1 conversion, 12 mois" \
+check_eq "finances : mois courant +123456 (1 paiement), année +123456, recharges +123456, espèces +123456, +1 conversion, 12 mois" \
   "123456.0 1 123456.0 123456.0 123456.0 1 12" "$(cat "$TMP/finchk")"
 api GET "/admin/paiements?ferme=$UID_X&statut=VALIDE&du=$AUJ&au=$AUJ"
 check "paiements filtrés (ferme, statut, dates) : le paiement de X" \
@@ -359,9 +358,9 @@ check "la note n'apparaît pas côté ferme" "'Appel' not in str(d)"
 echo "--- journal"
 TOKEN="$TOKEN_SA"
 api GET "/admin/journal?ferme=$UID_X&size=50"
-check "journal de X : activations, validation, suspension, réactivation, note" \
-  "sorted(set(e['categorie'] for e in d['data']['data'])) == ['ACTIVATION', 'NOTE', 'REACTIVATION', 'SUSPENSION', 'VALIDATION'] and all(e['farmUniqueId'] == '$UID_X' for e in d['data']['data'])"
-check "journal de X : 6 actions (2 activations), auteur renseigné" \
+check "journal de X : recharge, ajustement, validation, suspension, réactivation, note" \
+  "sorted(set(e['categorie'] for e in d['data']['data'])) == ['AJUSTEMENT', 'NOTE', 'REACTIVATION', 'RECHARGE', 'SUSPENSION', 'VALIDATION'] and all(e['farmUniqueId'] == '$UID_X' for e in d['data']['data'])"
+check "journal de X : 6 actions, auteur renseigné" \
   "d['data']['totalItems'] == 6 and all(e['auteurNom'] for e in d['data']['data'])"
 api GET "/admin/journal?ferme=$UID_Y&categorie=ESSAI"
 check "journal filtré par catégorie ESSAI pour Y" "d['data']['totalItems'] == 1 and 'Prolongation' in d['data']['data'][0]['action']"
@@ -414,16 +413,16 @@ check "ADMIN de Y supprime un log de sa ferme" "code == 200 and d['data'] == 'SU
 api DELETE "/logs/delete?uniqueId=$LOG_Y"
 check "ADMIN de Y le restaure" "code == 200 and d['data'] == 'SUCCESS_RESTORE'"
 
-echo "--- actions simultanées : aucune prolongation perdue"
-FIN_AVANT="$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
+echo "--- actions simultanées : aucune recharge perdue"
+# Crédit prépayé : 3 recharges de 1 000 en même temps (verrou sur l'abonnement) : +3 000.
+SOLDE_AVANT="$(psql_run "select coalesce(sum(m.montant),0)::bigint from mouvements_credit m join abonnements a on a.id=m.abonnement_id where a.farm_id=$FARM_X")"
 for i in 1 2 3; do
   curl -s -o /dev/null -X POST "$BASE/admin/fermes/$UID_X/activer" -H "Authorization: Bearer $TOKEN_SA" \
-    -H 'Content-Type: application/json' -H 'X-Client-Type: web' -d '{"periodicite":"MENSUEL","jours":10}' &
+    -H 'Content-Type: application/json' -H 'X-Client-Type: web' -d '{"montant":1000,"moyenPaiement":"Wave"}' &
 done
 wait
-check_eq "3 prolongations de 10 jours en même temps : +30 jours" \
-  "$(python3 -c "import datetime; print(datetime.date.fromisoformat('$FIN_AVANT') + datetime.timedelta(days=30))")" \
-  "$(psql_run "select date_fin from abonnements where farm_id=$FARM_X")"
+check_eq "3 recharges de 1 000 en même temps : +3 000, soldes successifs justes" "$((SOLDE_AVANT + 3000))|$((SOLDE_AVANT + 3000))" \
+  "$(psql_run "select sum(m.montant)::bigint||'|'||max(m.solde_apres)::bigint from mouvements_credit m join abonnements a on a.id=m.abonnement_id where a.farm_id=$FARM_X")"
 
 echo "--- hors statistiques"
 TOKEN="$TOKEN_SA"
@@ -490,14 +489,14 @@ if [ -n "$MAILS_DIR" ]; then
   api POST "/admin/fermes/$UID_Y/suspendre" '{"motif":"Test des e-mails"}'
   api POST "/admin/fermes/$UID_Y/reactiver"
   api POST "/admin/fermes/$UID_Y/activer" '{"periodicite":"MENSUEL","jours":5,"montant":7777,"moyenPaiement":"Wave"}'
-  check "activer avec e-mail : action réussie" "code == 200"
+  check "recharger avec e-mail : action réussie" "code == 200"
   sleep 2
   mails_de "$EMAIL_Y" > "$TMP/body"; echo 200 > "$TMP/code"
   check "e-mails de Y : 4 nouveaux, signés Cocorico" "len(d) == $N0 + 4 and all('Cocorico' in m[2] and \"L'équipe Cocorico\" in m[1] for m in d[$N0:])"
   check "e-mail d'essai prolongé : nouvelle date" "\"essai Cocorico est prolongée\" in d[$N0][0] and 'prolongée jusqu' in d[$N0][1]"
   check "e-mail de suspension : motif et WhatsApp" "'suspendu' in d[$N0+1][0] and 'Motif : Test des e-mails' in d[$N0+1][1] and '+223 83 91 86 99' in d[$N0+1][1]"
   check "e-mail de réactivation" "'rétabli' in d[$N0+2][0]"
-  check "e-mail d'activation : fin et montant" "'actif jusqu' in d[$N0+3][0] and '7 777 FCFA' in d[$N0+3][1]"
+  check "e-mail de recharge : montant et crédit restant" "'recharge de 7 777 FCFA est validée' in d[$N0+3][0] and 'Crédit restant' in d[$N0+3][1]"
   mails_de "$COMPTA_Y_EMAIL" > "$TMP/body"
   check "le COMPTABLE de Y ne reçoit pas ces e-mails" "not [m for m in d if 'Cocorico est' in m[0] and ('suspendu' in m[0] or 'rétabli' in m[0])]"
 else
@@ -557,8 +556,8 @@ curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/auth" -H 'X-Client-Type:
 check "SUPER_ADMIN : connexion mobile OK" "code == 200"
 TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_Y/reactiver"
 psql_run "update abonnements set date_fin = current_date - $((GRACE + 1)) where farm_id=$FARM_Y" >/dev/null
-api POST "/admin/fermes/$UID_Y/activer" '{"periodicite":"MENSUEL","mois":1}'
-check "renouvellement de Y" "code == 200 and d['data']['ferme']['statut'] == 'ACTIF'"
+api POST "/admin/fermes/$UID_Y/activer" '{"montant":5000,"moyenPaiement":"Wave"}'
+check "renouvellement de Y (recharge)" "code == 200 and d['data']['ferme']['statut'] == 'ACTIF'"
 auth mobile "$ADMIN_Y_EMAIL"
 check "Y renouvelée : connexion mobile de nouveau OK" "code == 200"
 curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/qrcode/scan" -H "Authorization: Bearer $TOKEN_SA" -H 'Content-Type: application/json' -d "{\"encryptedQr\":\"$QR_Y\"}" > "$TMP/code"

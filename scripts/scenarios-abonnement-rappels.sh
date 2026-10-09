@@ -146,8 +146,12 @@ ABO_C="$(psql_run "select id from abonnements where farm_id=$FARM_C")"
 # A devient un abonnement payé (comme après une première validation).
 psql_run "update abonnements set periodicite='MENSUEL', statut='ACTIF' where id=$ABO_A" >/dev/null
 
+# Crédit prépayé (2026-10-09) : date_fin découle du crédit. On pose donc une période déjà
+# payée qui finit ce jour-là, crédit pas encore commencé (comme une ferme d'avant le crédit) :
+# credit_depuis = credit_epuise_le = lendemain de date_fin. Une ferme payante (A) reçoit les
+# textes du crédit (« crédit épuisé », « J'ai rechargé ») ; l'essai (C) garde les siens.
 fin() { # $1=abonnement id $2=décalage en jours par rapport à aujourd'hui
-  psql_run "update abonnements set date_fin=current_date + ($2) where id=$1" >/dev/null
+  psql_run "update abonnements set date_fin=current_date + ($2), credit_depuis=current_date + ($2) + 1, credit_epuise_le=current_date + ($2) + 1 where id=$1" >/dev/null
 }
 nb_rappels() { # $1=abonnement id [$2=type]
   psql_run "select count(*) from abonnement_rappels where abonnement_id=$1 ${2:+and type='$2'}"
@@ -169,7 +173,7 @@ grace 5
 fin "$ABO_A" 7
 rappels false
 check "simulation : rappel J7 prévu pour A" "code == 200 and [r['type'] for r in ($R)('$UID_A')] == ['J7'] and not ($R)('$UID_A')[0]['envoye']"
-check "simulation : message du rappel J7 (date, prix par poule, page Abonnement)" "'se termine le' in ($R)('$UID_A')[0]['message'] and 'Montant : 5 000 FCFA par mois (0 poule, prix minimum) ou 50 000 FCFA par an.' in ($R)('$UID_A')[0]['message'] and 'J\\'ai payé' in ($R)('$UID_A')[0]['message'] and '5 jours pour renouveler' in ($R)('$UID_A')[0]['message']"
+check "simulation : message du rappel J7 (crédit : date, coût par mois, « J'ai rechargé »)" "'sera épuisé vers le' in ($R)('$UID_A')[0]['message'] and 'Au rythme actuel, votre ferme coûte environ 5 000 FCFA par mois.' in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message'] and '5 jours pour recharger' in ($R)('$UID_A')[0]['message']"
 check "simulation : destinataire = l'ADMIN de A seulement" "($R)('$UID_A')[0]['destinataires'] == ['$EMAIL_A']"
 check "simulation : rien pour la ferme témoin B" "($R)('$UID_B') == []"
 check_eq "simulation : rien enregistré" "0" "$(nb_rappels "$ABO_A")"
@@ -191,7 +195,7 @@ check_eq "2e passage : toujours une seule ligne J7" "1" "$(nb_rappels "$ABO_A" J
 TOKEN="$TOKEN_A"; api GET /notifications/list
 DATE_A="$(psql_run "select date_fin from abonnements where id=$ABO_A")"
 check "cloche ADMIN : rappel J7 avec lien vers /abonnement" "[(n['key'], n['actionPath'], n['level']) for n in d['data'] if n['type'] == 'ABONNEMENT'] == [('abonnement-j7-$DATE_A', '/abonnement', 'WARNING')]"
-check "cloche ADMIN : texte « se termine le … (dans 7 jours) »" "any('se termine le' in n['message'] and 'dans 7 jours' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
+check "cloche ADMIN : texte « sera épuisé vers le … (dans 7 jours) » (crédit)" "any('sera épuisé vers le' in n['message'] and 'dans 7 jours' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
 if [ -n "$TOKEN_COMPTA" ]; then
   TOKEN="$TOKEN_COMPTA"; api GET /notifications/list
   check "cloche COMPTABLE : pas de rappel d'abonnement" "code == 200 and not any(n['type'] == 'ABONNEMENT' for n in d['data'])"
@@ -201,7 +205,7 @@ fi
 fin "$ABO_A" 1
 rappels true
 check "J-1 : rappel J1 envoyé à A" "[(r['type'], r['envoye']) for r in ($R)('$UID_A')] == [('J1', True)]"
-check "J-1 : texte « se termine demain »" "'se termine demain' in ($R)('$UID_A')[0]['message']"
+check "J-1 : texte « sera épuisé demain soir » (crédit)" "'sera épuisé demain soir' in ($R)('$UID_A')[0]['message']"
 rappels true
 check "J-1 : 2e passage, rien" "($R)('$UID_A') == []"
 check_eq "J-1 : une seule ligne J1" "1" "$(nb_rappels "$ABO_A" J1)"
@@ -212,7 +216,7 @@ TOKEN="$TOKEN_A"; api GET /abonnements/moi
 check "grâce J+1 : statut ACTIF, en grâce, 5 jours restants, pas bloqué" "d['data']['statutEffectif'] == 'ACTIF' and d['data']['enGrace'] and d['data']['joursGraceRestants'] == 5 and d['data']['delaiGraceJours'] == 5"
 rappels true
 check "grâce : rappel GRACE envoyé à A" "[(r['type'], r['envoye']) for r in ($R)('$UID_A')] == [('GRACE', True)]"
-check "grâce : texte « terminé depuis le … il vous reste 5 jours »" "'est terminé depuis le' in ($R)('$UID_A')[0]['message'] and 'Il vous reste 5 jours pour renouveler' in ($R)('$UID_A')[0]['message']"
+check "grâce : texte « épuisé depuis le … il vous reste 5 jours » (crédit)" "'est épuisé depuis le' in ($R)('$UID_A')[0]['message'] and 'Il vous reste 5 jours pour recharger' in ($R)('$UID_A')[0]['message']"
 rappels true
 check "grâce : 2e passage, rien" "($R)('$UID_A') == []"
 check_eq "grâce : une seule ligne GRACE" "1" "$(nb_rappels "$ABO_A" GRACE)"
@@ -249,12 +253,27 @@ PAIEMENT="$(jval "d['data']['uniqueId']")"
 TOKEN="$TOKEN_SA"; api POST "/abonnements/$PAIEMENT/valider"
 ok_cree "validation du paiement de A"
 NOUVELLE_FIN="$(psql_run "select date_fin from abonnements where id=$ABO_A")"
-# Payé pendant la grâce : on repart de l'échéance (hier), pas d'aujourd'hui.
-check_eq "renouvellement : nouvelle date de fin = échéance + 30" "$(psql_run "select current_date - 1 + 30")" "$NOUVELLE_FIN"
+# Crédit prépayé : la déclaration « 1 mois » d'un ancien client devient une recharge de
+# 5 000 FCFA. Payé pendant la grâce : le crédit commence aujourd'hui (les jours de grâce
+# comptent), le mois en cours (au prorata) puis chaque mois commencé avec un crédit positif
+# sont couverts : fin = dernier jour du mois suivant (au lieu de « échéance + 30 jours »).
+FIN_ATTENDUE="$(python3 - <<'PY'
+import datetime, calendar
+t = datetime.date.today(); jm = calendar.monthrange(t.year, t.month)[1]
+s = 5000 - 5000 * (jm - t.day + 1) / jm
+y, m = t.year, t.month
+while s > 0:
+    m += 1
+    if m == 13: y, m = y + 1, 1
+    s -= 5000
+print(datetime.date(y, m, calendar.monthrange(y, m)[1]).isoformat())
+PY
+)"
+check_eq "renouvellement : recharge de 5 000, fin = fin du dernier mois couvert" "$FIN_ATTENDUE" "$NOUVELLE_FIN"
 TOKEN="$TOKEN_A"; api GET /notifications/list
 check "renouvellement : le rappel disparaît de la cloche" "not any(n['type'] == 'ABONNEMENT' for n in d['data'])"
 api GET /abonnements/moi
-check "renouvellement : ACTIF, plus en grâce" "d['data']['statutEffectif'] == 'ACTIF' and not d['data']['enGrace'] and d['data']['joursRestants'] == 29"
+check "renouvellement : ACTIF, plus en grâce" "d['data']['statutEffectif'] == 'ACTIF' and not d['data']['enGrace'] and d['data']['joursRestants'] == $(( ( $(date -d "$FIN_ATTENDUE" +%s) - $(date -d "$(date +%F)" +%s) ) / 86400 ))"
 # La nouvelle période arrive à son tour à J-7 (date de fin différente de la précédente) :
 fin "$ABO_A" 6
 rappels true

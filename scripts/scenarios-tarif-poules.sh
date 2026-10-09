@@ -326,7 +326,11 @@ check_eq "déclaration en attente : montant inchangé après le retrait" "70000|
 api POST "/abonnements/$PAIEMENT_A/valider"
 ok_cree "validation du paiement de A"
 check "validation : comportement inchangé (VALIDE, montant 70 000)" "d['data']['statut'] == 'VALIDE' and d['data']['montant'] == 70000"
-check_eq "abonnement de A : annuel" "ANNUEL" "$(psql_run "select periodicite from abonnements where farm_id=$FARM_A")"
+# Crédit prépayé (2026-10-09) : une déclaration annuelle faite par un ancien client est
+# validée comme une RECHARGE de son montant (70 000), avec le bonus de 20 % (dès 50 000) ;
+# la formule « annuel » n'existe plus (periodicite reste MENSUEL, sans signification).
+check_eq "abonnement de A : 70 000 + bonus 14 000 ajoutés au crédit (au lieu de « annuel »)" "MENSUEL|84000" \
+  "$(psql_run "select a.periodicite||'|'||(select sum(montant)::bigint from mouvements_credit m where m.abonnement_id=a.id) from abonnements a where farm_id=$FARM_A")"
 
 TOKEN="$TOKEN_C"
 api POST /abonnements/declarer-paiement '{"periodicite":"MENSUEL","moyenPaiement":"Wave"}'
@@ -342,12 +346,18 @@ TOKEN="$TOKEN_SA"; api POST "/abonnements/$PAIEMENT_C/rejeter" '{"motif":"test"}
 ok_cree "rejet de la déclaration de C"
 
 echo "--- rappels : le message contient le montant"
-psql_run "update abonnements set periodicite='MENSUEL', statut='ACTIF', date_fin=current_date + 7 where farm_id=$FARM_A" >/dev/null
-psql_run "update abonnements set date_fin=current_date + 7 where farm_id=$FARM_B" >/dev/null
+# Crédit prépayé : date_fin découle du crédit. Fin dans 7 jours, posée de façon cohérente :
+# A (payante) a utilisé tout son crédit, dernier jour couvert dans 7 jours ; B reste en essai,
+# son crédit commencerait au lendemain de la fin de l'essai.
+psql_run "delete from mouvements_credit where abonnement_id=(select id from abonnements where farm_id=$FARM_A)" >/dev/null
+psql_run "update abonnements set periodicite='MENSUEL', statut='ACTIF', date_fin=current_date + 7, credit_depuis=current_date - 30, credit_epuise_le=current_date + 8 where farm_id=$FARM_A" >/dev/null
+psql_run "update abonnements set date_fin=current_date + 7, credit_depuis=current_date + 8, credit_epuise_le=current_date + 8 where farm_id=$FARM_B" >/dev/null
 api POST "/abonnements/rappels?executer=false"
 R="lambda u: [r for r in (d.get('data') or []) if r['farmUniqueId'] == u]"
-check "rappel J7 de A : « Montant : 6 000 FCFA par mois (1 000 poules) ou 60 000 FCFA par an. »" \
-  "code == 200 and 'Montant : 6 000 FCFA par mois (1 000 poules) ou 60 000 FCFA par an.' in ($R)('$UID_A')[0]['message']"
+# Crédit prépayé : A paie au crédit, le rappel parle de crédit épuisé, de son coût par mois
+# au rythme du mois (moyenne des poules) et de « J'ai rechargé ».
+check "rappel J7 de A (crédit) : crédit épuisé vers la date, coût par mois, « J'ai rechargé »" \
+  "code == 200 and 'sera épuisé vers le' in ($R)('$UID_A')[0]['message'] and 'votre ferme coûte environ' in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message']"
 check "rappel J7 de B (essai, 1 500 poules) : 9 000 / 90 000" \
   "'Montant : 9 000 FCFA par mois (1 500 poules) ou 90 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
 psql_run "update projets set removed=true where id=$P_EN_COURS" >/dev/null
@@ -375,13 +385,13 @@ texte = ""
 for part in m.walk():
     if part.get_content_type() in ("text/plain", "text/html"):
         texte += part.get_content()
-print(1 if "6 000 FCFA par mois" in texte and "1 000 poules" in texte else 0)
+print(1 if "FCFA par mois" in texte and "coûte environ" in texte else 0)
 PY
 )"
 fi
 TOKEN="$TOKEN_A"; api GET /notifications/list
-check "cloche de A : rappel avec le montant" \
-  "any(n['type'] == 'ABONNEMENT' and 'Montant : 6 000 FCFA par mois (1 000 poules)' in n['message'] for n in d['data'])"
+check "cloche de A (crédit) : rappel « crédit épuisé », invitation à recharger" \
+  "any(n['type'] == 'ABONNEMENT' and 'crédit Cocorico sera épuisé' in n['message'] and 'Rechargez votre crédit' in n['message'] for n in d['data'])"
 
 echo "--- clôture d'un Projet (date_cloture)"
 nouvelle_ferme D; FARM_D="$FARM_ID"; UID_D="$FARM_UID"; TOKEN_D="$TOKEN_ADMIN"
@@ -422,9 +432,10 @@ api GET /notifications/list
 check "échec : la cloche garde le rappel, sans montant" \
   "code == 200 and any(n['type'] == 'ABONNEMENT' for n in d['data']) and not any('Montant' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
 # Nouvelle période pour A et B (date de fin changée) : leur rappel J7 redevient prévu.
-psql_run "update abonnements set date_fin = current_date + 6 where farm_id in ($FARM_A, $FARM_B)" >/dev/null
+psql_run "update abonnements set date_fin = current_date + 6, credit_epuise_le = current_date + 7 where farm_id in ($FARM_A, $FARM_B)" >/dev/null
+psql_run "update abonnements set credit_depuis = current_date + 7 where farm_id = $FARM_B" >/dev/null
 TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
-check "échec : rappel de A prévu, sans ligne de montant" "len(($R)('$UID_A')) == 1 and 'Montant' not in ($R)('$UID_A')[0]['message'] and 'J\\'ai payé' in ($R)('$UID_A')[0]['message']"
+check "échec : rappel de A prévu, sans ligne de montant (crédit : « J'ai rechargé »)" "len(($R)('$UID_A')) == 1 and 'Montant' not in ($R)('$UID_A')[0]['message'] and 'coûte environ' not in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message']"
 check "échec : rappel de B (tarif spécial) garde son prix fixe" \
   "'Montant : 4 000 FCFA par mois (tarif spécial) ou 40 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
 api GET /admin/tableau-de-bord
@@ -446,19 +457,24 @@ api GET /abonnements/fermes
 check "portail des abonnements : tarif de chaque ferme" "any(a['farmUniqueId'] == '$UID_C' and a['tarif']['prixMensuel'] == 35100 for a in d['data'])"
 
 api GET /admin/tableau-de-bord; cp "$TMP/body" "$TMP/tdb0"
-api POST "/admin/fermes/$UID_C/activer" '{"periodicite":"MENSUEL","mois":1}'
-ok_cree "activation mensuelle de C"
+# Crédit prépayé : « Activer » de la console devient une recharge (montant obligatoire).
+api POST "/admin/fermes/$UID_C/activer" '{"montant":35100,"moyenPaiement":"Wave"}'
+ok_cree "recharge de C saisie dans la console (au lieu de l'activation mensuelle)"
 api GET /admin/tableau-de-bord; cp "$TMP/body" "$TMP/tdb1"
 ecart() { python3 -c 'import json,sys; a=json.load(open(sys.argv[1]))["data"]; b=json.load(open(sys.argv[2]))["data"]; print(round(b[sys.argv[3]]-a[sys.argv[3]],2))' "$1" "$2" "$3"; }
-check_eq "revenu mensuel estimé : + tarif de C (35 100)" "35100.0" "$(ecart "$TMP/tdb0" "$TMP/tdb1" revenuMensuelEstime)"
+# Revenu estimé = coût d'un mois au rythme du MOIS EN COURS (moyenne des poules depuis le 1er,
+# et non plus le plus haut des 30 jours) : 834 poules chaque jour + 5 000 depuis hier.
+JOUR_DU_MOIS="$(date +%-d)"
+COUT_C="$(python3 -c "import math; j=$JOUR_DU_MOIS; moy=834+5000*min(2,j)/j; print(float(max(math.ceil(6*moy/100-1e-9)*100, 5000)))")"
+check_eq "revenu mensuel estimé : + coût de C au rythme du mois ($COUT_C)" "$COUT_C" "$(ecart "$TMP/tdb0" "$TMP/tdb1" revenuMensuelEstime)"
 api POST "/admin/fermes/$UID_C/prix-fixe" '{"prixMensuelFixe":20000,"motif":"Remise"}'
 ok_cree "tarif spécial de C"
 api GET /admin/tableau-de-bord; cp "$TMP/body" "$TMP/tdb2"
-check_eq "revenu mensuel estimé : tarif spécial de C (- 15 100)" "-15100.0" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuMensuelEstime)"
-# A est ANNUEL au tarif par poule (60 000 / an) : compté 5 000 par mois.
+check_eq "revenu mensuel estimé : tarif spécial de C (20 000 au lieu de $COUT_C)" "$(python3 -c "print(20000-$COUT_C)")" "$(ecart "$TMP/tdb1" "$TMP/tdb2" revenuMensuelEstime)"
+# Crédit prépayé : la formule (mensuelle ou annuelle) ne compte plus pour le revenu estimé.
 psql_run "update abonnements set periodicite='ANNUEL' where farm_id=$FARM_A" >/dev/null
 api GET /admin/tableau-de-bord; cp "$TMP/body" "$TMP/tdb3"
-check_eq "A passée en annuel : 60 000 / 12 = 5 000 au lieu de 6 000 (- 1 000)" "-1000.0" "$(ecart "$TMP/tdb2" "$TMP/tdb3" revenuMensuelEstime)"
+check_eq "A passée en annuel : aucun effet sur le revenu estimé (crédit)" "0.0" "$(ecart "$TMP/tdb2" "$TMP/tdb3" revenuMensuelEstime)"
 
 DEBUT=$(date +%s%N)
 api GET /admin/fermes

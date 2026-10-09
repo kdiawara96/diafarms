@@ -340,30 +340,33 @@ api POST /abonnements/declarer-paiement '{"periodicite":"MENSUEL","moyenPaiement
 ok_cree "déclaration du paiement de F"; PAI1="$(jval "d['data']['uniqueId']")"
 check_eq "avant validation : pas de récompense" "$FIN_P0" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_P")"
 TOKEN="$TOKEN_SA"; api POST "/abonnements/$PAI1/valider"; ok_cree "validation du paiement de F"
-ATTENDU="$(psql_run "select ('$FIN_P0'::date + 30)::text")"
-check_eq "premier paiement validé : parrain +30 jours" "$ATTENDU" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_P")"
-check_eq "récompense enregistrée (30 jours, dates avant/après)" "30|$FIN_P0|$ATTENDU" "$(psql_run "select recompense_jours||'|'||parrain_date_fin_avant||'|'||parrain_date_fin_apres from parrainages where filleul_farm_id=$FARM_F and recompense_le is not null")"
+# Crédit prépayé (2026-10-09) : la récompense devient 5 000 FCFA de crédit (ligne
+# PARRAINAGE du compte du parrain) au lieu de +30 jours sur sa date de fin.
+credit_p() { psql_run "select count(*)||'|'||coalesce(sum(montant),0)::bigint from mouvements_credit m join abonnements a on a.id=m.abonnement_id where a.farm_id=$FARM_P and m.type='PARRAINAGE'"; }
+check_eq "premier paiement validé : 5 000 FCFA de crédit au parrain" "1|5000" "$(credit_p)"
+check_eq "récompense enregistrée (crédit 5 000, plus de jours)" "5000|" "$(psql_run "select recompense_credit::bigint||'|'||coalesce(recompense_jours::text,'') from parrainages where filleul_farm_id=$FARM_F and recompense_le is not null")"
 if [ -n "$MAIL_SINK_DIR" ]; then
   sleep 1
-  if mail_contient "$MAIL_P" "1 mois offert"; then echo "OK     e-mail « 1 mois offert » au parrain"; PASS=$((PASS+1)); else echo "ECHEC  e-mail au parrain non reçu"; FAIL=$((FAIL+1)); fi
+  if mail_contient "$MAIL_P" "de crédit"; then echo "OK     e-mail « 5 000 FCFA de crédit » au parrain"; PASS=$((PASS+1)); else echo "ECHEC  e-mail au parrain non reçu"; FAIL=$((FAIL+1)); fi
 fi
 # Deuxième paiement de F : rien de plus.
 psql_run "UPDATE abonnements SET date_fin = current_date + 3 WHERE farm_id=$FARM_F" >/dev/null
 TOKEN="$TOKEN_F"; api POST /abonnements/declarer-paiement '{"periodicite":"MENSUEL","moyenPaiement":"Orange Money","reference":"PARRAIN-2"}'
 ok_cree "deuxième déclaration de F"; PAI2="$(jval "d['data']['uniqueId']")"
 TOKEN="$TOKEN_SA"; api POST "/abonnements/$PAI2/valider"; ok_cree "validation du deuxième paiement"
-check_eq "deuxième paiement : pas de deuxième mois" "$ATTENDU" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_P")"
+check_eq "deuxième paiement : pas de deuxième récompense" "1|5000" "$(credit_p)"
 check_eq "une seule récompense pour F" "1" "$(psql_run "select count(*) from parrainages where filleul_farm_id=$FARM_F and recompense_le is not null")"
-# Console : activation SANS montant (F3) -> rien ; AVEC montant (F2) -> +30 jours.
-api POST "/admin/fermes/$UID_F3/activer" '{"periodicite":"MENSUEL","mois":1}'; ok_cree "activation de F3 sans paiement"
-check_eq "activation sans montant : pas de récompense" "$ATTENDU" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_P")"
-api POST "/admin/fermes/$UID_F2/activer" '{"periodicite":"MENSUEL","mois":1,"montant":5000,"moyenPaiement":"Espèces"}'; ok_cree "activation de F2 avec paiement"
-ATTENDU2="$(psql_run "select ('$ATTENDU'::date + 30)::text")"
-check_eq "activation avec montant : +30 jours au parrain" "$ATTENDU2" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_P")"
-api POST "/admin/fermes/$UID_F2/activer" '{"periodicite":"MENSUEL","mois":1,"montant":5000,"moyenPaiement":"Espèces"}'; ok_cree "deuxième activation payée de F2"
-check_eq "deuxième activation payée : rien de plus" "$ATTENDU2" "$(psql_run "select date_fin from abonnements where farm_id=$FARM_P")"
+# Console : « Recharger » SANS montant (F3) est refusé (crédit en FCFA) -> rien ; recharge
+# reçue AVEC montant (F2) -> 5 000 de crédit au parrain.
+api POST "/admin/fermes/$UID_F3/activer" '{"periodicite":"MENSUEL","mois":1}'
+check "recharge de la console sans montant : refusée" "code == 400"
+check_eq "sans montant : pas de récompense" "1|5000" "$(credit_p)"
+api POST "/admin/fermes/$UID_F2/activer" '{"montant":5000,"moyenPaiement":"Espèces"}'; ok_cree "recharge de F2 reçue hors application"
+check_eq "recharge reçue avec montant : 5 000 de crédit de plus au parrain" "2|10000" "$(credit_p)"
+api POST "/admin/fermes/$UID_F2/activer" '{"montant":5000,"moyenPaiement":"Espèces"}'; ok_cree "deuxième recharge de F2"
+check_eq "deuxième recharge : rien de plus" "2|10000" "$(credit_p)"
 TOKEN="$TOKEN_P"; api GET /croissance/parrainage
-check "page Abonnement du parrain : 3 filleuls, 2 mois gagnés" "d['data']['filleuls'] == 3 and d['data']['moisGagnes'] == 2"
+check "page Abonnement du parrain : 3 filleuls, 10 000 FCFA gagnés" "d['data']['filleuls'] == 3 and d['data']['creditGagne'] == 10000 and d['data']['moisGagnes'] == 0"
 TOKEN="$TOKEN_SA"; api GET "/admin/fermes/$UID_P"
 check "console, fiche du parrain : filleuls et récompenses" "len(d['data']['parrainage']['filleuls']) == 3 and len([x for x in d['data']['parrainage']['filleuls'] if x['recompenseLe']]) == 2 and d['data']['parrainage']['code'] == '$CODE_P'"
 check "console, journal : catégorie PARRAINAGE" "len([j for j in d['data']['journal'] if j['categorie'] == 'PARRAINAGE']) == 2"
