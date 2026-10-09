@@ -358,17 +358,19 @@ R="lambda u: [r for r in (d.get('data') or []) if r['farmUniqueId'] == u]"
 # au rythme du mois (moyenne des poules) et de « J'ai rechargé ».
 check "rappel J7 de A (crédit) : crédit épuisé vers la date, coût par mois, « J'ai rechargé »" \
   "code == 200 and 'sera épuisé vers le' in ($R)('$UID_A')[0]['message'] and 'votre ferme coûte environ' in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message']"
-check "rappel J7 de B (essai, 1 500 poules) : 9 000 / 90 000" \
-  "'Montant : 9 000 FCFA par mois (1 500 poules) ou 90 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
+# Crédit prépayé (revue 2026-10-09) : l'essai n'annonce plus « par mois ou par an » ni « J'ai
+# payé », mais ce que la ferme paierait par mois et comment recharger avant la fin de l'essai.
+check "rappel J7 de B (essai, 1 500 poules) : environ 9 000 par mois, recharger avant la fin de l'essai" \
+  "'Avec 1 500 poules, votre ferme paierait environ 9 000 FCFA par mois.' in ($R)('$UID_B')[0]['message'] and \"Rechargez votre crédit avant la fin de l'essai\" in ($R)('$UID_B')[0]['message'] and 'par an' not in ($R)('$UID_B')[0]['message']"
 psql_run "update projets set removed=true where id=$P_EN_COURS" >/dev/null
 api POST "/abonnements/rappels?executer=false"
-check "rappel au minimum : « (0 poule, prix minimum) »" \
-  "'Montant : 5 000 FCFA par mois (0 poule, prix minimum) ou 50 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
+check "rappel au minimum : « Avec 0 poule … 5 000 FCFA par mois »" \
+  "'Avec 0 poule, votre ferme paierait environ 5 000 FCFA par mois.' in ($R)('$UID_B')[0]['message']"
 api POST "/admin/fermes/$UID_B/prix-fixe" '{"prixMensuelFixe":4000,"motif":"Ferme pilote"}'
 ok_cree "tarif spécial de B"
 api POST "/abonnements/rappels?executer=false"
-check "rappel avec tarif spécial : « (tarif spécial) »" \
-  "'Montant : 4 000 FCFA par mois (tarif spécial) ou 40 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
+check "rappel avec tarif spécial : 4 000 par mois" \
+  "'paierait environ 4 000 FCFA par mois.' in ($R)('$UID_B')[0]['message']"
 MAILS_AVANT=0
 [ -n "$MAIL_SINK_DIR" ] && MAILS_AVANT="$(grep -l "$EMAIL_A" "$MAIL_SINK_DIR"/*.eml 2>/dev/null | wc -l)"
 api POST "/abonnements/rappels?executer=true"
@@ -433,11 +435,14 @@ check "échec : la cloche garde le rappel, sans montant" \
   "code == 200 and any(n['type'] == 'ABONNEMENT' for n in d['data']) and not any('Montant' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
 # Nouvelle période pour A et B (date de fin changée) : leur rappel J7 redevient prévu.
 psql_run "update abonnements set date_fin = current_date + 6, credit_epuise_le = current_date + 7 where farm_id in ($FARM_A, $FARM_B)" >/dev/null
+# Crédit prépayé : J-7 d'une ferme au crédit est envoyé au plus une fois par MOIS (clé au
+# 1er du mois). A l'a déjà reçu ce mois-ci : on efface sa trace pour simuler le mois suivant.
+psql_run "delete from abonnement_rappels where abonnement_id=(select id from abonnements where farm_id=$FARM_A)" >/dev/null
 psql_run "update abonnements set credit_depuis = current_date + 7 where farm_id = $FARM_B" >/dev/null
 TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
 check "échec : rappel de A prévu, sans ligne de montant (crédit : « J'ai rechargé »)" "len(($R)('$UID_A')) == 1 and 'Montant' not in ($R)('$UID_A')[0]['message'] and 'coûte environ' not in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message']"
 check "échec : rappel de B (tarif spécial) garde son prix fixe" \
-  "'Montant : 4 000 FCFA par mois (tarif spécial) ou 40 000 FCFA par an.' in ($R)('$UID_B')[0]['message']"
+  "'paierait environ 4 000 FCFA par mois.' in ($R)('$UID_B')[0]['message']"
 api GET /admin/tableau-de-bord
 check "échec : revenu mensuel estimé signalé incomplet" "code == 200 and d['data']['tarifsEnErreur'] >= 1"
 remettre_colonne

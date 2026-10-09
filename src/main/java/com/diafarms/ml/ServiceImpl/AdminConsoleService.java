@@ -274,6 +274,7 @@ public class AdminConsoleService {
         Map<Long, LocalDate> depuis = new HashMap<>();
         for (Abonnement a : parFerme.values()) depuis.put(a.getFarm().getId(), a.getCreditDepuis());
         Map<Long, CreditService.Rythme> rythmes = creditService.rythmes(null, depuis, auj);
+        java.util.Set<Long> doublons = creditService.doublonsPossibles();
         List<Ligne> res = new ArrayList<>();
         for (Farm f : farmsRepo.findAll()) {
             Abonnement a = parFerme.get(f.getId());
@@ -283,13 +284,13 @@ public class AdminConsoleService {
             com.diafarms.ml.DTO.CreditDTO c = a == null ? null : creditService.etat(a, config,
                     soldes.getOrDefault(a.getId(), 0.0), rythmes == null ? null : rythmes.get(f.getId()), auj,
                     t.poulesComptees());
-            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag, t, c), t, c));
+            res.add(new Ligne(f, a, etat, versDto(f, a, etat, ag, t, c, doublons.contains(f.getId())), t, c));
         }
         return res;
     }
 
     private AdminConsoleDTO.Ferme versDto(Farm f, Abonnement a, AbonnementEcheance.Etat etat, Agregats ag,
-            com.diafarms.ml.DTO.AbonnementTarifDTO tarif, com.diafarms.ml.DTO.CreditDTO c) {
+            com.diafarms.ml.DTO.AbonnementTarifDTO tarif, com.diafarms.ml.DTO.CreditDTO c, boolean doublon) {
         Long id = f.getId();
         Proprio p = ag.proprios().get(id);
         LocalDateTime inscription = ag.premiereInscription().get(id);
@@ -342,7 +343,8 @@ public class AdminConsoleService {
                 c != null ? c.moyennePoulesMois() : 0,
                 c != null && c.aRecharger(),
                 c != null ? c.aChiffrer() : (!tarif.prixFixe() && tarif.surDevis()),
-                c != null && c.actif());
+                c != null && c.actif(),
+                doublon);
     }
 
     // ------------------------------------------------------------------ lecture
@@ -476,7 +478,8 @@ public class AdminConsoleService {
         AbonnementEcheance.Etat etat = a != null ? AbonnementEcheance.calculer(a, config, LocalDate.now()) : null;
         com.diafarms.ml.DTO.AbonnementTarifDTO tarif = tarifService.tarifFerme(f.getId(), a, config);
         com.diafarms.ml.DTO.CreditDTO credit = a != null ? creditService.etat(a, config, tarif.poulesComptees()) : null;
-        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats(f.getId()), tarif, credit);
+        AdminConsoleDTO.Ferme dto = versDto(f, a, etat, agregats(f.getId()), tarif, credit,
+                creditService.doublonsPossibles().contains(f.getId()));
 
         // Utilisateurs de la ferme, rôles groupés en une requête.
         Map<Long, AdminConsoleDTO.Utilisateur> users = new LinkedHashMap<>();
@@ -603,7 +606,7 @@ public class AdminConsoleService {
 
     // « Recharger » (crédit prépayé) : argent reçu en dehors de l'application, enregistré
     // directement comme une recharge VALIDÉE (bonus compris), comme une déclaration
-    // validée. Lève une suspension, comme l'ancien « Activer / prolonger ». Le montant est
+    // validée. Lève une suspension (comme l'ancien bouton d'activation). Le montant est
     // obligatoire : offrir du crédit sans paiement se fait par un ajustement.
     @Transactional
     public AdminConsoleDTO.FermeDetail activer(String farmUniqueId, AdminActiverAbonnementRequest req) {
@@ -623,14 +626,18 @@ public class AdminConsoleService {
         String moyen = req.getMoyenPaiement().trim();
         if (moyen.length() > 50) moyen = moyen.substring(0, 50);
         double montant = Math.round(req.getMontant());
+        String cleRequete = cleRequete(req.getRequestId());
 
         Abonnement a = abonnementVerrouille(f);
+        // Même envoi rejoué (double clic, réseau) : rien de plus, verrou déjà pris.
+        if (creditService.cleExiste(cleRequete)) return detailFerme(farmUniqueId);
         boolean etaitSuspendu = a.estSuspendu();
         a.setSuspendu(null);
         a.setMotifSuspension(null);
         a.setSuspenduLe(null);
         if (a.getInitialisation() != null) Initialisation.updateDate(a.getInitialisation());
         abonnementRepo.save(a);
+        if (etaitSuspendu) creditService.fermerSuspension(a.getId(), LocalDate.now());
 
         PaiementAbonnement p = new PaiementAbonnement();
         p.setUniqueId(UUID.randomUUID().toString());
@@ -649,7 +656,7 @@ public class AdminConsoleService {
         p.setHorsApplication(true);
         p.setInitialisation(Initialisation.init());
         paiementRepo.save(p);
-        CreditService.Recharge r = creditService.appliquerRecharge(a, p, sa);
+        CreditService.Recharge r = creditService.appliquerRecharge(a, p, sa, cleRequete);
         paiementRepo.save(p);
         // Parrainage : une recharge reçue compte comme une validation (après le commit).
         parrainageService.apresPaiementValide(f.getId(), p.getId(), sa.getId());
@@ -667,6 +674,14 @@ public class AdminConsoleService {
         return detailFerme(farmUniqueId);
     }
 
+    // « REQ:<id> » pour un identifiant d'envoi valable, null sans identifiant.
+    private static String cleRequete(String requestId) {
+        if (requestId == null || requestId.isBlank()) return null;
+        String id = requestId.trim();
+        if (!id.matches("[A-Za-z0-9_-]{8,64}")) throw new IllegalArgumentException("Identifiant d'envoi invalide.");
+        return "REQ:" + id;
+    }
+
     // Ajustement manuel du crédit (en plus ou en moins), avec la raison (visible par la
     // ferme dans son historique). Journalisé sans le montant ni la raison.
     @Transactional
@@ -680,8 +695,10 @@ public class AdminConsoleService {
         }
         if (motif.isEmpty()) throw new IllegalArgumentException("Indiquez la raison de l'ajustement (elle est montrée à la ferme).");
         if (motif.length() > 300) throw new IllegalArgumentException("Raison trop longue (300 caractères au plus).");
+        String cleRequete = cleRequete(req.getRequestId());
         Abonnement a = abonnementVerrouille(f);
-        creditService.ajuster(a, (double) Math.round(montant), motif, sa);
+        if (creditService.cleExiste(cleRequete)) return detailFerme(farmUniqueId); // envoi rejoué
+        creditService.ajuster(a, (double) Math.round(montant), motif, sa, cleRequete);
         journaliser(sa, f, "Ajustement du crédit de la ferme " + nom(f) + (montant > 0 ? " (ajout)" : " (retrait)"));
         return detailFerme(farmUniqueId);
     }
@@ -699,6 +716,7 @@ public class AdminConsoleService {
         a.setMotifSuspension(motif);
         a.setSuspenduLe(LocalDateTime.now());
         abonnementRepo.save(a);
+        creditService.ouvrirSuspension(a.getId(), LocalDate.now()); // jours suspendus jamais facturés
         journaliser(sa, f, "Suspension de la ferme " + nom(f)); // motif : dans abonnements seulement
         // Le motif est déjà montré à la ferme sur son écran de blocage : il figure aussi ici.
         emailFerme(f, "L'accès de votre ferme à Cocorico est suspendu",
@@ -717,6 +735,7 @@ public class AdminConsoleService {
         a.setMotifSuspension(null);
         a.setSuspenduLe(null);
         abonnementRepo.save(a);
+        creditService.fermerSuspension(a.getId(), LocalDate.now());
         journaliser(sa, f, "Réactivation de la ferme " + nom(f) + " (fin de la suspension)");
         emailFerme(f, "L'accès de votre ferme à Cocorico est rétabli",
                 "L'accès de la ferme " + nom(f) + " à Cocorico est rétabli. Vous pouvez de nouveau utiliser "
@@ -732,7 +751,7 @@ public class AdminConsoleService {
         if (jours < 1 || jours > 365) throw new IllegalArgumentException("Nombre de jours invalide (1 à 365).");
         Abonnement a = abonnementVerrouille(f);
         if (a.getPeriodicite() != null) {
-            throw new IllegalArgumentException("Cette ferme a déjà un abonnement payé : utilisez « Activer / prolonger ».");
+            throw new IllegalArgumentException("Cette ferme a déjà un abonnement payé : utilisez « Recharger ».");
         }
         LocalDate auj = LocalDate.now();
         LocalDate base = a.getDateFin().isBefore(auj) ? auj : a.getDateFin();

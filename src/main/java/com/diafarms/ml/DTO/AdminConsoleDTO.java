@@ -67,7 +67,10 @@ public final class AdminConsoleDTO {
             double moyennePoulesMois,
             boolean aRecharger,
             boolean aChiffrer,
-            boolean creditActif) {}
+            boolean creditActif,
+            // Téléphone ou e-mail du propriétaire déjà vu chez un employé ou dans les
+            // coordonnées d'une autre ferme : à vérifier (n'empêche pas l'essai).
+            boolean doublonPossible) {}
 
     public record MoisValeur(String mois, double montant, long nombre) {}
 

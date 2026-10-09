@@ -455,7 +455,9 @@ check_eq "inscription 2 : abonnement sans essai, tout de suite à recharger" "tr
 UID_R2="$(psql_run "select unique_id from farms where id=$FARM_R2")"
 # Ferme bloquée : la connexion mobile est refusée (comme avant) ; on regarde par la console.
 TOKEN="$TOKEN_SA"; api GET "/admin/fermes/$UID_R2"
-check "ferme sans essai : bloquée (page Abonnement seulement), pas présentée comme un essai" "d['data']['ferme']['statut'] == 'EXPIRE' and d['data']['credit']['essaiRefuse'] and d['data']['credit']['aRecharger']"
+check "ferme sans essai : 5 jours de grâce pour recharger (pas de blocage immédiat), pas présentée comme un essai" "d['data']['ferme']['statut'] == 'GRACE' and d['data']['credit']['essaiRefuse'] and d['data']['credit']['aRecharger'] and d['data']['ferme']['dernierJourAcces'] == '$(date -d '+4 days' +%F)'"
+TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
+check "rappel de la ferme sans essai : message clair (pas d'essai gratuit)" "any(r['farmUniqueId'] == '$UID_R2' and r['type'] == 'GRACE' and \"pas d'essai gratuit\" in r['message'] for r in d['data'])"
 public POST /users/create "{\"fullName\":\"Essai Trois\",\"email\":\"ESSAI1-$SUFFIXE@T.LOCAL\",\"telephone\":\"$(tel_aleatoire)\",\"farmName\":\"Essai3$SUFFIXE\",\"roles\":[\"ADMIN\"]}"
 check "inscription 3, même e-mail en majuscules : pas d'essai" "code in (200, 201) and d['data']['essaiRefuse'] is True"
 TEL4="$(tel_aleatoire)"
@@ -467,6 +469,21 @@ public POST /users/create "{\"fullName\":\"Essai Cinq\",\"email\":\"essai5-$SUFF
 check "inscription 5, numéro d'un compte supprimé : pas d'essai" "code in (200, 201) and d['data']['essaiRefuse'] is True"
 TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_R2/activer" '{"montant":5000,"moyenPaiement":"Wave"}'
 check "ferme sans essai qui recharge 5 000 : débloquée, le crédit commence aujourd'hui" "code == 200 and d['data']['ferme']['statut'] == 'ACTIF' and d['data']['credit']['creditDepuis'] == '$(date +%F)' and d['data']['credit']['solde'] == 5000"
+
+echo "--- essai : pas de faux doublon (employé, coordonnées de ferme), signalé dans la console"
+# Un employé (COMPTABLE) d'une autre ferme et les coordonnées d'une ferme ne privent pas d'essai.
+TEL_EMPLOYE="$(tel_aleatoire)"
+psql_run "update utilisateurs set telephone='$TEL_EMPLOYE' where email='essai1-$SUFFIXE@t.local'; update roles_users set id_roles=(select id from roles where role='COMPTABLE') where id_utilisateurs=(select id from utilisateurs where email='essai1-$SUFFIXE@t.local')" >/dev/null
+public POST /users/create "{\"fullName\":\"Essai Six\",\"email\":\"essai6-$SUFFIXE@t.local\",\"telephone\":\"+223 $TEL_EMPLOYE\",\"farmName\":\"Essai6$SUFFIXE\",\"roles\":[\"ADMIN\"]}"
+check "numéro d'un employé d'une autre ferme (écrit +223 ...) : essai donné" "code in (200, 201) and d['data']['essaiRefuse'] is False"
+TEL_FERME="$(tel_aleatoire)"
+psql_run "update farms set telephone1='$TEL_FERME' where id=$FARM_A" >/dev/null
+public POST /users/create "{\"fullName\":\"Essai Sept\",\"email\":\"essai7-$SUFFIXE@t.local\",\"telephone\":\"$TEL_FERME\",\"farmName\":\"Essai7$SUFFIXE\",\"roles\":[\"ADMIN\"]}"
+check "numéro écrit sur une autre ferme : essai donné" "code in (200, 201) and d['data']['essaiRefuse'] is False"
+UID_E6="$(psql_run "select f.unique_id from farms f join utilisateurs u on u.farm_id=f.id where u.email='essai6-$SUFFIXE@t.local'")"
+UID_E7="$(psql_run "select f.unique_id from farms f join utilisateurs u on u.farm_id=f.id where u.email='essai7-$SUFFIXE@t.local'")"
+TOKEN="$TOKEN_SA"; api GET /admin/fermes
+check "console : « doublon possible » pour ces deux fermes, pas pour une ferme sans lien" "any(f['farmUniqueId'] == '$UID_E6' and f['doublonPossible'] for f in d['data']) and any(f['farmUniqueId'] == '$UID_E7' and f['doublonPossible'] for f in d['data']) and any(f['farmUniqueId'] == '$UID_L' and not f['doublonPossible'] for f in d['data'])"
 
 echo "--- parrainage : 5 000 FCFA de crédit au parrain"
 nouvelle_ferme R; FARM_R="$FARM_ID"; UID_R="$FARM_UID"; TOKEN_R="$TOKEN_ADMIN"; ABO_R="$ABO_ID"
@@ -485,6 +502,13 @@ declarer "$TOKEN_F" 20000; valider "$DECL"
 check_eq "deuxième recharge de F : pas de deuxième récompense" "1" "$(psql_run "select count(*) from mouvements_credit where abonnement_id=$ABO_R and type='PARRAINAGE'")"
 TOKEN="$TOKEN_R"; api GET /croissance/parrainage
 check "R : 5 000 FCFA gagnés" "d['data']['creditGagne'] == 5000 and d['data']['filleuls'] == 1"
+# Récompense seulement pour une recharge d'au moins le crédit offert (5 000).
+nouvelle_ferme H; FARM_H="$FARM_ID"; TOKEN_H="$TOKEN_ADMIN"
+TOKEN="$TOKEN_H"; api POST /croissance/parrainage/code "{\"code\":\"$CODE_R\"}"
+declarer "$TOKEN_H" 3000; valider "$DECL"
+check_eq "recharge de 3 000 du filleul (moins que 5 000) : pas de récompense" "1" "$(psql_run "select count(*) from mouvements_credit where abonnement_id=$ABO_R and type='PARRAINAGE'")"
+declarer "$TOKEN_H" 6000; valider "$DECL"
+check_eq "recharge suivante de 6 000 : récompense donnée" "2" "$(psql_run "select count(*) from mouvements_credit where abonnement_id=$ABO_R and type='PARRAINAGE'")"
 nouvelle_ferme S; UID_S="$FARM_UID"; TOKEN_S="$TOKEN_ADMIN"; ABO_S="$ABO_ID"
 TOKEN="$TOKEN_S"; api GET /croissance/parrainage
 CODE_S="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["data"]["code"])' "$TMP/body")"
@@ -534,6 +558,56 @@ check_eq "rien écrit par ces refus (solde A)" "157000" "$(solde "$ABO_A")"
 TOKEN="$TOKEN_SA"; api GET /admin/tableau-de-bord
 check "tableau de bord : revenu estimé = coût des fermes payantes, crédit total, fermes à recharger" "d['data']['revenuMensuelEstime'] > 0 and d['data']['creditTotal'] > 0 and 'aRecharger' in d['data']"
 
+echo "--- console : un même envoi rejoué ne crédite pas deux fois"
+REQ1="req-$SUFFIXE-recharge"
+TOKEN="$TOKEN_SA"
+api POST "/admin/fermes/$UID_A/activer" "{\"montant\":2000,\"moyenPaiement\":\"Wave\",\"requestId\":\"$REQ1\"}"
+api POST "/admin/fermes/$UID_A/activer" "{\"montant\":2000,\"moyenPaiement\":\"Wave\",\"requestId\":\"$REQ1\"}"
+check "recharge rejouée : réponse normale" "code == 200"
+check_eq "recharge rejouée : une seule ligne (clé REQ), une seule déclaration" "1|1" "$(psql_run "select (select count(*) from mouvements_credit where cle='REQ:$REQ1')||'|'||(select count(*) from paiements_abonnement p where p.abonnement_id=$ABO_A and p.montant=2000)")"
+REQ2="req-$SUFFIXE-ajust"
+for i in 1 2; do api POST "/admin/fermes/$UID_A/ajustement" "{\"montant\":700,\"motif\":\"Rejeu\",\"requestId\":\"$REQ2\"}"; done
+check_eq "ajustement rejoué : une seule ligne" "1" "$(psql_run "select count(*) from mouvements_credit where cle='REQ:$REQ2'")"
+api POST "/admin/fermes/$UID_A/ajustement" '{"montant":700,"motif":"x","requestId":"a b"}'
+check "identifiant d'envoi invalide : refusé" "code == 400"
+
+echo "--- suspensions : jours suspendus jamais facturés, même après la réactivation"
+nouvelle_ferme W; FARM_W="$FARM_ID"; UID_W="$FARM_UID"; ABO_W="$ABO_ID"
+ajuster "$UID_W" 50000 "Crédit de départ (test)"
+projet "$FARM_W" 1000 "$M3-01" PONTE >/dev/null
+credit_depuis "$ABO_W" "$M2-01"
+TOKEN="$TOKEN_SA"; api POST "/admin/fermes/$UID_W/suspendre" '{"motif":"Test suspension"}'
+api POST "/admin/fermes/$UID_W/reactiver"
+check_eq "suspension enregistrée puis fermée (du aujourd'hui, au hier)" "$(date +%F)|$(date -d '-1 day' +%F)" "$(psql_run "select du||'|'||au from suspensions_credit where abonnement_id=$ABO_W")"
+# Simule une suspension passée, à cheval sur deux mois : du 21 de M2 au 10 de M1.
+psql_run "update suspensions_credit set du='$M2-21', au='$M1-10' where abonnement_id=$ABO_W" >/dev/null
+TOKEN="$TOKEN_SA"; api POST "/admin/credit/tache"
+check "simulation : W, $M2 sur 20 jours et $M1 sur $((10#$J_M1 - 10)) jours" "any(p['farmUniqueId'] == '$UID_W' and p['mois'] == '$M2' and p['jours'] == 20 for p in d['data']['mensualites']) and any(p['farmUniqueId'] == '$UID_W' and p['mois'] == '$M1' and p['jours'] == $((10#$J_M1 - 10)) for p in d['data']['mensualites'])"
+tache
+check_eq "W, $M2 : 20 jours payés sur $J_M2 (suspendu du 21)" "-$(arrondi100 "6000*20/$J_M2")|20" "$(psql_run "select montant::bigint||'|'||jours from mouvements_credit where abonnement_id=$ABO_W and mois='$M2'")"
+check_eq "W, $M1 : jours après la réactivation seulement" "-$(arrondi100 "6000*($J_M1-10)/$J_M1")|$((10#$J_M1 - 10))" "$(psql_run "select montant::bigint||'|'||jours from mouvements_credit where abonnement_id=$ABO_W and mois='$M1'")"
+# Suspension au milieu d'un seul mois.
+nouvelle_ferme X; FARM_X2="$FARM_ID"; UID_X2="$FARM_UID"; ABO_X2="$ABO_ID"
+ajuster "$UID_X2" 50000 "Crédit de départ (test)"
+projet "$FARM_X2" 1000 "$M3-01" PONTE >/dev/null
+credit_depuis "$ABO_X2" "$M1-01"
+psql_run "insert into suspensions_credit (abonnement_id, du, au) values ($ABO_X2, '$M1-05', '$M1-14')" >/dev/null
+tache
+check_eq "X, $M1 : 10 jours suspendus au milieu du mois non facturés" "-$(arrondi100 "6000*($J_M1-10)/$J_M1")|$((10#$J_M1 - 10))" "$(psql_run "select montant::bigint||'|'||jours from mouvements_credit where abonnement_id=$ABO_X2 and mois='$M1'")"
+# Mois entièrement suspendus : aucune mensualité (jamais une ligne à 0).
+nouvelle_ferme Y; FARM_Y2="$FARM_ID"; UID_Y2="$FARM_UID"; ABO_Y2="$ABO_ID"
+ajuster "$UID_Y2" 50000 "Crédit de départ (test)"
+credit_depuis "$ABO_Y2" "$M2-01"
+psql_run "insert into suspensions_credit (abonnement_id, du, au) values ($ABO_Y2, '$M2-01', null)" >/dev/null
+tache
+check_eq "Y suspendue depuis le 1er de $M2 (toujours) : aucune mensualité" "0" "$(psql_run "select count(*) from mouvements_credit where abonnement_id=$ABO_Y2 and type='MENSUALITE'")"
+
+echo "--- textes : essai et période déjà payée"
+nouvelle_ferme K; FARM_K="$FARM_ID"; UID_K="$FARM_UID"; ABO_K="$ABO_ID"
+psql_run "update abonnements set date_fin=current_date + 7, credit_depuis=current_date + 8, credit_epuise_le=current_date + 8 where id=$ABO_K" >/dev/null
+TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
+check "rappel J-7 d'essai : recharger avant la fin de l'essai, « J'ai rechargé », bonus, plus de prix par an" "any(r['farmUniqueId'] == '$UID_K' and r['type'] == 'J7' and \"Rechargez votre crédit avant la fin de l'essai\" in r['message'] and \"J'ai rechargé\" in r['message'] and 'reçoit 20 % de crédit en plus' in r['message'] and 'par an' not in r['message'] and \"J'ai payé\" not in r['message'] for r in d['data'])"
+
 echo "--- ferme d'avant le crédit : convertie par la tâche, sa période payée gardée"
 nouvelle_ferme V; FARM_V="$FARM_ID"; TOKEN_V="$TOKEN_ADMIN"; ABO_V="$ABO_ID"
 FIN_V="$(date -d '+20 days' +%F)"
@@ -542,7 +616,22 @@ tache
 check_eq "V convertie : crédit à partir du lendemain de sa fin, fin inchangée" "$(date -d "$FIN_V +1 day" +%F)|$(date -d "$FIN_V +1 day" +%F)|$FIN_V|0" \
   "$(psql_run "select credit_depuis||'|'||credit_epuise_le||'|'||date_fin||'|'||(select count(*) from mouvements_credit where abonnement_id=$ABO_V) from abonnements where id=$ABO_V")"
 TOKEN="$TOKEN_V"; api GET /abonnements/moi
-check "V : toujours active jusqu'à sa fin payée, crédit pas encore commencé" "d['data']['statutEffectif'] == 'ACTIF' and d['data']['dateFin'] == '$FIN_V' and $C['avantCredit'] and $C['solde'] == 0 and not $C['aRecharger']"
+check "V : toujours active jusqu'à sa fin payée, crédit pas encore commencé, état « période payée »" "d['data']['statutEffectif'] == 'ACTIF' and d['data']['dateFin'] == '$FIN_V' and $C['avantCredit'] and $C['solde'] == 0 and not $C['aRecharger'] and $C['periodePayee']"
+UID_V="$(psql_run "select unique_id from farms where id=$FARM_V")"
+psql_run "update abonnements set date_fin=current_date + 7, credit_depuis=current_date + 8, credit_epuise_le=current_date + 8 where id=$ABO_V" >/dev/null
+TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
+check "V à J-7 : « Votre période payée se termine le … », jamais essai ni crédit épuisé" "any(r['farmUniqueId'] == '$UID_V' and r['type'] == 'J7' and 'période payée' in r['sujet'] and 'se termine le $(date -d '+7 days' +%d/%m/%Y)' in r['message'] and 'Rechargez votre crédit pour continuer sans coupure' in r['message'] and 'épuisé' not in r['message'] and 'essai' not in r['message'] for r in d['data'])"
+TOKEN="$TOKEN_V"; api GET /notifications/list
+psql_run "update abonnements set date_fin=current_date - 1, credit_depuis=current_date, credit_epuise_le=current_date where id=$ABO_V" >/dev/null
+TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=false"
+check "V en grâce : « Votre période payée est terminée depuis le … »" "any(r['farmUniqueId'] == '$UID_V' and r['type'] == 'GRACE' and 'est terminée depuis le $(date -d '-1 day' +%d/%m/%Y)' in r['message'] and 'épuisé' not in r['message'] for r in d['data'])"
+
+echo "--- rappels du crédit : une fois par mois, même si la fin estimée change de mois"
+check_eq "« crédit bas » de P rangé au mois (1er du mois)" "$(date +%Y-%m-01)" "$(psql_run "select coalesce(max(date_fin)::text,'') from abonnement_rappels where abonnement_id=$ABO_P and type='CREDIT_BAS'")"
+ajuster "$UID_P" 6000 "Aller (test)"
+ajuster "$UID_P" -6000 "Retour (test)"
+TOKEN="$TOKEN_SA"; api POST "/abonnements/rappels?executer=true"
+check_eq "fin estimée repartie puis revenue : pas de deuxième « crédit bas » ce mois-ci" "1" "$(psql_run "select count(*) from abonnement_rappels where abonnement_id=$ABO_P and type='CREDIT_BAS'")"
 
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"

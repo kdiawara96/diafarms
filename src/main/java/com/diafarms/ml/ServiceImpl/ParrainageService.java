@@ -37,7 +37,8 @@ import lombok.extern.slf4j.Slf4j;
 //    (uk_parrainage_filleul).
 //  - Récompense (crédit prépayé, 2026-10-09) : à la PREMIÈRE recharge validée du filleul
 //    (validation d'une déclaration par le SUPER_ADMIN, ou recharge saisie dans la console),
-//    le parrain reçoit du crédit : AbonnementConfig.creditParrainage (5 000 FCFA par
+//    le parrain reçoit du crédit (seulement si cette recharge vaut au moins ce crédit) :
+//    AbonnementConfig.creditParrainage (5 000 FCFA par
 //    défaut), une ligne PARRAINAGE dans son compte (CreditService.crediterParrainage, clé
 //    unique par parrainage). Une seule fois par filleul (UPDATE ... WHERE recompense_le IS
 //    NULL), e-mail au parrain. Avant le crédit, c'était 1 mois offert (+30 jours).
@@ -198,7 +199,7 @@ public class ParrainageService {
     static String texteAPartager(String code, Integer joursEssai) {
         int j = joursEssai == null || joursEssai <= 0 ? 14 : joursEssai;
         return "J'utilise Cocorico pour suivre ma ferme : ponte, aliment, ventes, tout sur le téléphone. "
-                + "Inscrivez votre ferme avec mon code de parrainage " + code + " : " + j + " jours d'essai gratuit.";
+                + "Inscrivez votre ferme avec mon code de parrainage " + code + " : vous commencez par un essai gratuit.";
     }
 
     @Transactional
@@ -315,9 +316,12 @@ public class ParrainageService {
             Long id = ((Number) lignes.get(0).get("id")).longValue();
             Long parrainId = ((Number) lignes.get(0).get("parrain_farm_id")).longValue();
             String code = (String) lignes.get(0).get("code");
-            // Premier paiement validé du filleul (le paiement qui déclenche, ou le plus ancien).
+            // Recharge validée du filleul d'au moins le crédit offert (5 000 FCFA par défaut) : une
+            // petite recharge ne déclenche pas la récompense, la suivante assez grande le fera.
+            double minimum = com.diafarms.ml.commons.AbonnementCredit.regles(configRepo.findFirstByOrderByIdAsc()).creditParrainage();
             List<Long> paiements = jdbc.queryForList("SELECT p.id FROM paiements_abonnement p JOIN abonnements a ON a.id = p.abonnement_id "
-                    + "WHERE a.farm_id = ? AND p.statut = 'VALIDE' ORDER BY p.date_validation, p.id", Long.class, filleulFarmId);
+                    + "WHERE a.farm_id = ? AND p.statut = 'VALIDE' AND p.montant >= ? ORDER BY p.date_validation, p.id", Long.class,
+                    filleulFarmId, minimum);
             if (paiements.isEmpty()) return null;
             // Parrain suspendu, hors statistiques (démo) ou sans abonnement : la récompense reste
             // en attente ; le rattrapage quotidien la donnera quand la situation le permet.
@@ -350,7 +354,7 @@ public class ParrainageService {
             jdbc.update("UPDATE parrainages SET recompense_credit = ?, parrain_date_fin_avant = ?, parrain_date_fin_apres = ?, "
                     + "paiement_id = ? WHERE id = ?", montant, avant != null ? java.sql.Date.valueOf(avant) : null,
                     apres != null ? java.sql.Date.valueOf(apres) : null,
-                    paiementId != null ? paiementId : paiements.get(0), id);
+                    paiements.contains(paiementId) ? paiementId : paiements.get(0), id);
             Map<Long, String> noms = nomsInscription();
             Farm parrain = farmsRepo.findById(parrainId).orElse(null);
             Farm filleul = farmsRepo.findById(filleulFarmId).orElse(null);

@@ -173,7 +173,9 @@ grace 5
 fin "$ABO_A" 7
 rappels false
 check "simulation : rappel J7 prévu pour A" "code == 200 and [r['type'] for r in ($R)('$UID_A')] == ['J7'] and not ($R)('$UID_A')[0]['envoye']"
-check "simulation : message du rappel J7 (crédit : date, coût par mois, « J'ai rechargé »)" "'sera épuisé vers le' in ($R)('$UID_A')[0]['message'] and 'Au rythme actuel, votre ferme coûte environ 5 000 FCFA par mois.' in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message'] and '5 jours pour recharger' in ($R)('$UID_A')[0]['message']"
+# Revue du 2026-10-09 : A (période déjà payée, crédit jamais rechargé) parle de sa
+# « période payée », jamais de crédit épuisé ni d'essai.
+check "simulation : message du rappel J7 (période payée : date, coût par mois, « J'ai rechargé »)" "'période payée de la ferme' in ($R)('$UID_A')[0]['message'] and 'se termine le' in ($R)('$UID_A')[0]['message'] and 'Au rythme actuel, votre ferme coûte environ 5 000 FCFA par mois.' in ($R)('$UID_A')[0]['message'] and 'J\\'ai rechargé' in ($R)('$UID_A')[0]['message'] and '5 jours pour recharger' in ($R)('$UID_A')[0]['message']"
 check "simulation : destinataire = l'ADMIN de A seulement" "($R)('$UID_A')[0]['destinataires'] == ['$EMAIL_A']"
 check "simulation : rien pour la ferme témoin B" "($R)('$UID_B') == []"
 check_eq "simulation : rien enregistré" "0" "$(nb_rappels "$ABO_A")"
@@ -195,7 +197,7 @@ check_eq "2e passage : toujours une seule ligne J7" "1" "$(nb_rappels "$ABO_A" J
 TOKEN="$TOKEN_A"; api GET /notifications/list
 DATE_A="$(psql_run "select date_fin from abonnements where id=$ABO_A")"
 check "cloche ADMIN : rappel J7 avec lien vers /abonnement" "[(n['key'], n['actionPath'], n['level']) for n in d['data'] if n['type'] == 'ABONNEMENT'] == [('abonnement-j7-$DATE_A', '/abonnement', 'WARNING')]"
-check "cloche ADMIN : texte « sera épuisé vers le … (dans 7 jours) » (crédit)" "any('sera épuisé vers le' in n['message'] and 'dans 7 jours' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
+check "cloche ADMIN : « Votre période payée se termine le … »" "any('Votre période payée se termine le' in n['message'] and 'Rechargez votre crédit pour continuer sans coupure' in n['message'] for n in d['data'] if n['type'] == 'ABONNEMENT')"
 if [ -n "$TOKEN_COMPTA" ]; then
   TOKEN="$TOKEN_COMPTA"; api GET /notifications/list
   check "cloche COMPTABLE : pas de rappel d'abonnement" "code == 200 and not any(n['type'] == 'ABONNEMENT' for n in d['data'])"
@@ -205,7 +207,7 @@ fi
 fin "$ABO_A" 1
 rappels true
 check "J-1 : rappel J1 envoyé à A" "[(r['type'], r['envoye']) for r in ($R)('$UID_A')] == [('J1', True)]"
-check "J-1 : texte « sera épuisé demain soir » (crédit)" "'sera épuisé demain soir' in ($R)('$UID_A')[0]['message']"
+check "J-1 : texte « période payée … se termine le » (date exacte)" "'se termine le $(date -d '+1 day' +%d/%m/%Y)' in ($R)('$UID_A')[0]['message']"
 rappels true
 check "J-1 : 2e passage, rien" "($R)('$UID_A') == []"
 check_eq "J-1 : une seule ligne J1" "1" "$(nb_rappels "$ABO_A" J1)"
@@ -216,7 +218,7 @@ TOKEN="$TOKEN_A"; api GET /abonnements/moi
 check "grâce J+1 : statut ACTIF, en grâce, 5 jours restants, pas bloqué" "d['data']['statutEffectif'] == 'ACTIF' and d['data']['enGrace'] and d['data']['joursGraceRestants'] == 5 and d['data']['delaiGraceJours'] == 5"
 rappels true
 check "grâce : rappel GRACE envoyé à A" "[(r['type'], r['envoye']) for r in ($R)('$UID_A')] == [('GRACE', True)]"
-check "grâce : texte « épuisé depuis le … il vous reste 5 jours » (crédit)" "'est épuisé depuis le' in ($R)('$UID_A')[0]['message'] and 'Il vous reste 5 jours pour recharger' in ($R)('$UID_A')[0]['message']"
+check "grâce : texte « période payée est terminée depuis le … il vous reste 5 jours »" "'est terminée depuis le' in ($R)('$UID_A')[0]['message'] and 'Il vous reste 5 jours pour recharger' in ($R)('$UID_A')[0]['message']"
 rappels true
 check "grâce : 2e passage, rien" "($R)('$UID_A') == []"
 check_eq "grâce : une seule ligne GRACE" "1" "$(nb_rappels "$ABO_A" GRACE)"

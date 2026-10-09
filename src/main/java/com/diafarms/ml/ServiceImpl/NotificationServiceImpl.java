@@ -429,28 +429,34 @@ public class NotificationServiceImpl implements NotificationService {
         boolean admin = currentUser.getRoles() != null && currentUser.getRoles().stream()
             .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "RESPONSABLE".equalsIgnoreCase(r.getRole()));
         if (!admin) return;
-        abonnementRepo.findByFarm_Id(currentUser.getFarm().getId()).ifPresent(a ->
-            abonnementRappelRepo.findFirstByAbonnement_IdAndDateFinOrderByEnvoyeLeDesc(a.getId(), a.getDateFin())
-                .ifPresent(rappel -> {
-                    com.diafarms.ml.models.AbonnementConfig config = abonnementConfigRepo.findFirstByOrderByIdAsc();
-                    com.diafarms.ml.commons.AbonnementEcheance.Etat etat = com.diafarms.ml.commons.AbonnementEcheance
-                        .calculer(a, config, LocalDate.now());
+        abonnementRepo.findByFarm_Id(currentUser.getFarm().getId()).ifPresent(a -> {
+            com.diafarms.ml.models.AbonnementConfig config0 = abonnementConfigRepo.findFirstByOrderByIdAsc();
+            com.diafarms.ml.commons.AbonnementEcheance.Etat etat0 = com.diafarms.ml.commons.AbonnementEcheance
+                .calculer(a, config0, LocalDate.now());
+            // Crédit prépayé : J-7, J-1 et « crédit bas » sont rangés au mois (voir
+            // AbonnementRappelService.cleRappel), montrés seulement si la fin est encore proche.
+            java.util.Optional<com.diafarms.ml.models.AbonnementRappel> trouve =
+                abonnementRappelRepo.findFirstByAbonnement_IdAndDateFinOrderByEnvoyeLeDesc(a.getId(), a.getDateFin());
+            if (trouve.isEmpty() && etat0.credit() && !etat0.periodePayee() && !etat0.enGrace()
+                    && etat0.joursRestants() >= 0 && etat0.joursRestants() < com.diafarms.ml.commons.AbonnementCredit.CREDIT_BAS_JOURS) {
+                trouve = abonnementRappelRepo.findFirstByAbonnement_IdAndDateFinOrderByEnvoyeLeDesc(a.getId(),
+                    LocalDate.now().withDayOfMonth(1));
+            }
+            trouve.ifPresent(rappel -> {
+                    com.diafarms.ml.commons.AbonnementEcheance.Etat etat = etat0;
                     if (etat.bloque()) return; // le web est bloqué (expiré ou suspendu), l'écran de blocage suffit
-                    // Montant du renouvellement (prix par poule ou tarif spécial ; minimum si le
-                    // calcul échoue, voir AbonnementTarifService).
-                    com.diafarms.ml.DTO.AbonnementTarifDTO tarif = abonnementTarifService.tarifFerme(
-                        currentUser.getFarm().getId(), a, config);
                     result.add(NotificationDTO.builder()
                         .key("abonnement-" + rappel.getType().toLowerCase() + "-" + a.getDateFin())
                         .type("ABONNEMENT")
                         .level(etat.enGrace() ? "CRITIQUE" : "WARNING")
                         .message(com.diafarms.ml.commons.AbonnementEcheance.messageCourt(etat)
-                            + (etat.credit() ? " Rechargez votre crédit depuis la page Abonnement."
-                                : com.diafarms.ml.commons.AbonnementTarif.facturable(tarif)
-                                ? " " + com.diafarms.ml.commons.AbonnementTarif.phraseMontant(tarif) : ""))
+                            + (etat.periodePayee() ? ""
+                                : etat.estEssai() ? " Rechargez votre crédit avant la fin de l'essai depuis la page Abonnement."
+                                : " Rechargez votre crédit depuis la page Abonnement."))
                         .actionPath("/abonnement")
                         .build());
-                }));
+                });
+        });
     }
 
     private NotificationDTO echeanceNotif(Projets p, String level, String message) {

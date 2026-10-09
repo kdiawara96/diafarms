@@ -8,4 +8,6 @@ import lombok.Data;
 public class AdminAjustementRequest {
     private Double montant;
     private String motif;
+    // Identifiant de l'envoi : un même envoi rejoué n'ajuste jamais deux fois.
+    private String requestId;
 }

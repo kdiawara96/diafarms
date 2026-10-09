@@ -177,11 +177,17 @@ public class CreditService {
         dep.put(a.getFarm().getId(), a.getCreditDepuis());
         Map<Long, Rythme> m = rythmes(List.of(a.getFarm().getId()), dep, auj);
         Rythme r = m == null ? null : m.get(a.getFarm().getId());
-        return etat(a, config, solde, r, auj, poulesComptees);
+        return etat(a, config, solde, r, auj, poulesComptees,
+                suspensions(List.of(a.getId())).getOrDefault(a.getId(), List.of()));
     }
 
     // Version sans requête (liste de la console) : solde et rythme déjà calculés.
     public CreditDTO etat(Abonnement a, AbonnementConfig config, double solde, Rythme r, LocalDate auj, int poulesComptees) {
+        return etat(a, config, solde, r, auj, poulesComptees, List.of());
+    }
+
+    public CreditDTO etat(Abonnement a, AbonnementConfig config, double solde, Rythme r, LocalDate auj, int poulesComptees,
+            List<LocalDate[]> suspensionsConnues) {
         AbonnementTarif.Regles t = AbonnementTarif.regles(config);
         AbonnementCredit.Regles rc = AbonnementCredit.regles(config);
         Double fixe = a.getPrixMensuelFixe();
@@ -191,10 +197,10 @@ public class CreditService {
         // Mensualité prévue à la fin du mois en cours (jours payés de ce mois, au rythme actuel).
         double prevue = 0;
         YearMonth ce = YearMonth.from(auj);
-        AbonnementCredit.Periode p = AbonnementCredit.periodePayee(ce, a.getCreditDepuis(),
-                solde > 0 ? null : a.getCreditEpuiseLe());
+        JoursPayes p = a.getCreditDepuis() == null ? null : joursPayes(a.getCreditDepuis(),
+                solde > 0 ? null : a.getCreditEpuiseLe(), ce, suspensionsConnues == null ? List.of() : suspensionsConnues);
         if (p != null) {
-            prevue = AbonnementCredit.mensualite(r == null ? 0 : r.moyenne(), p.jours(), ce.lengthOfMonth(), t, fixe).montant();
+            prevue = AbonnementCredit.mensualite(r == null ? 0 : r.moyenne(), p.nb(), ce.lengthOfMonth(), t, fixe).montant();
         }
         boolean avant = a.getCreditDepuis() == null || a.getCreditDepuis().isAfter(auj);
         boolean aRecharger = solde <= 0 && !avant;
@@ -206,7 +212,15 @@ public class CreditService {
                 AbonnementCredit.phraseMois(mois), a.getDateFin(), r == null ? 0 : Math.round(r.moyenne() * 10) / 10.0,
                 r == null ? 0 : r.jours(), prevue, coutAffiche, cout == null, a.getCreditDepuis(), avant,
                 Boolean.TRUE.equals(a.getEssaiRefuse()), prixFixe, rc.bonusSeuil(), rc.bonusPourcent(),
-                rc.seuilSurDevis(), aChiffrer);
+                rc.seuilSurDevis(), aChiffrer,
+                // Période déjà payée (ancien modèle), sans recharge depuis : même règle que AbonnementEcheance.
+                a.getCreditDepuis() != null && a.getPeriodicite() != null && a.getCreditEpuiseLe() != null
+                        && a.getCreditEpuiseLe().equals(a.getCreditDepuis()) && solde <= 0,
+                t.prixMinimumMensuel());
+    }
+
+    public boolean cleExiste(String cle) {
+        return cle != null && mouvementRepo.existsByCle(cle);
     }
 
     public Abonnement abonnement(Long id) {
@@ -250,6 +264,10 @@ public class CreditService {
         Integer n = tx.execute(s -> {
             int c = jdbc.update("UPDATE abonnements SET credit_depuis = date_fin + 1, credit_epuise_le = date_fin + 1 "
                     + "WHERE credit_depuis IS NULL");
+            // Fermes déjà suspendues avant les périodes de suspension : période ouverte.
+            jdbc.update("INSERT INTO suspensions_credit (abonnement_id, du) SELECT a.id, CAST(COALESCE(a.suspendu_le, now()) AS date) "
+                    + "FROM abonnements a WHERE COALESCE(a.suspendu, false) = true "
+                    + "AND NOT EXISTS (SELECT 1 FROM suspensions_credit s WHERE s.abonnement_id = a.id AND s.au IS NULL)");
             jdbc.update("INSERT INTO essais_gratuits (farm_id, telephone, email, essai_donne, cree_le) "
                     + "SELECT DISTINCT ON (u.farm_id) u.farm_id, " + telSql("u.telephone") + ", LOWER(TRIM(u.email)), true, now() "
                     + "FROM utilisateurs u JOIN roles_users ru ON ru.id_utilisateurs = u.id JOIN roles r ON r.id = ru.id_roles "
@@ -273,36 +291,51 @@ public class CreditService {
 
     // ------------------------------------------------------------------ essai gratuit
 
-    // Un essai par propriétaire : true si le téléphone ou l'e-mail a déjà servi pour une
-    // AUTRE ferme (inscription mémorisée, utilisateur de cette ferme même archivé, ou
-    // coordonnées de la ferme), y compris une ferme ou un compte supprimés depuis.
+    // Un essai par propriétaire : true si le téléphone ou l'e-mail a déjà servi à un
+    // propriétaire d'une AUTRE ferme : inscription mémorisée (essais_gratuits, garde la trace
+    // des comptes et fermes supprimés) ou utilisateur ADMIN d'une autre ferme. Les employés
+    // et les coordonnées de ferme ne comptent pas (faux positifs) : voir doublonsPossibles.
     public boolean essaiDejaUtilise(Long farmId, String telephone, String email) {
         String tel = Telephone.international(telephone);
         String mail = email == null || email.isBlank() ? null : email.trim().toLowerCase();
         if (tel == null && mail == null) return false;
         long autre = farmId == null ? -1L : farmId;
         List<Object> args = new ArrayList<>();
-        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM (");
         List<String> parties = new ArrayList<>();
+        String admin = "EXISTS (SELECT 1 FROM roles_users ru JOIN roles r ON r.id = ru.id_roles "
+                + "WHERE ru.id_utilisateurs = u.id AND r.role = 'ADMIN')";
         if (tel != null) {
             parties.add("SELECT 1 FROM essais_gratuits WHERE telephone = ? AND COALESCE(farm_id, -1) <> ?");
             args.add(tel); args.add(autre);
-            parties.add("SELECT 1 FROM utilisateurs WHERE farm_id IS NOT NULL AND farm_id <> ? AND " + telSql("telephone") + " = ?");
+            parties.add("SELECT 1 FROM utilisateurs u WHERE u.farm_id IS NOT NULL AND u.farm_id <> ? AND " + telSql("u.telephone")
+                    + " = ? AND " + admin);
             args.add(autre); args.add(tel);
-            parties.add("SELECT 1 FROM farms WHERE id <> ? AND (" + telSql("telephone1") + " = ? OR " + telSql("telephone2") + " = ?)");
-            args.add(autre); args.add(tel); args.add(tel);
         }
         if (mail != null) {
             parties.add("SELECT 1 FROM essais_gratuits WHERE email = ? AND COALESCE(farm_id, -1) <> ?");
             args.add(mail); args.add(autre);
-            parties.add("SELECT 1 FROM utilisateurs WHERE farm_id IS NOT NULL AND farm_id <> ? AND LOWER(TRIM(email)) = ?");
-            args.add(autre); args.add(mail);
-            parties.add("SELECT 1 FROM farms WHERE id <> ? AND LOWER(TRIM(email)) = ?");
+            parties.add("SELECT 1 FROM utilisateurs u WHERE u.farm_id IS NOT NULL AND u.farm_id <> ? AND LOWER(TRIM(u.email)) = ? AND " + admin);
             args.add(autre); args.add(mail);
         }
-        sql.append(String.join(" UNION ALL ", parties)).append(") x");
-        Integer n = jdbc.queryForObject(sql.toString(), Integer.class, args.toArray());
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM (" + String.join(" UNION ALL ", parties) + ") x",
+                Integer.class, args.toArray());
         return n != null && n > 0;
+    }
+
+    // Console : fermes dont le propriétaire (premier ADMIN) a le même téléphone ou e-mail
+    // qu'un employé ou que les coordonnées d'une AUTRE ferme. Simple signal (« doublon
+    // possible »), jamais un refus d'essai. Une requête pour toutes les fermes.
+    public Set<Long> doublonsPossibles() {
+        String proprios = "SELECT DISTINCT ON (u.farm_id) u.farm_id, " + telSql("u.telephone") + " AS tel, LOWER(TRIM(u.email)) AS mail "
+                + "FROM utilisateurs u JOIN roles_users ru ON ru.id_utilisateurs = u.id JOIN roles r ON r.id = ru.id_roles "
+                + "WHERE r.role = 'ADMIN' AND u.farm_id IS NOT NULL ORDER BY u.farm_id, u.id";
+        String sql = "SELECT DISTINCT p.farm_id FROM (" + proprios + ") p WHERE "
+                + "EXISTS (SELECT 1 FROM utilisateurs v WHERE v.farm_id IS NOT NULL AND v.farm_id <> p.farm_id "
+                + "AND ((p.tel IS NOT NULL AND " + telSql("v.telephone") + " = p.tel) OR (p.mail IS NOT NULL AND LOWER(TRIM(v.email)) = p.mail))) "
+                + "OR EXISTS (SELECT 1 FROM farms f WHERE f.id <> p.farm_id "
+                + "AND ((p.tel IS NOT NULL AND (" + telSql("f.telephone1") + " = p.tel OR " + telSql("f.telephone2") + " = p.tel)) "
+                + "OR (p.mail IS NOT NULL AND LOWER(TRIM(f.email)) = p.mail)))";
+        return new HashSet<>(jdbc.queryForList(sql, Long.class));
     }
 
     public void memoriserEssai(Long farmId, String telephone, String email, boolean donne) {
@@ -374,6 +407,12 @@ public class CreditService {
     // Rembourse d'abord ce qui est dû (le solde est une somme : un crédit négatif est
     // simplement compensé), puis ajoute ; bonus si la recharge atteint le seuil.
     public Recharge appliquerRecharge(Abonnement a0, PaiementAbonnement p, Utilisateurs auteur) {
+        return appliquerRecharge(a0, p, auteur, null);
+    }
+
+    // cleRecharge : clé de la ligne RECHARGE (« REQ:<id de requête> » pour la console : un
+    // même envoi rejoué ne crédite jamais deux fois). null = « RECH:<paiement> ».
+    public Recharge appliquerRecharge(Abonnement a0, PaiementAbonnement p, Utilisateurs auteur, String cleRecharge) {
         Abonnement a = verrouiller(a0.getId());
         assurerCredit(a);
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
@@ -383,7 +422,7 @@ public class CreditService {
         double avant = solde(a.getId());
         boolean bloqueAvant = bloque(a, avant, config);
         String moyen = p.getMoyenPaiement() == null ? "" : " (" + p.getMoyenPaiement() + ")";
-        Ecriture e = ecrire(a, TYPE_RECHARGE, montant, "RECH:" + p.getId(), auteur, m -> {
+        Ecriture e = ecrire(a, TYPE_RECHARGE, montant, cleRecharge != null ? cleRecharge : "RECH:" + p.getId(), auteur, m -> {
             m.setPaiementId(p.getId());
             m.setLibelle("Recharge" + moyen + (avant < 0 ? " : " + AbonnementEcheance.fcfa(Math.min(-avant, montant))
                     + " pour payer ce qui était dû" : ""));
@@ -415,13 +454,19 @@ public class CreditService {
     // Ajustement manuel de l'équipe (crédit ou débit), avec la raison. Dans la transaction
     // de l'appelant (console).
     public Ecriture ajuster(Abonnement a0, double montant, String motif, Utilisateurs auteur) {
+        return ajuster(a0, montant, motif, auteur, null);
+    }
+
+    // cle : « REQ:<id de requête> » (console) ; null si déjà écrit (rejeu du même envoi).
+    public Ecriture ajuster(Abonnement a0, double montant, String motif, Utilisateurs auteur, String cle) {
         Abonnement a = verrouiller(a0.getId());
         assurerCredit(a);
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
         regulariser(a, config);
         double avant = solde(a.getId());
         boolean bloqueAvant = bloque(a, avant, config);
-        Ecriture e = ecrire(a, TYPE_AJUSTEMENT, montant, null, auteur, m -> m.setLibelle(motif));
+        Ecriture e = ecrire(a, TYPE_AJUSTEMENT, montant, cle, auteur, m -> m.setLibelle(motif));
+        if (e == null) return null;
         if (montant > 0) apresCreditAjoute(a, e, bloqueAvant);
         recalculer(a, e.soldeApres(), null, config, false);
         em.merge(a);
@@ -464,16 +509,62 @@ public class CreditService {
             double poulesMoyenne, int jours, int joursMois, boolean prixFixe, double soldeAvant, double soldeApres,
             String libelle, boolean ecrit) {}
 
-    // Jours payés d'un mois pour cet abonnement (suspension : jours suspendus non payés).
-    static AbonnementCredit.Periode periode(Abonnement a, YearMonth m) {
-        AbonnementCredit.Periode p = AbonnementCredit.periodePayee(m, a.getCreditDepuis(), a.getCreditEpuiseLe());
-        if (p == null) return null;
-        if (a.estSuspendu() && a.getSuspenduLe() != null) {
-            LocalDate s = a.getSuspenduLe().toLocalDate();
-            if (!s.isAfter(p.du())) return null;
-            if (!s.isAfter(p.au())) p = new AbonnementCredit.Periode(p.du(), s.minusDays(1));
+    // ------------------------------------------------------------------ suspensions
+
+    // Suspension ouverte par la console (le jour même n'est pas facturé). Sans effet si une
+    // suspension est déjà ouverte.
+    public void ouvrirSuspension(Long abonnementId, LocalDate du) {
+        Integer ouvertes = jdbc.queryForObject("SELECT COUNT(*) FROM suspensions_credit WHERE abonnement_id = ? AND au IS NULL",
+                Integer.class, abonnementId);
+        if (ouvertes != null && ouvertes > 0) return;
+        jdbc.update("INSERT INTO suspensions_credit (abonnement_id, du) VALUES (?, ?)", abonnementId, java.sql.Date.valueOf(du));
+    }
+
+    // Fin de la suspension (réactivation ou recharge de la console) : le jour de la
+    // réactivation est facturé, la suspension s'arrête la veille.
+    public void fermerSuspension(Long abonnementId, LocalDate reactivation) {
+        jdbc.update("UPDATE suspensions_credit SET au = ? WHERE abonnement_id = ? AND au IS NULL",
+                java.sql.Date.valueOf(reactivation.minusDays(1)), abonnementId);
+    }
+
+    // Suspensions par abonnement : [du, au] (au null = toujours en cours). ids null : toutes.
+    Map<Long, List<LocalDate[]>> suspensions(Collection<Long> abonnementIds) {
+        Map<Long, List<LocalDate[]>> m = new HashMap<>();
+        if (abonnementIds != null && abonnementIds.isEmpty()) return m;
+        String sql = "SELECT abonnement_id, du, au FROM suspensions_credit";
+        Object[] args = new Object[0];
+        if (abonnementIds != null) {
+            sql += " WHERE abonnement_id IN (" + String.join(",", java.util.Collections.nCopies(abonnementIds.size(), "?")) + ")";
+            args = abonnementIds.toArray();
         }
-        return p;
+        jdbc.query(sql, rs -> {
+            m.computeIfAbsent(rs.getLong(1), k -> new ArrayList<>()).add(new LocalDate[] {
+                    rs.getDate(2).toLocalDate(), rs.getDate(3) == null ? null : rs.getDate(3).toLocalDate() });
+        }, args);
+        return m;
+    }
+
+    // Jours payés d'un mois : la période couverte par le crédit (AbonnementCredit.periodePayee),
+    // moins chaque jour suspendu. null si aucun jour (mois entièrement suspendu, ou non couvert :
+    // aucune mensualité, pas même à 0).
+    public record JoursPayes(boolean[] payes, int nb) {}
+
+    static JoursPayes joursPayes(LocalDate creditDepuis, LocalDate creditEpuiseLe, YearMonth m,
+            List<LocalDate[]> suspensions) {
+        AbonnementCredit.Periode p = AbonnementCredit.periodePayee(m, creditDepuis, creditEpuiseLe);
+        if (p == null) return null;
+        boolean[] b = new boolean[m.lengthOfMonth()];
+        for (int d = p.du().getDayOfMonth(); d <= p.au().getDayOfMonth(); d++) b[d - 1] = true;
+        if (suspensions != null) {
+            for (LocalDate[] s : suspensions) {
+                LocalDate debut = s[0].isBefore(m.atDay(1)) ? m.atDay(1) : s[0];
+                LocalDate fin = s[1] == null || s[1].isAfter(m.atEndOfMonth()) ? m.atEndOfMonth() : s[1];
+                for (LocalDate d = debut; !d.isAfter(fin); d = d.plusDays(1)) b[d.getDayOfMonth() - 1] = false;
+            }
+        }
+        int nb = 0;
+        for (boolean x : b) if (x) nb++;
+        return nb == 0 ? null : new JoursPayes(b, nb);
     }
 
     static String cleMensualite(Long abonnementId, YearMonth m) {
@@ -483,19 +574,19 @@ public class CreditService {
     // Mensualité d'un mois terminé, sur un abonnement verrouillé. sujetsMois : sujets
     // vivants de la ferme chaque jour du mois (index 0 = le 1er), null = aucune poule.
     private Prelevement preleverMois(Abonnement a, YearMonth m, long[] sujetsMois, AbonnementConfig config,
-            boolean ecrire) {
+            boolean ecrire, List<LocalDate[]> suspensions) {
         String cle = cleMensualite(a.getId(), m);
         if (mouvementRepo.existsByCle(cle)) return null;
-        AbonnementCredit.Periode p = periode(a, m);
+        JoursPayes p = joursPayes(a.getCreditDepuis(), a.getCreditEpuiseLe(), m, suspensions);
         if (p == null) return null;
         long somme = 0;
         if (sujetsMois != null) {
-            for (int i = p.du().getDayOfMonth() - 1; i <= p.au().getDayOfMonth() - 1 && i < sujetsMois.length; i++) {
-                somme += sujetsMois[i];
+            for (int i = 0; i < p.payes().length && i < sujetsMois.length; i++) {
+                if (p.payes()[i]) somme += sujetsMois[i];
             }
         }
-        double moyenne = (double) somme / p.jours();
-        AbonnementCredit.Mensualite mm = AbonnementCredit.mensualite(moyenne, p.jours(), m.lengthOfMonth(),
+        double moyenne = (double) somme / p.nb();
+        AbonnementCredit.Mensualite mm = AbonnementCredit.mensualite(moyenne, p.nb(), m.lengthOfMonth(),
                 AbonnementTarif.regles(config), a.getPrixMensuelFixe());
         String libelle = AbonnementCredit.libelleMensualite(m, mm);
         double avant = solde(a.getId());
@@ -531,15 +622,17 @@ public class CreditService {
     void regulariser(Abonnement a, AbonnementConfig config) {
         if (a.getCreditDepuis() == null) return;
         YearMonth courant = YearMonth.now();
+        List<LocalDate[]> susp = suspensions(List.of(a.getId())).getOrDefault(a.getId(), List.of());
         for (YearMonth m = premierMois(a.getCreditDepuis(), courant); m.isBefore(courant); m = m.plusMonths(1)) {
-            if (periode(a, m) == null || mouvementRepo.existsByCle(cleMensualite(a.getId(), m))) continue;
+            if (joursPayes(a.getCreditDepuis(), a.getCreditEpuiseLe(), m, susp) == null
+                    || mouvementRepo.existsByCle(cleMensualite(a.getId(), m))) continue;
             Map<Long, long[]> s = tarifService.sujetsParJourSansRisque(List.of(a.getFarm().getId()), m.atDay(1), m.atEndOfMonth());
             if (s == null) {
                 log.error("Crédit : mensualité de {} non prélevée pour l'abonnement {} (comptage en échec), rattrapée par la tâche",
                         m, a.getId());
                 return;
             }
-            preleverMois(a, m, s.get(a.getFarm().getId()), config, true);
+            preleverMois(a, m, s.get(a.getFarm().getId()), config, true, susp);
         }
     }
 
@@ -565,14 +658,12 @@ public class CreditService {
                 courant.minusMonths(MOIS_RATTRAPAGE).toString()));
         // Mois -> abonnements à prélever (d'après l'état actuel, sans requête par ferme).
         TreeMap<YearMonth, List<Ligne>> parMois = new TreeMap<>();
+        Map<Long, List<LocalDate[]>> susp = suspensions(null);
         for (Ligne l : lignesCredit()) {
-            Abonnement fictif = new Abonnement();
-            fictif.setCreditDepuis(l.creditDepuis());
-            fictif.setCreditEpuiseLe(l.creditEpuiseLe());
-            fictif.setSuspendu(l.suspendu() ? Boolean.TRUE : null);
-            fictif.setSuspenduLe(l.suspenduLe() == null ? null : l.suspenduLe().atStartOfDay());
+            List<LocalDate[]> s = susp.getOrDefault(l.abonnementId(), List.of());
             for (YearMonth m = premierMois(l.creditDepuis(), courant); m.isBefore(courant); m = m.plusMonths(1)) {
-                if (deja.contains(cleMensualite(l.abonnementId(), m)) || periode(fictif, m) == null) continue;
+                if (deja.contains(cleMensualite(l.abonnementId(), m))
+                        || joursPayes(l.creditDepuis(), l.creditEpuiseLe(), m, s) == null) continue;
                 parMois.computeIfAbsent(m, k -> new ArrayList<>()).add(l);
             }
         }
@@ -591,7 +682,8 @@ public class CreditService {
                             ? tx.execute(s -> {
                                 Abonnement a = verrouiller(l.abonnementId());
                                 AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
-                                Prelevement x = preleverMois(a, m, sujets.get(l.farmId()), config, true);
+                                Prelevement x = preleverMois(a, m, sujets.get(l.farmId()), config, true,
+                                        susp.getOrDefault(l.abonnementId(), List.of()));
                                 if (x != null) {
                                     // Sans comptage ici : recalculerToutes (en un seul comptage) suit.
                                     recalculer(a, x.soldeApres(), null, config, true);
@@ -602,7 +694,8 @@ public class CreditService {
                             : tx.execute(s -> {
                                 s.setRollbackOnly();
                                 Abonnement a = em.find(Abonnement.class, l.abonnementId());
-                                return preleverMois(a, m, sujets.get(l.farmId()), configRepo.findFirstByOrderByIdAsc(), false);
+                                return preleverMois(a, m, sujets.get(l.farmId()), configRepo.findFirstByOrderByIdAsc(), false,
+                                        susp.getOrDefault(l.abonnementId(), List.of()));
                             });
                     if (p != null) res.add(p);
                 } catch (Exception ex) {

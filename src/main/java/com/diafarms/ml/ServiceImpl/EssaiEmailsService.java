@@ -224,6 +224,7 @@ public class EssaiEmailsService {
                     + " (" + dans(restants) + "). Vous n'avez pas encore fait de saisie.\n\n"
                     + "Pour profiter de l'essai : créez votre Projet, puis saisissez les collectes, l'aliment et la mortalité. "
                     + "Vous verrez tout de suite vos chiffres : taux de ponte, stock, ventes.\n\n"
+                    + "Pour continuer après l'essai, rechargez votre crédit sur la page Abonnement (« J'ai rechargé »).\n\n"
                     + "On vous aide ? Écrivez-nous sur WhatsApp au " + WHATSAPP + ". Nous pouvons tout installer avec vous.";
         };
     }

@@ -142,12 +142,12 @@ public class AbonnementServiceImpl implements AbonnementService {
         LocalDate aujourdHui = LocalDate.now();
         abonnement.setDateDebut(aujourdHui);
         if (essaiRefuse) {
-            // Premier jour non couvert placé avant le délai de grâce : bloqué dès aujourd'hui.
-            LocalDate epuise = aujourdHui.minusDays(AbonnementEcheance.delaiGraceJours(config));
+            // Pas d'essai : crédit vide dès aujourd'hui, la ferme a les jours de grâce habituels
+            // (5) pour recharger, avec un message clair, puis le blocage.
             abonnement.setEssaiRefuse(true);
             abonnement.setCreditDepuis(aujourdHui);
-            abonnement.setCreditEpuiseLe(epuise);
-            abonnement.setDateFin(epuise.minusDays(1));
+            abonnement.setCreditEpuiseLe(aujourdHui);
+            abonnement.setDateFin(aujourdHui.minusDays(1));
         } else {
             abonnement.setDateFin(aujourdHui.plusDays(config.getDureeEssaiJours()));
             abonnement.setCreditDepuis(abonnement.getDateFin().plusDays(1));

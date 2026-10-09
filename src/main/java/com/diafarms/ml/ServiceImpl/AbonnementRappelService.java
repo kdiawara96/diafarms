@@ -88,17 +88,36 @@ public class AbonnementRappelService {
             int emailsEnvoyes) {}
 
     private record Candidat(Long abonnementId, String farmUniqueId, String farmNom, String type,
-            LocalDate dateFin, String sujet, String messageComplet, List<Destinataire> admins) {}
+            LocalDate dateFin, String sujet, String messageComplet, List<Destinataire> admins, LocalDate cle) {}
 
     // Candidat lu en base, avant le calcul de son prix (fait ensuite pour tous en une fois).
     private record Lu(Long abonnementId, Long farmId, String farmUniqueId, String farmNom, String type,
             LocalDate dateFin, AbonnementEcheance.Etat etat, boolean paiementEnAttente, Double prixMensuelFixe,
-            String motifPrixFixe, List<Destinataire> admins, LocalDate creditDepuis, double solde) {}
+            String motifPrixFixe, List<Destinataire> admins, LocalDate creditDepuis, double solde, LocalDate cle) {}
 
     // Crédit prépayé : « crédit bas », un e-mail quand il reste moins d'environ 30 jours
     // (et plus de 7 : ensuite les rappels J-7 et J-1 prennent le relais). Une fois par
     // échéance estimée (même unicité que les autres rappels).
+    // ATTENTION : abonnement_rappels.type est un varchar(10) ; "CREDIT_BAS" fait exactement 10
+    // caractères. Tout nouveau type doit tenir en 10 caractères (vérifié au démarrage).
     public static final String RAPPEL_CREDIT_BAS = "CREDIT_BAS";
+
+    static {
+        for (String t : new String[] { AbonnementEcheance.RAPPEL_J7, AbonnementEcheance.RAPPEL_J1,
+                AbonnementEcheance.RAPPEL_GRACE, RAPPEL_CREDIT_BAS }) {
+            if (t.length() > 10) throw new IllegalStateException("Type de rappel trop long pour abonnement_rappels.type : " + t);
+        }
+    }
+
+    // Clé d'unicité d'un rappel (colonne date_fin de abonnement_rappels). Ferme au crédit
+    // (hors période déjà payée) : la fin estimée peut passer d'une fin de mois à l'autre
+    // quand le nombre de poules change ; J-7, J-1 et « crédit bas » sont donc envoyés au plus
+    // une fois par MOIS (clé = 1er du mois en cours), jamais deux fois pour un aller-retour
+    // de l'estimation. Grâce, essai et période déjà payée : la date de fin, stable.
+    public static LocalDate cleRappel(AbonnementEcheance.Etat e, String type, LocalDate aujourdHui) {
+        boolean parMois = e.credit() && !e.periodePayee() && !AbonnementEcheance.RAPPEL_GRACE.equals(type);
+        return parMois ? aujourdHui.withDayOfMonth(1) : e.dateFin();
+    }
 
     // Tous les jours à 8 h, heure de Bamako (= UTC).
     @Scheduled(cron = "${abonnement.rappels.cron:0 0 8 * * *}", zone = "Africa/Bamako")
@@ -148,7 +167,7 @@ public class AbonnementRappelService {
                 continue;
             }
             try {
-                Integer reserve = tx.execute(status -> rappelRepo.reserver(c.abonnementId(), c.type(), c.dateFin()));
+                Integer reserve = tx.execute(status -> rappelRepo.reserver(c.abonnementId(), c.type(), c.cle()));
                 if (reserve == null || reserve == 0) {
                     continue; // déjà envoyé pour cette période (exécution concurrente)
                 }
@@ -164,7 +183,7 @@ public class AbonnementRappelService {
                     }
                 }
                 final int nbEmails = emailsEnvoyes;
-                tx.execute(status -> rappelRepo.enregistrerEnvoi(c.abonnementId(), c.type(), c.dateFin(),
+                tx.execute(status -> rappelRepo.enregistrerEnvoi(c.abonnementId(), c.type(), c.cle(),
                         c.admins().size(), nbEmails));
                 resultat.add(new RappelDTO(c.farmUniqueId(), c.farmNom(), c.type(), c.dateFin(), c.sujet(),
                         c.messageComplet(), emails, true, nbEmails));
@@ -192,7 +211,8 @@ public class AbonnementRappelService {
                 type = RAPPEL_CREDIT_BAS;
             }
             if (type == null) continue;
-            if (rappelRepo.existsByAbonnement_IdAndTypeAndDateFin(a.getId(), type, a.getDateFin())) continue;
+            LocalDate cle = cleRappel(etat, type, aujourdHui);
+            if (rappelRepo.existsByAbonnement_IdAndTypeAndDateFin(a.getId(), type, cle)) continue;
 
             Farm farm = a.getFarm();
             List<Utilisateurs> admins = utilisateursRepo.findAdminsActifsByFarmId(farm.getId());
@@ -204,7 +224,7 @@ public class AbonnementRappelService {
             candidats.add(new Lu(a.getId(), farm.getId(), farm.getUniqueId(), farmNom, type, a.getDateFin(), etat,
                     paiementEnAttente, a.getPrixMensuelFixe(), a.getMotifPrixFixe(),
                     admins.stream().map(u -> new Destinataire(u.getFullName(), u.getEmail())).toList(),
-                    a.getCreditDepuis(), solde));
+                    a.getCreditDepuis(), solde, cle));
           } catch (Exception e) {
             // Une ferme en erreur ne bloque pas les rappels des autres.
             log.warn("Rappel d'abonnement ignoré pour l'abonnement {} : {}", a.getId(), e.getMessage());
@@ -244,6 +264,9 @@ public class AbonnementRappelService {
             log.error("Rappels d'abonnement : rythme du mois en échec : {}", e.getMessage(), e);
         }
         com.diafarms.ml.commons.AbonnementTarif.Regles regles = com.diafarms.ml.commons.AbonnementTarif.regles(config);
+        com.diafarms.ml.commons.AbonnementCredit.Regles rc = com.diafarms.ml.commons.AbonnementCredit.regles(config);
+        String ligneBonus = rc.bonusPourcent() > 0 ? "Une recharge de " + AbonnementEcheance.fcfa(rc.bonusSeuil())
+                + " ou plus reçoit " + CreditService.pourcent(rc.bonusPourcent()) + " % de crédit en plus." : null;
         List<Candidat> res = new ArrayList<>();
         for (Lu l : lus) {
             if (l.etat().credit()) {
@@ -267,12 +290,12 @@ public class AbonnementRappelService {
                                     + " %.\n\n")
                             + "Une question ? Écrivez-nous sur WhatsApp au +223 83 91 86 99.";
                     res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
-                            "Votre crédit Cocorico sera bientôt épuisé", msg, l.admins()));
+                            "Votre crédit Cocorico sera bientôt épuisé", msg, l.admins(), l.cle()));
                 } else {
                     res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
                             AbonnementEcheance.sujetEmail(l.etat()),
                             AbonnementEcheance.messageCompletCredit(l.etat(), l.farmNom(), lignePrix, l.paiementEnAttente()),
-                            l.admins()));
+                            l.admins(), l.cle()));
                 }
                 continue;
             }
@@ -286,8 +309,8 @@ public class AbonnementRappelService {
             if (!com.diafarms.ml.commons.AbonnementTarif.facturable(t)) t = null;
             res.add(new Candidat(l.abonnementId(), l.farmUniqueId(), l.farmNom(), l.type(), l.dateFin(),
                     AbonnementEcheance.sujetEmail(l.etat()),
-                    AbonnementEcheance.messageComplet(l.etat(), l.farmNom(), t, l.paiementEnAttente()),
-                    l.admins()));
+                    AbonnementEcheance.messageComplet(l.etat(), l.farmNom(), t, l.paiementEnAttente(), ligneBonus),
+                    l.admins(), l.cle()));
         }
         return res;
     }

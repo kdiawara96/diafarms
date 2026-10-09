@@ -56,7 +56,12 @@ public final class AbonnementEcheance {
             boolean suspendu,
             // Crédit prépayé (hors essai) : dateFin = dernier jour couvert par le crédit, les
             // messages parlent de crédit épuisé et de recharge (voir CreditService).
-            boolean credit) {
+            boolean credit,
+            // Ferme d'avant le crédit encore dans sa période déjà payée (ou juste après), sans
+            // aucune recharge depuis : jamais de texte d'essai ni de « crédit épuisé ».
+            boolean periodePayee,
+            // Inscription sans essai gratuit (déjà utilisé).
+            boolean essaiRefuse) {
 
         // Statut exposé dans statutEffectif (/abonnements/moi, AbonnementGate) : une ferme
         // suspendue répond EXPIRE pour que tout client, même ancien, la bloque ; le web
@@ -102,8 +107,13 @@ public final class AbonnementEcheance {
         long joursGraceRestants = enGrace ? ChronoUnit.DAYS.between(aujourdHui, dernierJour) + 1 : 0;
         // Inscription sans essai gratuit (déjà utilisé) : jamais présentée comme un essai.
         boolean estEssai = abonnement.getPeriodicite() == null && !Boolean.TRUE.equals(abonnement.getEssaiRefuse());
+        boolean credit = abonnement.estEnCredit() && !estEssai;
+        // Période déjà payée (ancien modèle) : le crédit n'a encore jamais été positif, le
+        // premier jour non couvert est toujours le premier jour du crédit.
+        boolean periodePayee = credit && abonnement.getPeriodicite() != null && abonnement.getCreditEpuiseLe() != null
+                && abonnement.getCreditEpuiseLe().equals(abonnement.getCreditDepuis());
         return new Etat(estEssai, dateFin, grace, joursRestants, enGrace, expire, dernierJour, joursGraceRestants,
-                abonnement.estSuspendu(), abonnement.estEnCredit() && !estEssai);
+                abonnement.estSuspendu(), credit, periodePayee, Boolean.TRUE.equals(abonnement.getEssaiRefuse()));
     }
 
     public static String date(LocalDate d) {
@@ -134,7 +144,7 @@ public final class AbonnementEcheance {
         if (e.enGrace()) {
             return sujet + " est terminé" + (e.estEssai() ? "e" : "") + " depuis le " + date(e.dateFin())
                     + ". Il vous reste " + jours(e.joursGraceRestants())
-                    + " pour renouveler avant que l'accès soit bloqué.";
+                    + " pour recharger votre crédit avant que l'accès soit bloqué.";
         }
         if (e.joursRestants() == 0) {
             return sujet + " se termine aujourd'hui (" + date(e.dateFin()) + ").";
@@ -147,6 +157,17 @@ public final class AbonnementEcheance {
 
     // Crédit prépayé : « Votre crédit Cocorico sera épuisé vers le 31/10/2026 (dans 7 jours). »
     public static String messageCourtCredit(Etat e) {
+        if (e.periodePayee()) {
+            if (e.enGrace()) {
+                return "Votre période payée est terminée depuis le " + date(e.dateFin()) + ". Il vous reste "
+                        + jours(e.joursGraceRestants()) + " pour recharger votre crédit avant que l'accès soit bloqué.";
+            }
+            return "Votre période payée se termine le " + date(e.dateFin()) + ". Rechargez votre crédit pour continuer sans coupure.";
+        }
+        if (e.essaiRefuse() && e.enGrace()) {
+            return "Pas d'essai gratuit pour cette ferme (déjà utilisé). Il vous reste " + jours(e.joursGraceRestants())
+                    + " pour recharger avant que l'accès soit bloqué.";
+        }
         if (e.enGrace()) {
             return "Votre crédit Cocorico est épuisé depuis le " + date(e.dateFin().plusDays(1)) + ". Il vous reste "
                     + jours(e.joursGraceRestants()) + " pour recharger avant que l'accès soit bloqué.";
@@ -157,7 +178,12 @@ public final class AbonnementEcheance {
     }
 
     public static String sujetEmail(Etat e) {
+        if (e.credit() && e.periodePayee()) {
+            if (e.enGrace()) return "Votre période payée Cocorico est terminée : il vous reste " + jours(e.joursGraceRestants());
+            return "Votre période payée Cocorico se termine le " + date(e.dateFin());
+        }
         if (e.credit()) {
+            if (e.essaiRefuse() && e.enGrace()) return "Pas d'essai gratuit : rechargez votre crédit Cocorico";
             if (e.enGrace()) return "Votre crédit Cocorico est épuisé : il vous reste " + jours(e.joursGraceRestants());
             return "Votre crédit Cocorico sera épuisé vers le " + date(e.dateFin());
         }
@@ -173,8 +199,17 @@ public final class AbonnementEcheance {
     // ligne pour l'instant : on déclare le paiement sur la page Abonnement (« J'ai
     // payé »), il est ensuite validé par l'équipe.
     // tarif : prix du renouvellement (AbonnementTarifService), null = pas de ligne de prix.
+    public static final String LIGNE_BONUS_DEFAUT = "Une recharge de 50 000 FCFA ou plus reçoit 20 % de crédit en plus.";
+
     public static String messageComplet(Etat e, String farmNom, com.diafarms.ml.DTO.AbonnementTarifDTO tarif,
             boolean paiementEnAttente) {
+        return messageComplet(e, farmNom, tarif, paiementEnAttente, LIGNE_BONUS_DEFAUT);
+    }
+
+    // ligneBonus : « Une recharge de 50 000 FCFA ou plus reçoit 20 % de crédit en plus. »
+    // (réglages du moment), null = pas de ligne.
+    public static String messageComplet(Etat e, String farmNom, com.diafarms.ml.DTO.AbonnementTarifDTO tarif,
+            boolean paiementEnAttente, String ligneBonus) {
         if (e.credit()) {
             return messageCompletCredit(e, farmNom, tarif != null
                     ? "Au rythme actuel, votre ferme coûte environ " + fcfa(tarif.prixMensuel()) + " par mois." : null,
@@ -186,7 +221,7 @@ public final class AbonnementEcheance {
         if (e.enGrace()) {
             sb.append(sujet).append(" est terminé").append(e.estEssai() ? "e" : "").append(" depuis le ")
               .append(date(e.dateFin())).append(". Il vous reste ").append(jours(e.joursGraceRestants()))
-              .append(" pour renouveler avant que l'accès soit bloqué.");
+              .append(" pour recharger avant que l'accès soit bloqué.");
         } else if (e.joursRestants() == 0) {
             sb.append(sujet).append(" se termine aujourd'hui (").append(date(e.dateFin())).append(").");
         } else if (e.joursRestants() == 1) {
@@ -196,22 +231,26 @@ public final class AbonnementEcheance {
               .append(" (dans ").append(jours(e.joursRestants())).append(").");
         }
         sb.append("\n\n");
+        // Crédit prépayé : l'essai (ou une ferme pas encore convertie) continue par une recharge.
         if (paiementEnAttente) {
-            sb.append("Vous avez déjà déclaré un paiement : il est en cours de vérification. "
+            sb.append("Vous avez déjà déclaré une recharge : elle est en cours de vérification. "
                     + "Vous n'avez rien d'autre à faire.\n\n");
         } else {
             if (tarif != null) {
-                sb.append(AbonnementTarif.phraseMontant(tarif)).append("\n\n");
+                sb.append("Avec ").append(AbonnementTarif.poules(tarif.poulesComptees())).append(", votre ferme paierait environ ")
+                  .append(fcfa(tarif.prixMensuel())).append(" par mois.\n\n");
             }
-            sb.append("Pour renouveler : envoyez le montant par mobile money au +223 83 91 86 99, puis ouvrez la page "
-                    + "Abonnement dans Cocorico et cliquez sur « J'ai payé ». Votre paiement sera vérifié puis validé.\n"
-                    + "Une question ? Écrivez-nous sur WhatsApp au +223 83 91 86 99.\n\n");
+            sb.append(e.estEssai() ? "Rechargez votre crédit avant la fin de l'essai : " : "Pour continuer, rechargez votre crédit : ")
+              .append("envoyez le montant de votre choix par mobile money au +223 83 91 86 99, puis ouvrez la page "
+                    + "Abonnement dans Cocorico et cliquez sur « J'ai rechargé ». Votre recharge sera vérifiée puis validée.");
+            if (ligneBonus != null) sb.append(" ").append(ligneBonus);
+            sb.append("\nUne question ? Écrivez-nous sur WhatsApp au +223 83 91 86 99.\n\n");
         }
         if (!e.enGrace() && e.delaiGraceJours() > 0) {
             sb.append("Après cette date, vous aurez encore ").append(jours(e.delaiGraceJours()))
-              .append(" pour renouveler avant que l'accès soit bloqué.");
+              .append(" pour recharger avant que l'accès soit bloqué.");
         } else if (!e.enGrace()) {
-            sb.append("Après cette date, l'accès sera bloqué jusqu'au renouvellement.");
+            sb.append("Après cette date, l'accès sera bloqué jusqu'à la recharge.");
         } else {
             sb.append("Dernier jour d'accès : le ").append(date(e.dernierJourAcces())).append(".");
         }
@@ -222,7 +261,20 @@ public final class AbonnementEcheance {
     // par mois. » (null = pas de ligne).
     public static String messageCompletCredit(Etat e, String farmNom, String lignePrix, boolean rechargeEnAttente) {
         StringBuilder sb = new StringBuilder();
-        if (e.enGrace()) {
+        if (e.periodePayee()) {
+            if (e.enGrace()) {
+                sb.append("La période payée de la ferme ").append(farmNom).append(" est terminée depuis le ")
+                  .append(date(e.dateFin())).append(". Il vous reste ").append(jours(e.joursGraceRestants()))
+                  .append(" pour recharger votre crédit avant que l'accès soit bloqué.");
+            } else {
+                sb.append("La période payée de la ferme ").append(farmNom).append(" se termine le ").append(date(e.dateFin()))
+                  .append(". Rechargez votre crédit pour continuer sans coupure.");
+            }
+        } else if (e.essaiRefuse() && e.enGrace()) {
+            sb.append("La ferme ").append(farmNom).append(" n'a pas d'essai gratuit (le numéro ou l'e-mail a déjà servi pour "
+                    + "une autre ferme). Il vous reste ").append(jours(e.joursGraceRestants()))
+              .append(" pour recharger avant que l'accès soit bloqué.");
+        } else if (e.enGrace()) {
             sb.append("Le crédit Cocorico de la ferme ").append(farmNom).append(" est épuisé depuis le ")
               .append(date(e.dateFin().plusDays(1))).append(". Il vous reste ").append(jours(e.joursGraceRestants()))
               .append(" pour recharger avant que l'accès soit bloqué.");

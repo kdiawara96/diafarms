@@ -2,9 +2,11 @@ package com.diafarms.ml.request.others;
 
 import lombok.Data;
 
-// Console SUPER_ADMIN, « Activer / prolonger » : soit une durée (mois et/ou jours,
-// ajoutés à l'échéance actuelle), soit une date de fin explicite. Paiement facultatif :
-// argent reçu hors application, enregistré directement comme VALIDE.
+// Console SUPER_ADMIN, « Recharger » (crédit prépayé) : argent reçu hors application,
+// enregistré comme une recharge VALIDÉE. montant et moyenPaiement obligatoires ; périodicité,
+// durée et date de fin ne sont plus utilisées (gardées pour les anciens clients).
+// requestId : identifiant de l'envoi (le web en crée un par formulaire) ; un même envoi
+// rejoué ne crédite jamais deux fois.
 @Data
 public class AdminActiverAbonnementRequest {
     private String periodicite;   // MENSUEL | ANNUEL
@@ -14,4 +16,5 @@ public class AdminActiverAbonnementRequest {
     private Double montant;       // facultatif : paiement reçu hors application
     private String moyenPaiement;
     private String reference;
+    private String requestId;
 }

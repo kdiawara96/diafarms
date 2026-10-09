@@ -38,5 +38,10 @@ public record CreditDTO(
         double bonusPourcent,
         int seuilSurDevis,
         // Console : ferme au-dessus du seuil « sur devis » sans tarif spécial.
-        boolean aChiffrer) {
+        boolean aChiffrer,
+        // Ferme d'avant le crédit dans (ou juste après) sa période déjà payée, sans recharge :
+        // jamais de texte d'essai ni de « crédit épuisé ».
+        boolean periodePayee,
+        // Minimum par mois (réglage), pour l'affichage.
+        double prixMinimumMensuel) {
 }
