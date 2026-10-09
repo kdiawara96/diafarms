@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import org.springframework.security.access.AccessDeniedException;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +58,8 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
         }
     }
 
+    private static final int OEUFS_PAR_ALVEOLE = 30;
+
     private int nz(Integer v) { return v == null ? 0 : v; }
     private double nz(Double v) { return v == null ? 0.0 : v; }
 
@@ -65,9 +70,17 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
         }
+        // Finances complètes du projet : réservé au propriétaire de la ferme (même accès que
+        // la page Paramètres côté web).
+        boolean admin = currentUser.getRoles() != null && currentUser.getRoles().stream()
+                .anyMatch(r -> r.getRole() != null && Set.of("ADMIN", "SUPER_ADMIN").contains(r.getRole().toUpperCase()));
+        if (!admin) {
+            throw new AccessDeniedException("Cet export est réservé au propriétaire de la ferme.");
+        }
         Projets projet = projetsRepo.findByUniqueId(projetUniqueId)
                 .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
-        if (projet.getFarm() == null || !projet.getFarm().getId().equals(currentUser.getFarm().getId())) {
+        if (projet.getFarm() == null || !projet.getFarm().getId().equals(currentUser.getFarm().getId())
+                || (projet.getInitialisation() != null && Boolean.TRUE.equals(projet.getInitialisation().getRemoved()))) {
             throw new IllegalArgumentException("Projet introuvable : " + projetUniqueId);
         }
         if (projet.getDebut() == null) {
@@ -107,6 +120,11 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
             double montant = nz(t.getMontant());
             // Achat sujets / Autres charges = capital initial (voir depensesInitiales
             // ci-dessous), jamais reversé dans une dépense journalière récurrente.
+            // Paiement / remboursement d'un client : de l'argent d'une vente déjà comptée
+            // (vendu), jamais une recette ou une dépense de plus (comme le Reporting).
+            if (t.getSourceType() == SourceTransaction.PAIEMENT_CLIENT || t.getSourceType() == SourceTransaction.REMBOURSEMENT_CLI) {
+                continue;
+            }
             if (t.getSourceType() == SourceTransaction.PROJET_ACHAT_SUJETS || t.getSourceType() == SourceTransaction.PROJET_CHARGES) {
                 depensesInitiales += montant;
                 continue;
@@ -131,13 +149,38 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
         // Dernier prix de vente d'œufs BON connu, farm-wide (la vente n'est pas
         // rattachée à un seul projet), reporté jour après jour tant qu'aucune vente
         // plus récente n'est connue — voir VenteOeufsRepo.findAllBonByFarmIdOrderByDateAsc.
-        List<VenteOeufs> ventesBon = venteOeufsRepo.findAllBonByFarmIdOrderByDateAsc(currentUser.getFarm().getId());
-        int indexVente = 0;
+        // VenteOeufs.prixUnitaire est le prix d'UN œuf : prix moyen du jour (montant total
+        // / œufs vendus), puis x 30 pour le prix d'une alvéole.
+        java.util.TreeMap<LocalDate, double[]> ventesParJour = new java.util.TreeMap<>();
+        for (VenteOeufs v : venteOeufsRepo.findAllBonByFarmIdOrderByDateAsc(currentUser.getFarm().getId())) {
+            if (v.getDate() == null || v.getPrixUnitaire() == null || v.getQuantiteOeufs() == null || v.getQuantiteOeufs() <= 0) continue;
+            double[] cumul = ventesParJour.computeIfAbsent(v.getDate(), d -> new double[2]);
+            cumul[0] += v.getPrixUnitaire() * v.getQuantiteOeufs();
+            cumul[1] += v.getQuantiteOeufs();
+        }
         Double dernierPrixConnu = null;
 
         int nbSujets = nz(projet.getNbSujets());
+        // Du plus ancien relevé (une saisie datée avant le début compte aussi, comme dans
+        // l'effectif du projet) jusqu'à aujourd'hui, ou jusqu'à la clôture du projet (et au
+        // dernier relevé s'il y en a après, ex. vente du reste du stock).
         LocalDate debut = projet.getDebut();
+        LocalDate dernierReleve = null;
+        for (Map<LocalDate, ?> m : List.of(collectesParJour, mortsParJour, reformesParJour, ejaParJour, djaParJour, adjParJour)) {
+            for (LocalDate d : m.keySet()) {
+                if (d.isBefore(debut)) debut = d;
+                if (dernierReleve == null || d.isAfter(dernierReleve)) dernierReleve = d;
+            }
+        }
         LocalDate fin = LocalDate.now();
+        if (projet.getDateCloture() != null && projet.getDateCloture().isBefore(fin)) {
+            fin = projet.getDateCloture();
+            if (dernierReleve != null && dernierReleve.isAfter(fin)) fin = dernierReleve;
+        }
+        if (fin.isBefore(debut)) fin = debut;
+        if (java.time.temporal.ChronoUnit.DAYS.between(debut, fin) > 3700) {
+            throw new IllegalArgumentException("Période du projet trop longue (plus de 10 ans) : vérifiez sa date de début.");
+        }
 
         List<RapportJournalierLigneDTO> lignes = new ArrayList<>();
         int npmCumule = 0;
@@ -163,11 +206,11 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
             oeufsBonsCumule += oeufsBonsDuJour;
             oeufsCassesCumule += nec;
 
-            double nja = oeufsBonsDuJour / 30.0;
+            double nja = oeufsBonsDuJour / (double) OEUFS_PAR_ALVEOLE;
 
-            while (indexVente < ventesBon.size() && !ventesBon.get(indexVente).getDate().isAfter(date)) {
-                dernierPrixConnu = ventesBon.get(indexVente).getPrixUnitaire();
-                indexVente++;
+            java.util.Map.Entry<LocalDate, double[]> venteConnue = ventesParJour.floorEntry(date);
+            if (venteConnue != null && venteConnue.getValue()[1] > 0) {
+                dernierPrixConnu = venteConnue.getValue()[0] / venteConnue.getValue()[1] * OEUFS_PAR_ALVEOLE;
             }
             double pua = nz(dernierPrixConnu);
             double mpj = nja * pua;

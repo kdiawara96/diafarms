@@ -29,6 +29,8 @@ public class RapportJournalierControllers {
         try {
             RapportJournalierDTO result = rapportJournalierService.genererPourProjet(projetUniqueId);
             return ApiResponse.createResponse("Rapport journalier généré avec succès", HttpStatus.OK, result, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse("Accès refusé", HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
