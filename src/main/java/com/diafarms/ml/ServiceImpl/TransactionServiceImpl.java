@@ -552,6 +552,9 @@ public class TransactionServiceImpl implements TransactionService {
         }
         data.setMontant(com.diafarms.ml.commons.Franc.arrondi(data.getMontant()));
         validerSaisie(data.getMontant(), data.getCategorie(), data.getDescription());
+        if (com.diafarms.ml.commons.VenteHorsVentes.estVente(data.getType(), data.getCategorie(), data.getDescription())) {
+            throw new IllegalArgumentException(com.diafarms.ml.commons.VenteHorsVentes.MESSAGE);
+        }
         // Colonne categorie NOT NULL : sans catégorie (description seule), « Autre ».
         if (data.getCategorie() == null) data.setCategorie("Autre");
         if ("SORTIE".equalsIgnoreCase(data.getType()) && estCategorieAchatAliment(data.getCategorie())) {
@@ -851,6 +854,8 @@ public class TransactionServiceImpl implements TransactionService {
         // OU par le type Entrée -> Sortie), non : état relevé avant toute modification.
         boolean etaitSortieAliment = t.getType() == TypeTransaction.SORTIE && estCategorieAchatAliment(t.getCategorie());
         boolean etaitSortieMedicament = t.getType() == TypeTransaction.SORTIE && estCategorieAchatMedicament(t.getCategorie());
+        boolean etaitVente = com.diafarms.ml.commons.VenteHorsVentes.estVente(
+                t.getType() != null ? t.getType().name() : null, t.getCategorie(), t.getDescription());
 
         if (data.getType() != null) t.setType(TypeTransaction.valueOf(data.getType()));
         t.setDate(com.diafarms.ml.commons.DateSaisie.modifiee(data.getDate(), t.getDate()));
@@ -866,6 +871,11 @@ public class TransactionServiceImpl implements TransactionService {
         if (data.getMontant() != null || data.getCategorie() != null || data.getCategoriePrecision() != null
                 || data.getDescription() != null) {
             validerSaisie(data.getMontant() != null ? t.getMontant() : 1.0, t.getCategorie(), t.getDescription());
+        }
+        // Une vente se fait dans Ventes (voir VenteHorsVentes). Comme pour l'aliment : une
+        // ancienne entrée déjà écrite ainsi reste modifiable, mais on ne peut pas y passer.
+        if (!etaitVente && com.diafarms.ml.commons.VenteHorsVentes.estVente(t.getType().name(), t.getCategorie(), t.getDescription())) {
+            throw new IllegalArgumentException(com.diafarms.ml.commons.VenteHorsVentes.MESSAGE);
         }
         if (data.getQuantite() != null) t.setQuantite(data.getQuantite() > 0 ? data.getQuantite() : null);
         if (data.getPrixUnitaire() != null) t.setPrixUnitaire(data.getPrixUnitaire() > 0 ? data.getPrixUnitaire() : null);
