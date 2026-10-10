@@ -30,10 +30,12 @@ public interface FactureRepo extends JpaRepository<Facture, Long> {
     // Pas d'ORDER BY ici : le tri vient du Pageable, comme CommandeRepo.search.
     @Query("SELECT f FROM Facture f WHERE f.farm.id = :farmId AND f.initialisation.removed = false " +
         "AND (:hasStatut = false OR f.statut = :statut) " +
-        "AND (:hasClient = false OR f.client.uniqueId = :clientUniqueId)")
+        "AND (:hasClient = false OR f.client.uniqueId = :clientUniqueId) " +
+        "AND (:hasCreateur = false OR f.creePar.id = :createurId)")
     Page<Facture> search(@Param("farmId") Long farmId,
                           @Param("hasStatut") boolean hasStatut, @Param("statut") Facture.StatutFacture statut,
                           @Param("hasClient") boolean hasClient, @Param("clientUniqueId") String clientUniqueId,
+                          @Param("hasCreateur") boolean hasCreateur, @Param("createurId") Long createurId,
                           Pageable pageable);
 
     // Même filtre que search(), sans pagination base — utilisé par
@@ -43,9 +45,11 @@ public interface FactureRepo extends JpaRepository<Facture, Long> {
     // puis paginer en mémoire.
     @Query("SELECT f FROM Facture f WHERE f.farm.id = :farmId AND f.initialisation.removed = false " +
         "AND (:hasStatut = false OR f.statut = :statut) " +
-        "AND (:hasClient = false OR f.client.uniqueId = :clientUniqueId)")
+        "AND (:hasClient = false OR f.client.uniqueId = :clientUniqueId) " +
+        "AND (:hasCreateur = false OR f.creePar.id = :createurId)")
     java.util.List<Facture> searchToutes(@Param("farmId") Long farmId,
                           @Param("hasStatut") boolean hasStatut, @Param("statut") Facture.StatutFacture statut,
                           @Param("hasClient") boolean hasClient, @Param("clientUniqueId") String clientUniqueId,
+                          @Param("hasCreateur") boolean hasCreateur, @Param("createurId") Long createurId,
                           Sort sort);
 }

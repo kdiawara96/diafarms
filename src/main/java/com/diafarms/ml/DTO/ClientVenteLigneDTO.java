@@ -32,6 +32,8 @@ public class ClientVenteLigneDTO {
     // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente, null si aucune —
     // voir FactureLigneRepo.numeroFactureActive.
     private String factureNumero;
+    // Qui a fait la vente : un vendeur ne facture que ses propres ventes (voir FactureServiceImpl).
+    private String creeParUniqueId;
 
     // Lignes "PAIEMENT"/"REMBOURSEMENT".
     private String mode; // ModePaiement

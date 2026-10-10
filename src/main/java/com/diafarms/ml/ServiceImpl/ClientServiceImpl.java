@@ -309,6 +309,7 @@ public class ClientServiceImpl implements ClientService {
                     .commandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null)
                     .quantite(v.getQuantiteOeufs())
                     .factureNumero(factureNumeroActive(CibleImputation.VENTE_OEUFS, v.getUniqueId()))
+                    .creeParUniqueId(v.getCreePar() != null ? v.getCreePar().getUniqueId() : null)
                     .build());
         }
         for (VenteReforme v : ventesReforme) {
@@ -327,6 +328,7 @@ public class ClientServiceImpl implements ClientService {
                     .commandeUniqueId(v.getCommande() != null ? v.getCommande().getUniqueId() : null)
                     .quantite(v.getNombreSujets())
                     .factureNumero(factureNumeroActive(CibleImputation.VENTE_REFORME, v.getUniqueId()))
+                    .creeParUniqueId(v.getCreePar() != null ? v.getCreePar().getUniqueId() : null)
                     .build());
         }
         // Paiements/avances directs (voir payerDette) : pas de vente associée, donc

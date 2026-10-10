@@ -104,6 +104,27 @@ public class FactureServiceImpl implements FactureService {
         }
     }
 
+    private boolean gereFacturation(Utilisateurs u) {
+        return isAdmin(u) || hasRole(u, "RESPONSABLE") || hasRole(u, "COMPTABLE");
+    }
+
+    // Vendeur (rôle VENTE sans rôle de gestion) : il fait et imprime la facture de SES
+    // ventes et ne voit que les factures qu'il a faites ; jamais d'annulation ni de
+    // paiement sur une facture (réservés à la gestion).
+    private boolean estVendeur(Utilisateurs u) {
+        return !gereFacturation(u) && hasRole(u, "VENTE");
+    }
+
+    private void ensurePeutVoir(Utilisateurs u) {
+        if (!gereFacturation(u) && !estVendeur(u)) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour voir les factures.");
+        }
+    }
+
+    private static boolean venteDe(Utilisateurs createur, Utilisateurs u) {
+        return createur != null && u != null && createur.getId().equals(u.getId());
+    }
+
     private void ensureCanAnnuler(Utilisateurs u) {
         if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
             throw new IllegalArgumentException("Seul un administrateur ou un responsable peut annuler une facture.");
@@ -142,6 +163,9 @@ public class FactureServiceImpl implements FactureService {
 
     // Facture/vente/commande introuvable OU d'une autre ferme -> même message, pour ne
     // pas révéler l'existence d'un enregistrement d'une autre ferme.
+    private static final String MESSAGE_PAS_SA_VENTE =
+            "Vous pouvez faire la facture de vos propres ventes seulement.";
+
     private Facture factureFarmScoped(String uniqueId, Utilisateurs currentUser) {
         Facture f = factureRepo.findByUniqueId(uniqueId);
         if (f == null || currentUser == null || currentUser.getFarm() == null
@@ -217,7 +241,8 @@ public class FactureServiceImpl implements FactureService {
     @Transactional
     public FactureDTO genererDepuis(FactureGenerateRequest data) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        ensureCanManage(currentUser);
+        boolean vendeur = estVendeur(currentUser);
+        if (!vendeur) ensureCanManage(currentUser);
         if (currentUser == null || currentUser.getFarm() == null) {
             throw new IllegalArgumentException("Utilisateur ou ferme introuvable.");
         }
@@ -228,6 +253,9 @@ public class FactureServiceImpl implements FactureService {
         String sourceUniqueIdCommande = null;
 
         if (refs == null) {
+            if (vendeur) {
+                throw new IllegalArgumentException("Un vendeur fait la facture de ses ventes, pas d'une commande.");
+            }
             if (data.getSourceUniqueId() == null || data.getSourceUniqueId().isBlank()) {
                 throw new IllegalArgumentException("La source de la facture (vente ou commande) est requise.");
             }
@@ -273,6 +301,9 @@ public class FactureServiceImpl implements FactureService {
                 if (ve.getFarm() == null || !ve.getFarm().getId().equals(farmId) || !estActive(ve.getInitialisation())) {
                     throw new IllegalArgumentException("Vente introuvable : " + v.getUniqueId());
                 }
+                if (vendeur && !venteDe(ve.getCreePar(), currentUser)) {
+                    throw new IllegalArgumentException(MESSAGE_PAS_SA_VENTE);
+                }
                 client = verifierMemeClient(client, ve.getClient(), v.getUniqueId());
                 lignesAGenerer.add(new LigneAGenerer(type, ve.getUniqueId(),
                         "Vente d'œufs : " + ve.getQuantiteOeufs() + " unité(s)",
@@ -282,6 +313,9 @@ public class FactureServiceImpl implements FactureService {
                         .orElseThrow(() -> new IllegalArgumentException("Vente introuvable : " + v.getUniqueId()));
                 if (ve.getFarm() == null || !ve.getFarm().getId().equals(farmId) || !estActive(ve.getInitialisation())) {
                     throw new IllegalArgumentException("Vente introuvable : " + v.getUniqueId());
+                }
+                if (vendeur && !venteDe(ve.getCreePar(), currentUser)) {
+                    throw new IllegalArgumentException(MESSAGE_PAS_SA_VENTE);
                 }
                 client = verifierMemeClient(client, ve.getClient(), v.getUniqueId());
                 lignesAGenerer.add(new LigneAGenerer(type, ve.getUniqueId(),
@@ -512,7 +546,12 @@ public class FactureServiceImpl implements FactureService {
     @Override
     @Transactional(readOnly = true)
     public byte[] genererPdf(String uniqueId) {
-        Facture f = factureFarmScoped(uniqueId, getCurrentUserSafe());
+        Utilisateurs currentUser = getCurrentUserSafe();
+        ensurePeutVoir(currentUser);
+        Facture f = factureFarmScoped(uniqueId, currentUser);
+        if (estVendeur(currentUser) && !venteDe(f.getCreePar(), currentUser)) {
+            throw new IllegalArgumentException("Facture introuvable : " + uniqueId);
+        }
         Farm farm = f.getFarm();
         FactureDTO dto = toDto(f);
         // Une facture sans ligne (legacy, ou ancienne facture pas encore reprise —
@@ -655,6 +694,10 @@ public class FactureServiceImpl implements FactureService {
             return new PaginatedResponse<>(List.of(), 1, 0, 0, size);
         }
         Long farmId = currentUser.getFarm().getId();
+        ensurePeutVoir(currentUser);
+        // Un vendeur ne voit que les factures qu'il a faites.
+        boolean hasCreateur = estVendeur(currentUser);
+        Long createurId = hasCreateur ? currentUser.getId() : -1L;
 
         String statutNorm = (statut == null || statut.isBlank() || "tous".equalsIgnoreCase(statut))
                 ? null : statut.trim().toUpperCase();
@@ -673,7 +716,7 @@ public class FactureServiceImpl implements FactureService {
         // reste un vrai statut stocké (annuler() l'écrit) : filtré directement en base.
         if (statutEnum != null && statutEnum != StatutFacture.ANNULEE) {
             List<Facture> toutes = factureRepo.searchToutes(farmId, false, StatutFacture.IMPAYEE, hasClient, clientParam,
-                    Sort.by(Sort.Direction.DESC, "dateEmission"));
+                    hasCreateur, createurId, Sort.by(Sort.Direction.DESC, "dateEmission"));
             List<FactureDTO> filtres = toutes.stream().map(this::toDto)
                     .filter(dto -> statutNorm.equals(dto.getStatut()))
                     .toList();
@@ -688,7 +731,8 @@ public class FactureServiceImpl implements FactureService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateEmission"));
         boolean hasStatut = statutEnum != null;
         StatutFacture statutParam = hasStatut ? statutEnum : StatutFacture.IMPAYEE;
-        Page<Facture> facturePage = factureRepo.search(farmId, hasStatut, statutParam, hasClient, clientParam, pageable);
+        Page<Facture> facturePage = factureRepo.search(farmId, hasStatut, statutParam, hasClient, clientParam,
+                hasCreateur, createurId, pageable);
         List<FactureDTO> dtoList = facturePage.getContent().stream().map(this::toDto).toList();
 
         return new PaginatedResponse<>(
