@@ -82,7 +82,7 @@ public class PersonnelServiceImpl implements PersonnelService {
         p.setUniqueId(java.util.UUID.randomUUID().toString());
         p.setNom(data.getNom().trim());
         p.setPoste(data.getPoste());
-        p.setTelephone(data.getTelephone());
+        p.setTelephone(com.diafarms.ml.commons.Telephone.verifier(data.getTelephone()));
         p.setUtilisateurCompte(resolveCompte(data.getUtilisateurCompteUniqueId(), currentUser));
         p.setFarm(currentUser.getFarm());
         p.setInitialisation(Initialisation.init());
@@ -107,7 +107,7 @@ public class PersonnelServiceImpl implements PersonnelService {
 
         if (data.getNom() != null && !data.getNom().isBlank()) p.setNom(data.getNom().trim());
         if (data.getPoste() != null) p.setPoste(data.getPoste());
-        if (data.getTelephone() != null) p.setTelephone(data.getTelephone());
+        if (data.getTelephone() != null) p.setTelephone(com.diafarms.ml.commons.Telephone.verifier(data.getTelephone()));
         if (data.getUtilisateurCompteUniqueId() != null) {
             p.setUtilisateurCompte(resolveCompte(data.getUtilisateurCompteUniqueId().isBlank() ? null : data.getUtilisateurCompteUniqueId(), currentUser));
         }

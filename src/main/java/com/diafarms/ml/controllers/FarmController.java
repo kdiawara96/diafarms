@@ -135,8 +135,12 @@ public class FarmController {
         farm.setQuartier(blankToNull(body.get("quartier")));
         farm.setVille(blankToNull(body.get("ville")));
         farm.setPays(blankToNull(body.get("pays")));
-        farm.setTelephone1(blankToNull(body.get("telephone1")));
-        farm.setTelephone2(blankToNull(body.get("telephone2")));
+        try {
+            farm.setTelephone1(com.diafarms.ml.commons.Telephone.verifier(body.get("telephone1")));
+            farm.setTelephone2(com.diafarms.ml.commons.Telephone.verifier(body.get("telephone2")));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        }
         farm.setEmail(blankToNull(body.get("email")));
         farmsRepo.save(farm);
 

@@ -153,7 +153,7 @@ public class ClientServiceImpl implements ClientService {
         Client c = new Client();
         c.setUniqueId(java.util.UUID.randomUUID().toString());
         c.setNom(data.getNom().trim());
-        c.setTelephone(data.getTelephone().trim());
+        c.setTelephone(com.diafarms.ml.commons.Telephone.verifier(data.getTelephone()));
         c.setAdresse(data.getAdresse());
         c.setEmail(data.getEmail());
         c.setFarm(currentUser.getFarm());
@@ -178,7 +178,7 @@ public class ClientServiceImpl implements ClientService {
 
         if (data.getNom() != null && !data.getNom().isBlank()) c.setNom(data.getNom().trim());
         if (data.getTelephone() != null && !data.getTelephone().isBlank()) {
-            String telephone = data.getTelephone().trim();
+            String telephone = com.diafarms.ml.commons.Telephone.verifier(data.getTelephone());
             if (!telephone.equals(c.getTelephone())
                     && clientRepo.existsByTelephoneAndFarmIdExcludingUniqueId(telephone, c.getFarm().getId(), c.getUniqueId())) {
                 throw new IllegalArgumentException("Un client avec ce numéro de téléphone existe déjà.");

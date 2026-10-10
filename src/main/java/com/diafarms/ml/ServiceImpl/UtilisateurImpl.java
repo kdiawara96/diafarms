@@ -100,7 +100,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         user.setCity(data.getCity());
         user.setFarmName(data.getFarmName());
         user.setEmail(data.getEmail());
-        user.setTelephone(data.getTelephone());
+        user.setTelephone(com.diafarms.ml.commons.Telephone.verifier(data.getTelephone()));
         user.setUniqueId(UUID.randomUUID().toString());
         user.setInitialisation(Initialisation.init());
 
@@ -409,7 +409,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         String generatedUsername = generateUsernameFromFullName(dto.getFullName());
         u.setUsername(generatedUsername);
         u.setFullName(dto.getFullName());
-        u.setTelephone(dto.getTelephone());
+        u.setTelephone(com.diafarms.ml.commons.Telephone.verifier(dto.getTelephone()));
         u.setEmail(dto.getEmail());
         u.setCity(dto.getCity());
         u.setRegion(dto.getRegion());
@@ -492,7 +492,7 @@ public class UtilisateurImpl implements UtilisateursServices {
 
         // 3. Mise à jour des informations de base
         u.setFullName(dto.getFullName());
-        u.setTelephone(dto.getTelephone());
+        u.setTelephone(com.diafarms.ml.commons.Telephone.verifier(dto.getTelephone()));
         u.setEmail(dto.getEmail());
         u.setCity(dto.getCity());
         u.setRegion(dto.getRegion());
