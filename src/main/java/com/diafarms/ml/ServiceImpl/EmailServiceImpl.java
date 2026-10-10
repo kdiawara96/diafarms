@@ -318,9 +318,18 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     public boolean sendMessageCocorico(String to, String fullName, String titre, String sujet, String message) {
+        return sendMessageCocorico(to, fullName, titre, sujet, message, null);
+    }
+
+    @Override
+    public boolean sendMessageCocorico(String to, String fullName, String titre, String sujet, String message,
+            String lienDesinscription) {
         try {
             MimeMessage mime = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
+            if (lienDesinscription != null && !lienDesinscription.isBlank()) {
+                mime.setHeader("List-Unsubscribe", "<" + lienDesinscription + ">");
+            }
             helper.setFrom(fromAddress, "Cocorico");
             helper.setTo(to);
             helper.setReplyTo(fromAddress);

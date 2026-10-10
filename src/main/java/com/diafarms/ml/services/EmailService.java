@@ -44,4 +44,11 @@ public interface EmailService {
      * échoue.
      */
     boolean sendMessageCocorico(String to, String fullName, String titre, String sujet, String message);
+
+    // Même e-mail avec un en-tête List-Unsubscribe (lien vers la page où couper l'envoi) :
+    // les messageries peuvent alors afficher leur propre bouton « Se désabonner ».
+    default boolean sendMessageCocorico(String to, String fullName, String titre, String sujet, String message,
+            String lienDesinscription) {
+        return sendMessageCocorico(to, fullName, titre, sujet, message);
+    }
 }

@@ -55,6 +55,8 @@ public class ResumeHebdoService {
     public static final double PONTE_BAISSE_POINTS = 5.0;
     public static final double STOCK_JOURS_MIN = 7.0;
     public static final int MORTS_MIN_HAUSSE = 3;
+    // Page où le propriétaire de la ferme coupe le résumé (en-tête List-Unsubscribe).
+    static final String LIEN_REGLAGE = "https://cocorico.batimanager.net/parametres";
 
     private final JdbcTemplate jdbc;
     private final AbonnementRepo abonnementRepo;
@@ -167,7 +169,8 @@ public class ResumeHebdoService {
                 int n = 0;
                 for (DestinatairesAdmin.Destinataire d : admins) {
                     try {
-                        if (emailService.sendMessageCocorico(d.email(), d.nom(), "Résumé de la semaine", resume.sujet(), resume.message())) n++;
+                        if (emailService.sendMessageCocorico(d.email(), d.nom(), "Résumé de la semaine", resume.sujet(), resume.message(),
+                                LIEN_REGLAGE)) n++;
                     } catch (Exception e) {
                         log.error("Résumé de la semaine : e-mail à {} en échec : {}", d.email(), e.getMessage());
                     }
