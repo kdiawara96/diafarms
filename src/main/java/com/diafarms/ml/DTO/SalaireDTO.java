@@ -25,6 +25,10 @@ public class SalaireDTO {
     private String dernierPaiementPeriode;
     private LocalDate dernierPaiementDate;
     private Double dernierPaiementMontant;
+    // Toutes les périodes déjà payées (AAAA-MM, la plus récente d'abord) : le téléphone
+    // refuse un double paiement dès le choix du mois, même hors ligne, et pas seulement
+    // pour le dernier mois payé.
+    private java.util.List<String> periodesPayees;
 
     public static SalaireDTO fromEntity(Salaire s, PaiementSalaire dernier) {
         if (s == null) return null;

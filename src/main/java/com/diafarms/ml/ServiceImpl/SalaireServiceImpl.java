@@ -333,8 +333,19 @@ public class SalaireServiceImpl implements SalaireService {
     public List<SalaireDTO> select() {
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser == null || currentUser.getFarm() == null) return List.of();
+        // Périodes payées de toute la ferme en une requête, rangées par salaire.
+        java.util.Map<Long, List<String>> periodes = new java.util.HashMap<>();
+        for (PaiementSalaire p : paiementSalaireRepo.findActifsByFarmId(currentUser.getFarm().getId())) {
+            if (p.getPeriode() != null) periodes.computeIfAbsent(p.getSalaire().getId(), k -> new java.util.ArrayList<>()).add(p.getPeriode());
+        }
         return salaireRepo.findAllByFarmId(currentUser.getFarm().getId()).stream()
-                .map(s -> SalaireDTO.fromEntity(s, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(s.getId())))
+                .map(s -> {
+                    SalaireDTO dto = SalaireDTO.fromEntity(s, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(s.getId()));
+                    List<String> liste = new java.util.ArrayList<>(periodes.getOrDefault(s.getId(), List.of()));
+                    liste.sort(java.util.Comparator.reverseOrder());
+                    dto.setPeriodesPayees(liste);
+                    return dto;
+                })
                 .toList();
     }
 
