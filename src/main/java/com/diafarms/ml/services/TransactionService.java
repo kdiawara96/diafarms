@@ -136,6 +136,11 @@ public interface TransactionService {
                                             String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
                                             LocalDate dateDebut, LocalDate dateFin);
 
+    /** Transactions VALIDÉES non supprimées rattachées directement à ce projet, sur la
+     * période, avec montantReel calculé comme dans list(). Ne dépend pas du rôle de
+     * l'appelant (le contrôle d'accès est fait par l'appelant, ex. rapport PDF du projet). */
+    java.util.List<TransactionDTO> listValideesDuProjet(Long projetId, LocalDate debut, LocalDate fin);
+
     /** Idem, avec le filtre "nature" : "VENTE_CLIENT" = seulement les ventes à un client
      * (valeur vendue, pas d'argent), "HORS_VENTE_CLIENT" = tout sauf elles ; null = tout. */
     PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,

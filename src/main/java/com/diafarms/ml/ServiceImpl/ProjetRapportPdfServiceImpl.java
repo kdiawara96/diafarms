@@ -22,7 +22,6 @@ import com.diafarms.ml.DTO.OccupationBatimentDTO;
 import com.diafarms.ml.DTO.ProjetsDTO;
 import com.diafarms.ml.DTO.TransactionDTO;
 import com.diafarms.ml.commons.PdfStyle;
-import com.diafarms.ml.enums.StatutTransaction;
 import com.diafarms.ml.enums.TypeTransaction;
 import com.diafarms.ml.models.Alimentation;
 import com.diafarms.ml.models.CollecteOeufs;
@@ -32,7 +31,6 @@ import com.diafarms.ml.models.Mortalite;
 import com.diafarms.ml.models.Reforme;
 import com.diafarms.ml.models.Soins;
 import com.diafarms.ml.models.Utilisateurs;
-import com.diafarms.ml.others.PaginatedResponse;
 import com.diafarms.ml.repository.AlimentationRepo;
 import com.diafarms.ml.repository.CollecteOeufsRepo;
 import com.diafarms.ml.repository.ConsommationAlimentRepo;
@@ -148,12 +146,24 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
             throw new IllegalArgumentException("Projet introuvable : " + projetUniqueId);
         }
 
+        com.diafarms.ml.models.Projets entite = projetsRepo.findByUniqueId(projetUniqueId)
+                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + projetUniqueId));
+        // Projet clôturé : la période s'arrête par défaut au jour de la clôture, pas à aujourd'hui.
+        boolean cloture = entite.getDateCloture() != null;
         LocalDate debut = dateDebut != null ? dateDebut : (projet.getDebut() != null ? projet.getDebut() : LocalDate.now());
-        LocalDate fin = dateFin != null ? dateFin : LocalDate.now();
+        LocalDate fin = dateFin != null ? dateFin : (cloture ? entite.getDateCloture() : LocalDate.now());
+        // Projet clôturé : ses œufs restés au magasin peuvent encore être vendus (et lui être
+        // attribués) après la clôture. Comme l'export journalier, la période par défaut va
+        // jusqu'à la dernière de ces ventes si elle est plus tardive.
+        if (dateFin == null && cloture && fin.isBefore(LocalDate.now())) {
+            for (TransactionDTO t : transactionService.listValideesDuProjet(entite.getId(), fin.plusDays(1), LocalDate.now())) {
+                if (t.getDate() != null && t.getDate().isAfter(fin)) fin = t.getDate();
+            }
+        }
         if (fin.isBefore(debut)) throw new IllegalArgumentException("La date de fin est avant la date de début.");
         long jours = java.time.temporal.ChronoUnit.DAYS.between(debut, fin) + 1;
 
-        Long projetId = projetIdParUniqueId(projetUniqueId);
+        Long projetId = entite.getId();
 
         // ===== Production =====
         int oeufs = 0, casses = 0, nonUtilisables = 0;
@@ -167,39 +177,72 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
         }
         int bonEtat = Math.max(0, com.diafarms.ml.commons.StockOeufsRegle.bonEtat(oeufs, casses, nonUtilisables));
         int morts = 0;
+        // Sorties (morts + réformés) par jour, toutes dates : l'effectif vivant d'un jour
+        // compte aussi celles d'avant la période (même règle que l'export journalier,
+        // RapportJournalierServiceImpl : NPR = départ - morts cumulés - réformés cumulés).
+        Map<LocalDate, Integer> sortiesParJour = new java.util.HashMap<>();
         for (Mortalite m : mortaliteRepo.findAllByProjetId(projetId)) {
             if (dans(m.getDate(), debut, fin)) morts += nz(m.getNombreMorts());
+            if (m.getDate() != null) sortiesParJour.merge(m.getDate(), nz(m.getNombreMorts()), Integer::sum);
         }
         int reformes = 0;
         for (Reforme r : reformeRepo.findAllByProjetId(projetId)) {
             if (dans(r.getDate(), debut, fin)) reformes += nz(r.getNombreSujets());
+            if (r.getDate() != null) sortiesParJour.merge(r.getDate(), nz(r.getNombreSujets()), Integer::sum);
         }
         int effectifVivant = nz(projet.getEffectifVivant());
+        Map<LocalDate, Integer> vivantsParJour = effectifsParJour(nz(entite.getNbSujets()), sortiesParJour, debut, fin,
+                entite.getDebut(), MainOeuvreService.finEffective(entite));
+        // Poules-jours : somme des effectifs vivants de chaque jour (de la période, ou des
+        // seuls jours de collecte pour le taux de ponte).
+        long poulesJours = 0, poulesJoursCollecte = 0;
+        for (Map.Entry<LocalDate, Integer> e : vivantsParJour.entrySet()) {
+            poulesJours += e.getValue();
+            if (joursCollecte.contains(e.getKey())) poulesJoursCollecte += e.getValue();
+        }
         double moyenneOeufsJour = joursCollecte.isEmpty() ? 0 : (double) oeufs / joursCollecte.size();
-        double tauxPonteMoyen = (effectifVivant > 0 && !joursCollecte.isEmpty()) ? moyenneOeufsJour / effectifVivant * 100 : 0;
+        double tauxPonteMoyen = poulesJoursCollecte > 0 ? (double) oeufs / poulesJoursCollecte * 100 : 0;
 
         // ===== Aliment =====
-        double kgAchetesPeriode = 0, coutAchatsPeriode = 0, kgAchetesTotal = 0, coutAchatsTotal = 0;
+        // Transfert de stock à la clôture d'un projet (ProjetImpl.transfererStock) : une
+        // entrée "Transfert depuis CODE" dans le projet qui reçoit, une consommation du même
+        // jour et de la même quantité dans le projet clôturé. Ni un achat ni de l'aliment
+        // mangé : exclu des achats et de la consommation de la période, mais gardé dans le
+        // stock (le projet clôturé finit à 0, celui qui reçoit a ce stock en plus) et, pour
+        // celui qui reçoit, dans le prix moyen au kilo (valeur du stock reçu).
+        double kgAchetesPeriode = 0, coutAchatsPeriode = 0, kgEntresTotal = 0, coutEntresTotal = 0;
+        double kgRecusTransfert = 0, kgDonnesTransfert = 0;
         List<Alimentation> achats = alimentationRepo.findByProjetUniqueIdAndInitialisationRemovedFalse(projetUniqueId);
         for (Alimentation a : achats) {
             if (a.getDateDistribution() == null || a.getDateDistribution().isAfter(fin)) continue;
-            kgAchetesTotal += nz(a.getQuantiteKg());
-            coutAchatsTotal += nz(a.getCoutTotal());
-            if (dans(a.getDateDistribution(), debut, fin)) {
+            kgEntresTotal += nz(a.getQuantiteKg());
+            coutEntresTotal += nz(a.getCoutTotal());
+            if (!dans(a.getDateDistribution(), debut, fin)) continue;
+            if (AlimentationImpl.estTransfertStock(a.getNomAliment())) {
+                kgRecusTransfert += nz(a.getQuantiteKg());
+            } else {
                 kgAchetesPeriode += nz(a.getQuantiteKg());
                 coutAchatsPeriode += nz(a.getCoutTotal());
             }
         }
-        double kgConsommesPeriode = 0, kgConsommesTotal = 0;
+        List<Alimentation> entreesTransfertDonne = entite.getFarm() != null && entite.getCode() != null
+                ? alimentationRepo.findActivesByFarmIdAndNomAliment(entite.getFarm().getId(), AlimentationImpl.nomTransfertDepuis(entite.getCode()))
+                : List.of();
+        double kgConsommesPeriode = 0, kgSortisTotal = 0;
         for (ConsommationAliment c : consommationAlimentRepo.findAllByProjetId(projetId)) {
             if (c.getDate() == null || c.getDate().isAfter(fin)) continue;
-            kgConsommesTotal += nz(c.getQuantiteKg());
-            if (dans(c.getDate(), debut, fin)) kgConsommesPeriode += nz(c.getQuantiteKg());
+            kgSortisTotal += nz(c.getQuantiteKg());
+            if (!dans(c.getDate(), debut, fin)) continue;
+            if (AlimentationImpl.estConsommationDeTransfert(c.getDate(), c.getQuantiteKg(), entreesTransfertDonne)) {
+                kgDonnesTransfert += nz(c.getQuantiteKg());
+            } else {
+                kgConsommesPeriode += nz(c.getQuantiteKg());
+            }
         }
-        double prixMoyenKg = kgAchetesTotal > 0 ? coutAchatsTotal / kgAchetesTotal : 0;
+        double prixMoyenKg = kgEntresTotal > 0 ? coutEntresTotal / kgEntresTotal : 0;
         double coutConsoEstime = kgConsommesPeriode * prixMoyenKg;
-        double stockRestant = kgAchetesTotal - kgConsommesTotal;
-        double grammesParPouleJour = (effectifVivant > 0 && jours > 0) ? kgConsommesPeriode * 1000 / effectifVivant / jours : 0;
+        double stockRestant = kgEntresTotal - kgSortisTotal;
+        double grammesParPouleJour = poulesJours > 0 ? kgConsommesPeriode * 1000 / poulesJours : 0;
 
         // ===== Santé =====
         List<Soins> soins = new ArrayList<>();
@@ -209,16 +252,9 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
         soins.sort(Comparator.comparing(Soins::getDate));
 
         // ===== Finances : transactions VALIDÉES directement rattachées au projet =====
-        List<TransactionDTO> transactions = new ArrayList<>();
-        int page = 0;
-        int totalPages = 1;
-        do {
-            PaginatedResponse<TransactionDTO> res = transactionService.list(page, 500, null, null, StatutTransaction.VALIDE,
-                    projetUniqueId, null, null, debut, fin);
-            if (res.getData() != null) transactions.addAll(res.getData());
-            totalPages = Math.max(1, res.getTotalPages());
-            page++;
-        } while (page < totalPages && page < 40);
+        // Lecture directe des transactions du projet (comme l'export journalier) : les chiffres
+        // ne dépendent pas du rôle de la personne qui génère le rapport.
+        List<TransactionDTO> transactions = transactionService.listValideesDuProjet(projetId, debut, fin);
         double recettesReelles = 0, recettesTheoriques = 0, depensesTotal = 0, depensesSante = 0;
         Map<String, Double> depensesParCategorie = new LinkedHashMap<>();
         for (TransactionDTO t : transactions) {
@@ -280,7 +316,7 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
             if (projet.getResponsableProductionNom() != null) id.add(new String[]{"Responsable production", projet.getResponsableProductionNom()});
             if (projet.getResponsableFinanceNom() != null) id.add(new String[]{"Responsable finance", projet.getResponsableFinanceNom()});
             id.add(new String[]{"Sujets au départ", n0(nz(projet.getNbSujets()))});
-            id.add(new String[]{"Sujets vivants aujourd'hui", n0(effectifVivant)});
+            id.add(new String[]{cloture ? "Sujets vivants à la clôture" : "Sujets vivants aujourd'hui", n0(effectifVivant)});
             id.add(new String[]{"Mortalité cumulée / sujets réformés", n1(nz(projet.getMortaliteCumulee())) + " % / " + n0(nz(projet.getSujetsReformesCumulee()))});
             if (projet.getOccupationBatiment() != null && !projet.getOccupationBatiment().isEmpty()) {
                 StringBuilder sb = new StringBuilder();
@@ -300,23 +336,25 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
                     {"Dont bon état / cassés / non utilisables", n0(bonEtat) + " / " + n0(casses) + " / " + n0(nonUtilisables)},
                     {"Équivalent en alvéoles (30 œufs) du bon état", n1(bonEtat / 30.0)},
                     {"Moyenne d'œufs par jour de collecte", n0(moyenneOeufsJour)},
-                    {"Taux de ponte moyen (sur l'effectif vivant actuel)", n1(tauxPonteMoyen) + " %"},
+                    {"Taux de ponte moyen (sur l'effectif vivant de chaque jour)", n1(tauxPonteMoyen) + " %"},
                     {"Mortalité sur la période", n0(morts) + " sujet(s)"},
                     {"Sujets réformés sur la période", n0(reformes)},
             }));
 
             // --- Aliment ---
             document.add(section("Aliment"));
-            document.add(kv(new String[][]{
-                    {"Aliment acheté sur la période", n0(kgAchetesPeriode) + " kg"},
-                    {"Coût des achats sur la période", fcfa(coutAchatsPeriode)},
-                    {"Aliment consommé sur la période", n1(kgConsommesPeriode) + " kg"},
-                    {"Prix moyen d'achat au kilo (achats depuis le début)", prixMoyenKg > 0 ? fcfa(prixMoyenKg) : "-"},
-                    {"Coût estimé de l'aliment consommé", prixMoyenKg > 0 ? fcfa(coutConsoEstime) : "-"},
-                    {"Consommation moyenne par poule et par jour", n0(grammesParPouleJour) + " g"},
-                    {"Stock d'aliment restant (achats moins consommation, à la date de fin)", n1(stockRestant) + " kg"},
-            }));
-            document.add(note("Le coût de l'aliment consommé est une estimation : kilos consommés multipliés par le prix moyen d'achat au kilo. Le coût réel payé est celui des achats."));
+            List<String[]> lignesAliment = new ArrayList<>();
+            lignesAliment.add(new String[]{"Aliment acheté sur la période", n0(kgAchetesPeriode) + " kg"});
+            lignesAliment.add(new String[]{"Coût des achats sur la période", fcfa(coutAchatsPeriode)});
+            if (kgRecusTransfert > 0) lignesAliment.add(new String[]{"Stock reçu d'un Projet clôturé (pas un achat)", n1(kgRecusTransfert) + " kg"});
+            lignesAliment.add(new String[]{"Aliment consommé sur la période", n1(kgConsommesPeriode) + " kg"});
+            if (kgDonnesTransfert > 0) lignesAliment.add(new String[]{"Stock donné à un autre Projet à la clôture (pas consommé)", n1(kgDonnesTransfert) + " kg"});
+            lignesAliment.add(new String[]{"Prix moyen au kilo (entrées de stock depuis le début)", prixMoyenKg > 0 ? fcfa(prixMoyenKg) : "-"});
+            lignesAliment.add(new String[]{"Coût estimé de l'aliment consommé", prixMoyenKg > 0 ? fcfa(coutConsoEstime) : "-"});
+            lignesAliment.add(new String[]{"Consommation moyenne par poule et par jour", n0(grammesParPouleJour) + " g"});
+            lignesAliment.add(new String[]{"Stock d'aliment restant (entrées moins sorties, à la date de fin)", n1(stockRestant) + " kg"});
+            document.add(kv(lignesAliment.toArray(new String[0][])));
+            document.add(note("Le coût de l'aliment consommé est une estimation : kilos consommés multipliés par le prix moyen au kilo. Le coût réel payé est celui des achats. La consommation par poule et par jour se calcule avec les sujets vivants de chaque jour."));
 
             // --- Santé ---
             document.add(section("Santé / vétérinaire"));
@@ -376,8 +414,9 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
                 document.add(t);
             }
             if (amortissement != null && amortissement > 0) {
-                document.add(note("Amortissement des investissements alloué à ce projet : " + fcfa(amortissement)
-                        + " (suivi de rentabilité, non compté dans les dépenses ci-dessus)."));
+                document.add(note("Amortissement des investissements partagés alloué à ce projet : " + fcfa(amortissement)
+                        + " (suivi de rentabilité, non compté dans les dépenses ci-dessus). Un investissement dédié à ce projet"
+                        + " est déjà compté en entier dans les dépenses, il n'est pas amorti en plus."));
             }
             document.add(note("Les dépenses communes à plusieurs projets ne sont pas réparties : seules les transactions rattachées directement à ce projet sont comptées."));
 
@@ -399,11 +438,37 @@ public class ProjetRapportPdfServiceImpl implements ProjetRapportPdfService {
         }
     }
 
-    // ---- accès aux entités (le DTO ne porte pas l'id numérique ni la ferme) ----
-    private Long projetIdParUniqueId(String uniqueId) {
-        return projetsRepo.findByUniqueId(uniqueId)
-                .orElseThrow(() -> new IllegalArgumentException("Projet introuvable : " + uniqueId)).getId();
+    /** Effectif vivant de chaque jour de [debut, fin] : départ moins toutes les sorties
+     * (morts + réformés) datées jusqu'à ce jour inclus, jamais négatif. Même règle que
+     * RapportJournalierServiceImpl (NPR). */
+    static Map<LocalDate, Integer> effectifsParJour(int nbSujets, Map<LocalDate, Integer> sortiesParJour,
+                                                    LocalDate debut, LocalDate fin) {
+        return effectifsParJour(nbSujets, sortiesParJour, debut, fin, null, null);
     }
+
+    // Avant le début du Projet et après sa fin (clôture), 0 poule : ces jours ne gonflent
+    // plus les poules-jours (aliment par poule et par jour d'un Projet clôturé ou démarré
+    // pendant la période).
+    static Map<LocalDate, Integer> effectifsParJour(int nbSujets, Map<LocalDate, Integer> sortiesParJour,
+                                                    LocalDate debut, LocalDate fin,
+                                                    LocalDate debutProjet, LocalDate finProjet) {
+        int avant = 0;
+        java.util.TreeMap<LocalDate, Integer> apres = new java.util.TreeMap<>();
+        for (Map.Entry<LocalDate, Integer> e : sortiesParJour.entrySet()) {
+            if (e.getKey().isBefore(debut)) avant += nz(e.getValue());
+            else apres.merge(e.getKey(), nz(e.getValue()), Integer::sum);
+        }
+        Map<LocalDate, Integer> out = new LinkedHashMap<>();
+        int cumul = avant;
+        for (LocalDate d = debut; !d.isAfter(fin); d = d.plusDays(1)) {
+            cumul += nz(apres.get(d));
+            boolean enVie = (debutProjet == null || !d.isBefore(debutProjet)) && (finProjet == null || !d.isAfter(finProjet));
+            out.put(d, enVie ? Math.max(0, nbSujets - cumul) : 0);
+        }
+        return out;
+    }
+
+    // ---- accès aux entités (le DTO ne porte pas la ferme) ----
 
     private boolean farmAppartient(String uniqueId, Farm farm) {
         return projetsRepo.findByUniqueId(uniqueId)

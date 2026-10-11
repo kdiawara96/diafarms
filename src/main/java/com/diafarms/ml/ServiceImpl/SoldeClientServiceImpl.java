@@ -58,15 +58,13 @@ public class SoldeClientServiceImpl {
                 .toList();
     }
 
-    // Comptabilité, Reporting : total des créances (soldes positifs) des clients actifs de la ferme.
+    // Comptabilité : « Dû par les clients » des clients actifs de la ferme, même règle que
+    // le résumé de la semaine (CompteClientService.du : reste à payer moins l'avance libre,
+    // un acompte réservé n'est pas compté deux fois).
     @Transactional(readOnly = true)
     public double sumSoldePositif(Farm farm) {
         if (farm == null) return 0.0;
-        return clientRepo.findAllActiveByFarmId(farm.getId()).stream()
-                .map(compteClientService::compte)
-                .mapToDouble(CompteClientDTO::getSolde)
-                .filter(solde -> solde > 0.0)
-                .sum();
+        return CompteClientService.sommeDu(compteClientService.comptes(clientRepo.findAllActiveByFarmId(farm.getId())));
     }
 
     // Comptabilité, Reporting : total des avances (paiements non encore imputés) des clients actifs de la ferme.

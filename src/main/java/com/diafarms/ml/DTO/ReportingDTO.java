@@ -73,6 +73,12 @@ public class ReportingDTO {
     public static class Elevage {
         private int effectifDebut;
         private int effectifFin;
+        // Bilan : effectifDebut + arrivees - mortes - reformes - sortiesCloture = effectifFin.
+        // arrivees = sujets des Projets qui démarrent pendant la période ;
+        // sortiesCloture = sujets encore vivants quand un Projet est clôturé pendant la période.
+        private long arrivees;
+        private long reformes;
+        private long sortiesCloture;
         private long oeufsCollectes;
         private long oeufsCasses;
         private double alveoles;

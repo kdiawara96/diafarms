@@ -68,8 +68,9 @@ public interface ReportingRepo extends Repository<Transaction, Long> {
            "AND pc.date >= :deb AND pc.date <= :fin GROUP BY pc.date, i.cibleType, i.cibleUniqueId")
     List<Object[]> imputationsParJour(@Param("farmId") Long farmId, @Param("deb") LocalDate deb, @Param("fin") LocalDate fin);
 
-    // Œufs : [projetId, date, Σ collectés, Σ cassés].
-    @Query("SELECT c.projet.id, c.date, SUM(c.oeufsCollectes), SUM(COALESCE(c.oeufsCasses, 0)) FROM CollecteOeufs c " +
+    // Œufs : [projetId, date, Σ collectés, Σ cassés, Σ non utilisables].
+    @Query("SELECT c.projet.id, c.date, SUM(c.oeufsCollectes), SUM(COALESCE(c.oeufsCasses, 0)), " +
+           "SUM(COALESCE(c.oeufsNonUtilisables, 0)) FROM CollecteOeufs c " +
            "WHERE c.projet.farm.id = :farmId AND c.initialisation.removed = false " +
            "AND c.date >= :deb AND c.date <= :fin GROUP BY c.projet.id, c.date")
     List<Object[]> collectesParJour(@Param("farmId") Long farmId, @Param("deb") LocalDate deb, @Param("fin") LocalDate fin);
@@ -84,8 +85,15 @@ public interface ReportingRepo extends Repository<Transaction, Long> {
            "AND r.initialisation.removed = false AND r.date <= :fin GROUP BY r.projet.id, r.date")
     List<Object[]> reformesParJourJusqua(@Param("farmId") Long farmId, @Param("fin") LocalDate fin);
 
-    // Aliment consommé : [projetId, date, Σ kg].
+    // Aliment consommé : [projetId, date, Σ kg]. Sans le stock transféré à la clôture d'un
+    // Projet (ProjetImpl.transfererStock) : cette « consommation » du Projet clôturé est
+    // en fait l'aliment donné au Projet cible, qui le mangera et le saisira lui-même. On la
+    // reconnaît à l'entrée « Transfert depuis <code> » du même jour et de la même quantité.
     @Query("SELECT c.projet.id, c.date, SUM(c.quantiteKg) FROM ConsommationAliment c WHERE c.projet.farm.id = :farmId " +
-           "AND c.initialisation.removed = false AND c.date >= :deb AND c.date <= :fin GROUP BY c.projet.id, c.date")
+           "AND c.initialisation.removed = false AND c.date >= :deb AND c.date <= :fin " +
+           "AND NOT EXISTS (SELECT 1 FROM Alimentation a WHERE a.initialisation.removed = false " +
+           "AND a.nomAliment = CONCAT('Transfert depuis ', c.projet.code) " +
+           "AND a.dateDistribution = c.date AND a.quantiteKg = c.quantiteKg) " +
+           "GROUP BY c.projet.id, c.date")
     List<Object[]> alimentParJour(@Param("farmId") Long farmId, @Param("deb") LocalDate deb, @Param("fin") LocalDate fin);
 }

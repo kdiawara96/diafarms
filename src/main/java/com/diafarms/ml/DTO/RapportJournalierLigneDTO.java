@@ -25,13 +25,17 @@ public class RapportJournalierLigneDTO {
     private Double tauxPonte;                   // TP = NTO / NPR
     private Integer nombreOeufsCasses;          // NEC (du jour)
     private Integer nombrePoulesMortesCumule;   // NPMC
+    private Integer nombreSujetsReformes;       // réformés du jour
+    private Integer nombreSujetsReformesCumule; // réformés cumulés : NPR = départ - NPMC - ce cumul
     private Integer oeufsBonsCumule;            // (NTO - NEC - non utilisables) cumulé
     private Integer oeufsCassesCumule;          // NECC
     private Double nombreAlveolesJournalier;    // NJA = oeufs bons du jour / 30
     private Double prixUnitaireAlveole;         // PUA, dernier prix de vente connu
     private Double montantPotentielJournalier;  // MPJ = NJA * PUA
     private Double recetteJournaliere;          // RJ, ventes réelles attribuées ce jour
-    private Double entreeJournaliereArgent;     // EJA, toute entrée validée ce jour
+    // EJA : valeur des ventes du jour (payées ou non) et autres entrées validées du projet
+    // ce jour-là ; les paiements clients en sont exclus (pas de l'argent en plus).
+    private Double entreeJournaliereArgent;
     private Double depenseJournaliereAliment;   // DJA
     private Double autresDepensesJournalieres;  // ADJ
     private Double differenceJournaliere;       // DJ = EJA - (DJA + ADJ)

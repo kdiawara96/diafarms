@@ -18,8 +18,19 @@ public interface InvestissementRepartitionRepository extends JpaRepository<Inves
     @Query("SELECT r FROM InvestissementRepartition r WHERE r.projet.uniqueId = :projetUniqueId AND r.dateFin IS NULL")
     List<InvestissementRepartition> findActiveByProjetUniqueId(@Param("projetUniqueId") String projetUniqueId);
 
-    // Requete complexe : Récupérer le coût d'amortissement total absorbé par un projet spécifique (Bande P-001)
-    @Query("SELECT COALESCE(SUM(r.montantAlloue), 0.0) FROM InvestissementRepartition r WHERE r.projet.uniqueId = :projetUniqueId")
+    // Coût d'amortissement absorbé par un projet (fiche Projet "Résultat complet", rapport
+    // PDF du projet). Un investissement DÉDIÉ a déjà sa dépense entière (transaction SORTIE,
+    // sourceUniqueId = uniqueId de l'investissement, voir InvestissementServiceImpl.
+    // syncTransaction) dans les dépenses de ce projet : sa part d'amortissement n'est donc pas
+    // ajoutée une deuxième fois. Règle : on écarte la répartition dès qu'une dépense validée
+    // et non supprimée de cet investissement est rattachée à ce même projet. Un investissement
+    // commun (dépense de ferme, sans projet) garde sa part comme avant.
+    @Query("SELECT COALESCE(SUM(r.montantAlloue), 0.0) FROM InvestissementRepartition r WHERE r.projet.uniqueId = :projetUniqueId "
+            + "AND NOT EXISTS (SELECT t.id FROM Transaction t WHERE t.sourceUniqueId = r.investissement.uniqueId "
+            + "AND t.projet.id = r.projet.id "
+            + "AND t.type = com.diafarms.ml.enums.TypeTransaction.SORTIE "
+            + "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE "
+            + "AND (t.initialisation.removed IS NULL OR t.initialisation.removed = false))")
     Double getSommeAmortissementParProjet(@Param("projetUniqueId") String projetUniqueId);
 
     // Pour vérifier proprement l'existence avant suppression

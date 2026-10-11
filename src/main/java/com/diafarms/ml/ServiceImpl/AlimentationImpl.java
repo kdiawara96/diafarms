@@ -67,8 +67,37 @@ public class AlimentationImpl implements AlimentationService {
     // pas un achat (l'argent a été dépensé par le projet d'origine, aucune dépense n'y est
     // liée) et une consommation du projet d'origine la compense. La modifier créerait une
     // dépense en double (syncTransaction), la supprimer casserait la compensation.
-    static final String PREFIXE_TRANSFERT = "Transfert depuis ";
+    public static final String PREFIXE_TRANSFERT = "Transfert depuis ";
     static final String OBSERVATION_TRANSFERT = "Stock restant transféré lors de la clôture";
+
+    /** Côté projet qui REÇOIT : vrai si cette entrée d'aliment est un transfert de stock de
+     * fin de projet (nom "Transfert depuis CODE"), pas un achat. Même règle que ReportingRepo
+     * (nomAliment LIKE 'Transfert depuis %'). */
+    public static boolean estTransfertStock(String nomAliment) {
+        return nomAliment != null && nomAliment.startsWith(PREFIXE_TRANSFERT);
+    }
+
+    /** Nom exact de l'entrée créée dans le projet cible quand le projet codeSource est clôturé. */
+    public static String nomTransfertDepuis(String codeSource) {
+        return PREFIXE_TRANSFERT + codeSource;
+    }
+
+    /** Côté projet qui DONNE : une ConsommationAliment n'a pas de nom ; c'est la sortie d'un
+     * transfert de clôture s'il existe une entrée active nommée nomTransfertDepuis(code du
+     * projet d'origine) le même jour et avec la même quantité (ProjetImpl.transfererStock crée
+     * les deux ensemble). entreesTransfert = ces entrées (AlimentationRepo.
+     * findActivesByFarmIdAndNomAliment). Même règle que ReportingRepo. */
+    public static boolean estConsommationDeTransfert(java.time.LocalDate date, Double quantiteKg,
+                                                     java.util.Collection<Alimentation> entreesTransfert) {
+        if (date == null || quantiteKg == null || entreesTransfert == null) return false;
+        for (Alimentation a : entreesTransfert) {
+            if (date.equals(a.getDateDistribution()) && a.getQuantiteKg() != null
+                    && Math.abs(a.getQuantiteKg() - quantiteKg) < 1e-6) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static void refuserSiTransfert(Alimentation a) {
         boolean transfert = a.getNomAliment() != null && a.getNomAliment().startsWith(PREFIXE_TRANSFERT)

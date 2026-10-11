@@ -171,6 +171,22 @@ public class CompteClientService {
                 .build();
     }
 
+    /** Ce que ce client doit vraiment (« Dû par les clients ») : reste à payer moins son
+     * avance LIBRE, jamais négatif. Un acompte réservé à une commande pas encore livrée
+     * ne réduit pas le dû des autres ventes : il est déjà compté dans les avances
+     * (Avances clients, détail « Acomptes en attente »), on ne l'utilise pas deux fois. */
+    public static double du(CompteClientDTO c) {
+        if (c == null) return 0.0;
+        return Math.max(0.0, CalculImputation.arrondi(c.getResteAPayer() - Math.max(0.0, c.getAvanceLibre())));
+    }
+
+    /** Somme de du(c) : Comptabilité (Dû par les clients) et résumé de la semaine par e-mail. */
+    public static double sommeDu(java.util.Collection<CompteClientDTO> comptes) {
+        double total = 0.0;
+        for (CompteClientDTO c : comptes) total += du(c);
+        return CalculImputation.arrondi(total);
+    }
+
     public double payeVente(CibleImputation type, String uid) {
         return CalculImputation.arrondi(nz(imputationRepo.sumActivesByCible(type, uid)));
     }

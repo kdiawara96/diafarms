@@ -1301,6 +1301,18 @@ public class TransactionServiceImpl implements TransactionService {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<TransactionDTO> listValideesDuProjet(Long projetId, LocalDate debut, LocalDate fin) {
+        if (projetId == null) return List.of();
+        List<TransactionDTO> dtoList = transactionRepo.findAllValideByProjetId(projetId).stream()
+                .filter(t -> t.getDate() != null && !t.getDate().isBefore(debut) && !t.getDate().isAfter(fin))
+                .map(TransactionDTO::fromEntity)
+                .toList();
+        enrichMontantReel(dtoList);
+        return dtoList;
+    }
+
     /** Corrige montantReel (initialisé = montant par TransactionDTO.fromEntity) pour
      * les transactions issues d'une vente à crédit partielle/totale (voir
      * VenteOeufs/VenteReforme.montantRapporte) — montant reste la valeur théorique
@@ -1477,6 +1489,7 @@ public class TransactionServiceImpl implements TransactionService {
         boolean vueParProjet = scopedProjetIds != null;
         double vendu;
         double encaisse;
+        double encaisseClients;
         double rembourse;
         double totalDuClients;
         double totalAvancesClients;
@@ -1485,12 +1498,15 @@ public class TransactionServiceImpl implements TransactionService {
             vendu = nz(totalVenteOeufs) + nz(totalVenteReforme)
                     + nz(transactionRepo.sumMontantValideByProjetIdsAndSourceType(scopedProjetIds, SourceTransaction.VENTE_DIVERSE, dDeb, dFin));
             encaisse = 0.0;
+            encaisseClients = 0.0;
             rembourse = 0.0;
             totalDuClients = 0.0;
             totalAvancesClients = 0.0;
         } else {
             vendu = nz(totalVenteOeufs) + nz(totalVenteReforme) + venteDiverseValidee;
             encaisse = nz(transactionRepo.sumEntreesHorsVentesStock(farmId, dDeb, dFin))
+                    + rapporteSansClientOeufs + rapporteSansClientReforme;
+            encaisseClients = nz(transactionRepo.sumEntreesClients(farmId, dDeb, dFin))
                     + rapporteSansClientOeufs + rapporteSansClientReforme;
             rembourse = nz(remboursementClientRepo.sumActifsByFarmAndDates(farmId, dDeb, dFin));
             totalDuClients = duParClients;
@@ -1520,6 +1536,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .totalVenteReforme(totalVenteReforme != null ? totalVenteReforme : 0.0)
                 .totalVendu(vendu)
                 .totalEncaisse(encaisse)
+                .totalEncaisseClients(encaisseClients)
                 .totalRembourse(rembourse)
                 .totalDuClients(totalDuClients)
                 .totalAvancesClients(totalAvancesClients)

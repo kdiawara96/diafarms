@@ -52,12 +52,13 @@ public class RaceDTO {
                 .esperanceVieAnnees(data.getEsperanceVieAnnees())
                 .poidsAdulteKg(data.getPoidsAdulteKg())
                 .productionOeufsAn(data.getProductionOeufsAn())
-                .couleurOeuf(data.getCouleurOeuf().getValue())
-                .tempsCroissance(data.getTempsCroissance().getLabel())
-                .poidsAbattage(data.getPoidsAbattage().getLabel())
-                .rusticite(data.getRusticite().getLabel())
-                .adaptationClimat(data.getAdaptationClimat().getLabel())
-                .certificationRace(data.getCertificationRace().getLabel())
+                // Champs facultatifs : une race créée sans eux faisait planter la création d'un Projet.
+                .couleurOeuf(data.getCouleurOeuf() != null ? data.getCouleurOeuf().getValue() : null)
+                .tempsCroissance(data.getTempsCroissance() != null ? data.getTempsCroissance().getLabel() : null)
+                .poidsAbattage(data.getPoidsAbattage() != null ? data.getPoidsAbattage().getLabel() : null)
+                .rusticite(data.getRusticite() != null ? data.getRusticite().getLabel() : null)
+                .adaptationClimat(data.getAdaptationClimat() != null ? data.getAdaptationClimat().getLabel() : null)
+                .certificationRace(data.getCertificationRace() != null ? data.getCertificationRace().getLabel() : null)
                 .build();
     }
 

@@ -455,7 +455,9 @@ public class AdminConsoleService {
             }
         }
 
-        Long attente = jdbc.queryForObject("SELECT COUNT(*) FROM paiements_abonnement WHERE statut = 'EN_ATTENTE'", Long.class);
+        // Comme les autres chiffres du tableau de bord : les fermes exclues des
+        // statistiques (ferme de démonstration) ne comptent pas.
+        Long attente = jdbc.queryForObject("SELECT COUNT(*) FROM " + PAIEMENTS_STATS + " WHERE statut = 'EN_ATTENTE'", Long.class);
 
         return new AdminConsoleDTO.TableauDeBord(lignes.size(), essai, actives, grace, expirees, suspendues, aucun,
                 nouvelles, actives7, actives30, sujets, revMois, revPrec, revAnnee, Math.round(mrr),

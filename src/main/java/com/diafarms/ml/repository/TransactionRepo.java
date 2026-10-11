@@ -257,4 +257,15 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
            "AND t.sourceType NOT IN (com.diafarms.ml.enums.SourceTransaction.VENTE_OEUFS, com.diafarms.ml.enums.SourceTransaction.VENTE_REFORME) " +
            "AND t.date >= :dateDebut AND t.date <= :dateFin")
     Double sumEntreesHorsVentesStock(@Param("farmId") Long farmId, @Param("dateDebut") LocalDate dateDebut, @Param("dateFin") LocalDate dateFin);
+
+    // Circuit argent client, carte « Encaissé » : seulement l'argent venu des clients
+    // (paiements clients, ventes diverses au comptant). Les autres entrées (apport du
+    // propriétaire, entrée manuelle...) restent dans sumEntreesHorsVentesStock (argent
+    // total reçu) mais ne sont pas de l'argent client.
+    @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.farm.id = :farmId " +
+           "AND t.initialisation.removed = false AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
+           "AND t.type = com.diafarms.ml.enums.TypeTransaction.ENTREE " +
+           "AND t.sourceType IN (com.diafarms.ml.enums.SourceTransaction.PAIEMENT_CLIENT, com.diafarms.ml.enums.SourceTransaction.VENTE_DIVERSE) " +
+           "AND t.date >= :dateDebut AND t.date <= :dateFin")
+    Double sumEntreesClients(@Param("farmId") Long farmId, @Param("dateDebut") LocalDate dateDebut, @Param("dateFin") LocalDate dateFin);
 }

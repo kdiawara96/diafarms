@@ -187,6 +187,7 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
         int oeufsBonsCumule = 0;
         int oeufsCassesCumule = 0;
         int mortsEtReformesCumules = 0;
+        int reformesCumules = 0;
         double cumulDJ = 0.0;
         Double resteAAmortirPrecedent = null;
 
@@ -202,6 +203,7 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
             double tp = npr > 0 ? (double) nto / npr : 0.0;
 
             npmCumule += npm;
+            reformesCumules += reforme;
             int oeufsBonsDuJour = Math.max(0, com.diafarms.ml.commons.StockOeufsRegle.bonEtat(nto, nec, nonUtil));
             oeufsBonsCumule += oeufsBonsDuJour;
             oeufsCassesCumule += nec;
@@ -239,6 +241,8 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
                     .tauxPonte(tp)
                     .nombreOeufsCasses(nec)
                     .nombrePoulesMortesCumule(npmCumule)
+                    .nombreSujetsReformes(reforme)
+                    .nombreSujetsReformesCumule(reformesCumules)
                     .oeufsBonsCumule(oeufsBonsCumule)
                     .oeufsCassesCumule(oeufsCassesCumule)
                     .nombreAlveolesJournalier(nja)

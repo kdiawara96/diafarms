@@ -18,6 +18,12 @@ public interface AlimentationRepo extends JpaRepository<Alimentation, Long> {
     Optional<Alimentation> findByUniqueId(String uniqueId);
     @Query("SELECT a FROM Alimentation a WHERE a.projet.uniqueId = :uniqueId AND a.initialisation.removed = false")
     List<Alimentation> findByProjetUniqueIdAndInitialisationRemovedFalse(@Param("uniqueId") String uniqueId);
+    // Entrées de stock créées à la clôture d'un projet (ProjetImpl.transfererStock), par leur
+    // nom exact (AlimentationImpl.PREFIXE_TRANSFERT + code du projet d'origine), dans la
+    // ferme du projet qui les reçoit. Voir AlimentationImpl.estConsommationDeTransfert.
+    @Query("SELECT a FROM Alimentation a WHERE a.projet.farm.id = :farmId AND a.nomAliment = :nom AND a.initialisation.removed = false")
+    List<Alimentation> findActivesByFarmIdAndNomAliment(@Param("farmId") Long farmId, @Param("nom") String nom);
+
     @Query("SELECT a FROM Alimentation a WHERE a.uniqueId = :uniqueId AND a.initialisation.removed = false")
     Optional<Alimentation> findByUniqueIdAndInitialisationRemovedFalse(@Param("uniqueId") String uniqueId);
 

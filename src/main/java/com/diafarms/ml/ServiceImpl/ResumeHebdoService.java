@@ -230,7 +230,8 @@ public class ResumeHebdoService {
         ReportingDTO.Elevage elPrec = rap.getPrecedent().getElevage();
         ReportingDTO.Argent ar = rap.getPeriode().getArgent();
         List<CompteClientDTO> comptes = compteClientService.comptes(clientRepo.findAllActiveByFarmId(r.farmId()));
-        double doivent = comptes.stream().mapToDouble(CompteClientDTO::getSolde).filter(x -> x > 0).sum();
+        // Même règle que « Dû par les clients » en Comptabilité (SoldeClientServiceImpl.sumSoldePositif).
+        double doivent = CompteClientService.sommeDu(comptes);
 
         Chiffres c = new Chiffres(el.getOeufsCollectes(), el.getAlveoles(), el.getTauxPonteMoyen(),
                 elPrec.getTauxPonteMoyen(), el.getMortes(), elPrec.getMortes(), el.getAlimentKg(),

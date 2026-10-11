@@ -40,7 +40,12 @@ public class TransactionStatsDTO {
     // dû/avances par projet (paiements et remboursements clients ne sont pas rattachés
     // à un projet précis).
     private Double totalVendu;
+    // Argent total reçu (= totalEntreesValidees en vue ferme) : paiements clients, ventes
+    // sans client au montant rapporté, ventes diverses ET autres entrées (apport...).
     private Double totalEncaisse;
+    // Carte « Encaissé » du circuit argent client : la même chose SANS les autres entrées
+    // (apport du propriétaire, entrée manuelle) qui ne viennent pas d'un client.
+    private Double totalEncaisseClients;
     private Double totalRembourse;
     private Double totalDuClients;
     private Double totalAvancesClients;

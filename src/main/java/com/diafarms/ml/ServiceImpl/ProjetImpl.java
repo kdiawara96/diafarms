@@ -763,7 +763,7 @@ public class ProjetImpl implements ProjetServices {
 
         Alimentation entree = new Alimentation();
         entree.setUniqueId(generateUID());
-        entree.setNomAliment("Transfert depuis " + source.getCode());
+        entree.setNomAliment(AlimentationImpl.nomTransfertDepuis(source.getCode()));
         entree.setSac(0.0);
         entree.setQuantiteKg(restantKg);
         entree.setCoutTotal(valeurTransferee);

@@ -59,13 +59,18 @@ import lombok.RequiredArgsConstructor;
 // ÉLEVAGE
 //  - Sujets vivants d'un Projet à une date = sujets de départ - morts - réformés jusqu'à
 //    cette date (EffectifVivantHelper, MainOeuvreService), s'il est en cours ce jour-là.
-//  - Effectif au début = vivants la veille du premier jour (sujets de départ pour un
-//    Projet qui démarre dans la période) ; mortalité % = morts de la période / effectif
-//    au début.
-//  - Taux de ponte (Projets PONTE seulement) = œufs collectés / sujets vivants, les jours
+//  - Bilan des sujets de la période, toujours équilibré :
+//      effectif au début + arrivées - morts - réformés - sortis à la clôture = effectif à la fin
+//    Effectif au début = vivants la veille du premier jour, pour les Projets déjà en
+//    cours ; arrivées = sujets de départ des Projets qui démarrent après le premier jour ;
+//    sortis à la clôture = vivants au moment où un Projet est clôturé dans la période.
+//    Mortalité % = morts de la période / (effectif au début + arrivées).
+//  - Taux de ponte (Projets PONTE et MIXTE) = œufs collectés / sujets vivants, les jours
 //    où une collecte est saisie (rapport journalier : TP = NTO / NPR).
-//  - Alvéoles = œufs collectés / 30 ; aliment par alvéole et coût d'une alvéole sur les
-//    Projets PONTE (aliment consommé, dépenses du Projet).
+//  - Alvéoles = œufs en bon état / 30 (collectés - cassés - non utilisables, comme le
+//    rapport PDF et l'export journalier) ; aliment par alvéole et coût d'une alvéole sur
+//    les Projets PONTE et MIXTE (aliment consommé, dépenses du Projet).
+//  - Aliment consommé : sans le stock transféré à la clôture d'un Projet (ReportingRepo).
 @Service
 @RequiredArgsConstructor
 public class ReportingService {
@@ -194,8 +199,13 @@ public class ReportingService {
     private static final class Acc {
         double vendu, encaisse, reste, autres, depenses, mo;
         long oeufs, casses, mortes;
+        // Œufs en bon état (collectés - cassés - non utilisables) : base des alvéoles,
+        // comme le rapport PDF du Projet et l'export journalier.
+        long bons;
         double aliment;
         int effDebut, effFin;
+        // Bilan des sujets : effDebut + arrivees - mortes - reformes - sortiesCloture = effFin.
+        long arrivees, reformes, sortiesCloture;
         // Ponte : œufs et sujets vivants cumulés sur les jours de collecte.
         double oeufsJoursCollecte, sujetsJoursCollecte;
         boolean donnees;
@@ -380,7 +390,7 @@ public class ReportingService {
         Map<Long, TreeMap<LocalDate, long[]>> collectes = new HashMap<>();
         for (Object[] r : reportingRepo.collectesParJour(farmId, deb, fin)) {
             collectes.computeIfAbsent((Long) r[0], k -> new TreeMap<>())
-                    .put((LocalDate) r[1], new long[] { (long) nz(r[2]), (long) nz(r[3]) });
+                    .put((LocalDate) r[1], new long[] { (long) nz(r[2]), (long) nz(r[3]), (long) nz(r[4]) });
         }
         Map<Long, TreeMap<LocalDate, Long>> morts = parProjetEtJour(reportingRepo.mortsParJourJusqua(farmId, fin));
         Map<Long, TreeMap<LocalDate, Long>> reformes = parProjetEtJour(reportingRepo.reformesParJourJusqua(farmId, fin));
@@ -395,7 +405,7 @@ public class ReportingService {
             Projets p = ctx.parId().get(id);
             Acc a = acc.get(id);
             if (p == null || a == null) continue;
-            boolean ponte = p.getObjectif() == Objectif.PONTE;
+            boolean ponte = pondeuses(p);
             int nb = p.getNbSujets() == null ? 0 : p.getNbSujets();
             LocalDate debutProjet = p.getDebut();
             LocalDate finProjet = MainOeuvreService.finEffective(p);
@@ -404,20 +414,31 @@ public class ReportingService {
             TreeMap<LocalDate, Long> m = morts.getOrDefault(id, new TreeMap<>());
             TreeMap<LocalDate, Long> rf = reformes.getOrDefault(id, new TreeMap<>());
             long cumul = somme(m.headMap(deb, false)) + somme(rf.headMap(deb, false));
-            a.effDebut = actif ? (int) Math.max(0, nb - cumul) : 0;
+            // Un Projet qui démarre pendant la période (premier jour compris) n'a pas de sujets
+            // « au début » (vivants la veille) :
+            // ses sujets de départ sont des arrivées de la période.
+            boolean demarreDansPeriode = actif && !debutProjet.isBefore(deb);
+            int vivantsAvant = (int) Math.max(0, nb - cumul);
+            a.effDebut = actif && !demarreDansPeriode ? vivantsAvant : 0;
+            a.arrivees = demarreDansPeriode ? vivantsAvant : 0;
             TreeMap<LocalDate, long[]> col = collectes.getOrDefault(id, new TreeMap<>());
             Map<LocalDate, Double> ali = aliment.getOrDefault(id, Map.of());
             for (LocalDate d = deb; !d.isAfter(fin); d = d.plusDays(1)) {
                 long mortsJour = m.getOrDefault(d, 0L);
-                cumul += mortsJour + rf.getOrDefault(d, 0L);
+                long reformesJour = rf.getOrDefault(d, 0L);
+                cumul += mortsJour + reformesJour;
+                if (actif) a.reformes += reformesJour;
                 long[] c = col.get(d);
                 double kg = ali.getOrDefault(d, 0.0);
                 if (mortsJour != 0 || c != null || kg != 0) {
                     a.donnees = true;
                     long[] j = jourOeufsMortes.computeIfAbsent(d, k -> new long[2]);
-                    j[1] += mortsJour;
-                    a.mortes += mortsJour;
-                    if (c != null) { j[0] += c[0]; a.oeufs += c[0]; a.casses += c[1]; }
+                    if (actif) j[1] += mortsJour;
+                    if (actif) a.mortes += mortsJour;
+                    if (c != null) {
+                        j[0] += c[0]; a.oeufs += c[0]; a.casses += c[1];
+                        a.bons += Math.max(0, c[0] - c[1] - c[2]);
+                    }
                     a.aliment += kg;
                     ajouter(jourAliment, d, kg);
                 }
@@ -433,8 +454,12 @@ public class ReportingService {
                     }
                 }
             }
-            boolean enCoursFin = debutProjet != null && !debutProjet.isAfter(fin) && (finProjet == null || !finProjet.isBefore(fin));
+            // Clôturé le dernier jour : ses sujets sortent dans CETTE période (sinon ils ne sortiraient
+            // d'aucune : la période suivante ne le voit plus).
+            boolean enCoursFin = debutProjet != null && !debutProjet.isAfter(fin) && (finProjet == null || finProjet.isAfter(fin));
             a.effFin = enCoursFin ? (int) Math.max(0, nb - cumul) : 0;
+            // Projet clôturé pendant la période : les sujets encore vivants à la clôture sortent.
+            if (actif && !enCoursFin) a.sortiesCloture = Math.max(0, nb - cumul);
         }
 
         // 6. Lignes par Projet et totaux.
@@ -443,16 +468,24 @@ public class ReportingService {
         Acc total = new Acc();
         double ponteOeufs = 0, ponteAliment = 0, ponteDepenses = 0, ponteJoursOeufs = 0, ponteJoursSujets = 0;
         boolean ponteVue = false;
+        // Σ des lignes ARRONDIES (vendu, encaissé, reste, autres, dépenses) : « Commun » =
+        // total arrondi - Σ lignes arrondies, pour que lignes + Commun = total au franc près.
+        double[] lignesArrondies = new double[5];
         List<Projets> tries = new ArrayList<>();
         for (Long id : scope) if (ctx.parId().containsKey(id)) tries.add(ctx.parId().get(id));
         tries.sort(Comparator.comparing(p -> p.getCode() == null ? "" : p.getCode()));
         for (Projets p : tries) {
             Acc a = acc.get(p.getId());
-            boolean ponte = p.getObjectif() == Objectif.PONTE;
+            boolean ponte = pondeuses(p);
             cumuler(total, a);
+            lignesArrondies[0] += Franc.arrondi(a.vendu);
+            lignesArrondies[1] += Franc.arrondi(a.encaisse);
+            lignesArrondies[2] += Franc.arrondi(a.reste);
+            lignesArrondies[3] += Franc.arrondi(a.autres);
+            lignesArrondies[4] += Franc.arrondi(a.depenses);
             if (ponte) {
                 ponteVue = true;
-                ponteOeufs += a.oeufs;
+                ponteOeufs += a.bons;
                 ponteAliment += a.aliment;
                 ponteDepenses += a.depenses;
                 ponteJoursOeufs += a.oeufsJoursCollecte;
@@ -462,7 +495,7 @@ public class ReportingService {
             lignes.add(ReportingDTO.LigneProjet.builder()
                     .projetUniqueId(p.getUniqueId()).code(p.getCode()).nom(p.getTitre())
                     .type(p.getObjectif() != null ? p.getObjectif().name() : null)
-                    .elevage(elevage(a, ponte, a.oeufs, a.aliment, a.depenses, a.oeufsJoursCollecte, a.sujetsJoursCollecte))
+                    .elevage(elevage(a, ponte, a.bons, a.aliment, a.depenses, a.oeufsJoursCollecte, a.sujetsJoursCollecte))
                     .argent(argent(a, ctx.mainOeuvreVisible(), null))
                     .build());
         }
@@ -471,14 +504,14 @@ public class ReportingService {
         if (ctx.vueFerme()) {
             // Ferme entière : chiffres de la ferme ; « Commun » = ferme - Σ Projets.
             ferme.mo = total.mo;
-            double communDepenses = ferme.depenses - total.depenses;
+            double communDepenses = Franc.arrondi(ferme.depenses) - lignesArrondies[4];
             argentTotal = argent(ferme, ctx.mainOeuvreVisible(), Franc.arrondi(communDepenses));
             Acc commun = new Acc();
-            commun.vendu = ferme.vendu - total.vendu;
-            commun.encaisse = ferme.encaisse - total.encaisse;
-            commun.reste = ferme.reste - total.reste;
-            commun.autres = ferme.autres - total.autres;
-            commun.depenses = communDepenses;
+            commun.vendu = communSansReliquat(Franc.arrondi(ferme.vendu) - lignesArrondies[0], ferme.vendu - total.vendu, lignes, 0);
+            commun.encaisse = communSansReliquat(Franc.arrondi(ferme.encaisse) - lignesArrondies[1], ferme.encaisse - total.encaisse, lignes, 1);
+            commun.reste = communSansReliquat(Franc.arrondi(ferme.reste) - lignesArrondies[2], ferme.reste - total.reste, lignes, 2);
+            commun.autres = communSansReliquat(Franc.arrondi(ferme.autres) - lignesArrondies[3], ferme.autres - total.autres, lignes, 3);
+            commun.depenses = communSansReliquat(communDepenses, ferme.depenses - total.depenses, lignes, 4);
             out.commun = argent(commun, false, null);
         } else {
             Double communes = ctx.communVisible() ? Franc.arrondi(sortiesCommunesBrutes - moTousProjets) : null;
@@ -502,14 +535,18 @@ public class ReportingService {
         Map<LocalDate, Double> enc = ctx.vueFerme() ? encFerme : encScope;
         Map<LocalDate, Double> dep = ctx.vueFerme() ? depFerme : depScope;
         List<ReportingDTO.Semaine> semaines = new ArrayList<>();
+        double cumulEnc = 0, cumulDep = 0;
         for (LocalDate d = deb; !d.isAfter(fin); d = d.plusDays(7)) {
             LocalDate f = d.plusDays(6).isAfter(fin) ? fin : d.plusDays(6);
-            double e = 0, s = 0;
+            // Arrondi du cumul puis différence : la somme des semaines = le total au franc près.
+            double encAvant = cumulEnc, depAvant = cumulDep;
             for (LocalDate x = d; !x.isAfter(f); x = x.plusDays(1)) {
-                e += enc.getOrDefault(x, 0.0);
-                s += dep.getOrDefault(x, 0.0);
+                cumulEnc += enc.getOrDefault(x, 0.0);
+                cumulDep += dep.getOrDefault(x, 0.0);
             }
-            semaines.add(ReportingDTO.Semaine.builder().debut(d).fin(f).encaisse(Franc.arrondi(e)).depenses(Franc.arrondi(s)).build());
+            semaines.add(ReportingDTO.Semaine.builder().debut(d).fin(f)
+                    .encaisse(Franc.arrondi(cumulEnc) - Franc.arrondi(encAvant))
+                    .depenses(Franc.arrondi(cumulDep) - Franc.arrondi(depAvant)).build());
         }
         out.seriesSemaine = semaines;
 
@@ -520,9 +557,17 @@ public class ReportingService {
                 .toList();
         List<ReportingDTO.Montant> ratt = new ArrayList<>();
         if (ctx.vueFerme()) {
+            // Même découpage que le tableau : la part des salaires répartie sur les Projets
+            // (main-d'œuvre) sort de « Toute la ferme » (puis de « Un site » s'il le faut) et
+            // a sa propre ligne. Le Projet + main-d'œuvre = Σ Projets ; site + ferme = Commun.
+            double moFerme = Math.min(total.mo, Math.max(0, rattFerme));
+            double moSite = Math.min(total.mo - moFerme, Math.max(0, rattSite));
             ratt.add(ReportingDTO.Montant.builder().cle("PROJET").libelle("Le Projet").montant(Franc.arrondi(rattProjet)).build());
-            ratt.add(ReportingDTO.Montant.builder().cle("SITE").libelle("Un site").montant(Franc.arrondi(rattSite)).build());
-            ratt.add(ReportingDTO.Montant.builder().cle("FERME").libelle("Toute la ferme").montant(Franc.arrondi(rattFerme)).build());
+            if (total.mo > 0) {
+                ratt.add(ReportingDTO.Montant.builder().cle("MAIN_OEUVRE").libelle("Main-d'œuvre (part des salaires)").montant(Franc.arrondi(moFerme + moSite)).build());
+            }
+            ratt.add(ReportingDTO.Montant.builder().cle("SITE").libelle("Un site").montant(Franc.arrondi(rattSite - moSite)).build());
+            ratt.add(ReportingDTO.Montant.builder().cle("FERME").libelle("Toute la ferme").montant(Franc.arrondi(rattFerme - moFerme)).build());
         } else {
             ratt.add(ReportingDTO.Montant.builder().cle("PROJET").libelle("Le Projet").montant(Franc.arrondi(total.depenses - total.mo)).build());
             if (total.mo > 0) {
@@ -545,8 +590,9 @@ public class ReportingService {
     private static void cumuler(Acc t, Acc a) {
         t.vendu += a.vendu; t.encaisse += a.encaisse; t.reste += a.reste; t.autres += a.autres;
         t.depenses += a.depenses; t.mo += a.mo;
-        t.oeufs += a.oeufs; t.casses += a.casses; t.mortes += a.mortes; t.aliment += a.aliment;
+        t.oeufs += a.oeufs; t.casses += a.casses; t.bons += a.bons; t.mortes += a.mortes; t.aliment += a.aliment;
         t.effDebut += a.effDebut; t.effFin += a.effFin;
+        t.arrivees += a.arrivees; t.reformes += a.reformes; t.sortiesCloture += a.sortiesCloture;
     }
 
     private static ReportingDTO.Argent argent(Acc a, boolean moVisible, Double depensesCommunes) {
@@ -571,16 +617,59 @@ public class ReportingService {
         return ReportingDTO.Elevage.builder()
                 .effectifDebut(a.effDebut)
                 .effectifFin(a.effFin)
+                .arrivees(a.arrivees)
+                .reformes(a.reformes)
+                .sortiesCloture(a.sortiesCloture)
                 .oeufsCollectes(a.oeufs)
                 .oeufsCasses(a.casses)
-                .alveoles(arr(a.oeufs / 30.0, 1))
+                .alveoles(arr(a.bons / 30.0, 1))
                 .tauxPonteMoyen(ponte && joursSujets > 0 ? arr(joursOeufs / joursSujets * 100, 1) : null)
                 .mortes(a.mortes)
-                .mortalitePct(a.effDebut > 0 ? arr(a.mortes * 100.0 / a.effDebut, 2) : null)
+                .mortalitePct(a.effDebut + a.arrivees > 0 ? arr(a.mortes * 100.0 / (a.effDebut + a.arrivees), 2) : null)
                 .alimentKg(arr(a.aliment, 2))
                 .alimentParAlveoleKg(ponte && alveolesPonte > 0 ? arr(alimentPonte / alveolesPonte, 2) : null)
                 .coutAlveole(ponte && alveolesPonte > 0 ? Franc.arrondi(depensesPonte / alveolesPonte) : null)
                 .build();
+    }
+
+    // Montant de la ligne « Commun » pour un champ (0 vendu, 1 encaissé, 2 reste, 3 autres,
+    // 4 dépenses). arrondi = total arrondi - Σ lignes arrondies (le tableau tombe juste).
+    // Quand le vrai Commun est nul (|brut| < 0,5), le reliquat d'arrondi d'1 franc n'est pas
+    // affiché dans Commun (un « 1 » fantôme ou une dette de -1) : il va sur la plus grosse
+    // ligne de Projet pour ce champ, et le tableau tombe toujours juste.
+    private static double communSansReliquat(double arrondi, double brut, List<ReportingDTO.LigneProjet> lignes, int champ) {
+        if (Math.abs(brut) >= 0.5 || arrondi == 0 || lignes.isEmpty()) return arrondi;
+        ReportingDTO.LigneProjet plusGrosse = null;
+        for (ReportingDTO.LigneProjet l : lignes) {
+            if (plusGrosse == null || Math.abs(champ(l.getArgent(), champ)) > Math.abs(champ(plusGrosse.getArgent(), champ))) plusGrosse = l;
+        }
+        ReportingDTO.Argent g = plusGrosse.getArgent();
+        double v = champ(g, champ) + arrondi;
+        switch (champ) {
+            case 0 -> g.setVendu(v);
+            case 1 -> g.setEncaisse(v);
+            case 2 -> g.setResteAEncaisser(v);
+            case 3 -> g.setAutresEntrees(v);
+            default -> g.setDepenses(v);
+        }
+        if (champ == 0 || champ == 3 || champ == 4) g.setResultat(Franc.arrondi(g.getVendu() + g.getAutresEntrees() - g.getDepenses()));
+        return 0;
+    }
+
+    private static double champ(ReportingDTO.Argent a, int champ) {
+        return switch (champ) {
+            case 0 -> a.getVendu();
+            case 1 -> a.getEncaisse();
+            case 2 -> a.getResteAEncaisser();
+            case 3 -> a.getAutresEntrees();
+            default -> a.getDepenses();
+        };
+    }
+
+    // Projets qui pondent : PONTE et MIXTE (comme AlertesElevage). Leurs œufs comptent
+    // dans le taux de ponte, l'aliment par alvéole et le coût d'une alvéole.
+    private static boolean pondeuses(Projets p) {
+        return p.getObjectif() == Objectif.PONTE || p.getObjectif() == Objectif.MIXTE;
     }
 
     private static double arr(double v, int decimales) {
