@@ -146,9 +146,8 @@ public class ProjetImpl implements ProjetServices {
     // appliqué à toutes les occupations actives du projet d'un coup. Ne s'applique
     // jamais à une restauration/réouverture : une occupation déjà libérée ne doit pas
     // ressusciter automatiquement.
-    private void libererOccupationsActives(Projets projet) {
+    private void libererOccupationsActives(Projets projet, LocalDate aujourdHui) {
         if (projet.getOccupations() == null) return;
-        LocalDate aujourdHui = LocalDate.now();
         for (OccupationBatiment occupation : projet.getOccupations()) {
             boolean active = occupation.getDateSortie() == null || occupation.getDateSortie().isAfter(aujourdHui);
             if (!active) continue;
@@ -618,7 +617,7 @@ public class ProjetImpl implements ProjetServices {
                 r.figerLaVentilation(LocalDate.now());
             }
             investissementRepartitionRepo.saveAll(repartitionsActives);
-            libererOccupationsActives(projet);
+            libererOccupationsActives(projet, LocalDate.now());
         }
         basculerTransactionsGenerees(projet, removed);
 
@@ -662,23 +661,32 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional
     public String cloturerProjet(String uniqueId) {
+        return cloturerProjet(uniqueId, null);
+    }
+
+    // Clôture à une date choisie (saisie en retard) : null = aujourd'hui. La date sert pour
+    // la date de clôture, la sortie du poulailler et l'arrêt de l'amortissement.
+    @Override
+    @Transactional
+    public String cloturerProjet(String uniqueId, LocalDate dateCloture) {
         Projets projet = projetDeLaFerme(uniqueId);
 
         if (Boolean.TRUE.equals(projet.getInitialisation().getArchive())) {
             throw new RuntimeException("Ce projet est déjà clôturé.");
         }
+        LocalDate date = verifierDateCloture(projet, dateCloture);
 
         projet.getInitialisation().setArchive(true);
-        projet.setDateCloture(LocalDate.now());
+        projet.setDateCloture(date);
         projetsRepo.save(projet);
 
         List<InvestissementRepartition> repartitionsActives =
                 investissementRepartitionRepo.findActiveByProjetUniqueId(uniqueId);
         for (InvestissementRepartition r : repartitionsActives) {
-            r.figerLaVentilation(LocalDate.now());
+            r.figerLaVentilation(date);
         }
         investissementRepartitionRepo.saveAll(repartitionsActives);
-        libererOccupationsActives(projet);
+        libererOccupationsActives(projet, date);
 
         logCloture(projet, "Clôture");
 
@@ -718,6 +726,31 @@ public class ProjetImpl implements ProjetServices {
         return "Projet rouvert.";
     }
 
+    // Date de clôture : aujourd'hui par défaut ; jamais dans le futur, avant le début du
+    // Projet ni avant sa dernière saisie d'élevage (collecte, mort, aliment, réforme),
+    // sinon des saisies se retrouveraient après la clôture.
+    private LocalDate verifierDateCloture(Projets projet, LocalDate choisie) {
+        LocalDate aujourdHui = LocalDate.now();
+        LocalDate date = choisie != null ? choisie : aujourdHui;
+        if (date.isAfter(aujourdHui)) {
+            throw new IllegalArgumentException("La date de clôture ne peut pas être dans le futur.");
+        }
+        if (projet.getDebut() != null && date.isBefore(projet.getDebut())) {
+            throw new IllegalArgumentException("La date de clôture ne peut pas être avant le début du Projet (" + projet.getDebut() + ").");
+        }
+        LocalDate derniere = null;
+        for (LocalDate d : new LocalDate[] {
+                projetsRepo.derniereCollecte(projet.getId()), projetsRepo.derniereMortalite(projet.getId()),
+                projetsRepo.derniereConsommation(projet.getId()), projetsRepo.derniereReforme(projet.getId()) }) {
+            if (d != null && (derniere == null || d.isAfter(derniere))) derniere = d;
+        }
+        if (derniere != null && date.isBefore(derniere)) {
+            throw new IllegalArgumentException("Ce Projet a une saisie le " + derniere
+                    + " : la date de clôture ne peut pas être avant ce jour.");
+        }
+        return date;
+    }
+
     private void logCloture(Projets projet, String action) {
         Utilisateurs currentUser = getCurrentUserSafe();
         if (currentUser != null) {
@@ -741,11 +774,24 @@ public class ProjetImpl implements ProjetServices {
     @Override
     @Transactional
     public String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId) {
+        return transfererStock(projetSourceUniqueId, projetCibleUniqueId, null);
+    }
+
+    @Override
+    @Transactional
+    public String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId, LocalDate dateTransfert) {
         if (projetSourceUniqueId.equals(projetCibleUniqueId)) {
             throw new IllegalArgumentException("Le projet cible doit être différent du projet à clôturer.");
         }
         Projets source = projetDeLaFerme(projetSourceUniqueId);
         Projets cible = projetDeLaFerme(projetCibleUniqueId);
+        // Mêmes règles que la clôture (le transfert se fait juste avant) : si la date passe
+        // ici, la clôture qui suit l'accepte aussi.
+        LocalDate date = verifierDateCloture(source, dateTransfert);
+        if (cible.getDebut() != null && cible.getDebut().isAfter(date)) {
+            throw new IllegalArgumentException("Le Projet " + cible.getCode() + " commence le " + cible.getDebut()
+                    + " : il ne peut pas recevoir l'aliment le " + date + ".");
+        }
 
         double achete = nz(alimentationRepo.sumAcheteByProjetId(source.getId()));
         double consomme = nz(consommationAlimentRepo.sumConsommeByProjetId(source.getId()));
@@ -767,7 +813,7 @@ public class ProjetImpl implements ProjetServices {
         entree.setSac(0.0);
         entree.setQuantiteKg(restantKg);
         entree.setCoutTotal(valeurTransferee);
-        entree.setDateDistribution(LocalDate.now());
+        entree.setDateDistribution(date);
         entree.setObservations("Stock restant transféré lors de la clôture du projet " + source.getCode());
         entree.setProjet(cible);
         entree.setFarm(farm);
@@ -777,7 +823,7 @@ public class ProjetImpl implements ProjetServices {
         ConsommationAliment sortie = new ConsommationAliment();
         sortie.setUniqueId(generateUID());
         sortie.setProjet(source);
-        sortie.setDate(LocalDate.now());
+        sortie.setDate(date);
         sortie.setQuantiteKg(restantKg);
         sortie.setFarm(farm);
         sortie.setInitialisation(Initialisation.init());

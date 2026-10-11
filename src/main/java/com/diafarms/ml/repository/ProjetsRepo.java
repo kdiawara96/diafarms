@@ -107,4 +107,17 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     @Query("SELECT p.id FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +
            "AND p.responsable.uniqueId = :userUniqueId")
     List<Long> findProjetIdsAssignedAsResponsableToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
+
+    // Dernière saisie d'élevage d'un Projet (choix de la date de clôture : jamais avant).
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(c.date) FROM CollecteOeufs c WHERE c.projet.id = :id AND c.initialisation.removed = false")
+    java.time.LocalDate derniereCollecte(@org.springframework.data.repository.query.Param("id") Long id);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(m.date) FROM Mortalite m WHERE m.projet.id = :id AND m.initialisation.removed = false")
+    java.time.LocalDate derniereMortalite(@org.springframework.data.repository.query.Param("id") Long id);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(c.date) FROM ConsommationAliment c WHERE c.projet.id = :id AND c.initialisation.removed = false")
+    java.time.LocalDate derniereConsommation(@org.springframework.data.repository.query.Param("id") Long id);
+
+    @org.springframework.data.jpa.repository.Query("SELECT MAX(r.date) FROM Reforme r WHERE r.projet.id = :id AND r.initialisation.removed = false")
+    java.time.LocalDate derniereReforme(@org.springframework.data.repository.query.Param("id") Long id);
 }

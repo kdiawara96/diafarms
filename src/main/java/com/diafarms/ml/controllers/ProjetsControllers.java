@@ -121,9 +121,10 @@ public class ProjetsControllers {
     // de fin prévue. Rejette explicitement un projet déjà clôturé (voir rouvrirProjet
     // pour l'action inverse) plutôt que de re-toggler en silence.
     @PutMapping("/cloturer/{uniqueId}")
-    public ResponseEntity<ApiResponse<String>> cloturerProjet(@PathVariable String uniqueId) {
+    public ResponseEntity<ApiResponse<String>> cloturerProjet(@PathVariable String uniqueId,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate dateCloture) {
         try {
-            String result = services.cloturerProjet(uniqueId);
+            String result = services.cloturerProjet(uniqueId, dateCloture);
             return ApiResponse.createResponse("Projet clôturé avec succès", HttpStatus.OK, result, null);
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
@@ -156,9 +157,10 @@ public class ProjetsControllers {
         @PutMapping("/{uniqueId}/transferer-stock/{projetCibleUniqueId}")
         public ResponseEntity<ApiResponse<String>> transfererStock(
                 @PathVariable String uniqueId,
-                @PathVariable String projetCibleUniqueId) {
+                @PathVariable String projetCibleUniqueId,
+                @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
             try {
-                String result = services.transfererStock(uniqueId, projetCibleUniqueId);
+                String result = services.transfererStock(uniqueId, projetCibleUniqueId, date);
                 return ApiResponse.createResponse("Transfert effectué", HttpStatus.OK, result, null);
             } catch (IllegalArgumentException e) {
                 return ApiResponse.createResponse("Données invalides", HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));

@@ -17,8 +17,19 @@ public interface ProjetServices {
     ProjetsDTO updateProjet(String uniqueId, ProjetUpdate data);
     String deleteOrRecoverProjet(String uniqueId);
     String cloturerProjet(String uniqueId);
+
+    // dateCloture null = aujourd'hui. Jamais dans le futur, avant le début du Projet ni
+    // avant sa dernière saisie d'élevage.
+    default String cloturerProjet(String uniqueId, java.time.LocalDate dateCloture) {
+        return cloturerProjet(uniqueId);
+    }
     String rouvrirProjet(String uniqueId);
     String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId);
+
+    // Transfert daté du jour de la clôture choisi (null = aujourd'hui), mêmes règles.
+    default String transfererStock(String projetSourceUniqueId, String projetCibleUniqueId, java.time.LocalDate date) {
+        return transfererStock(projetSourceUniqueId, projetCibleUniqueId);
+    }
 
     List<ProjetsSelect> selectEntity();
 
