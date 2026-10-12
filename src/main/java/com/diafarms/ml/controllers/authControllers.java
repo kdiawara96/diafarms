@@ -23,10 +23,12 @@ import com.diafarms.ml.request.create.ForgotPasswordRequest;
 import com.diafarms.ml.request.create.VerifyResetCodeRequest;
 import com.diafarms.ml.request.update.ResetPasswordRequest;
 import com.diafarms.ml.security.CookieAuthUtils;
+import com.diafarms.ml.security.LimiteurTentatives;
 import com.diafarms.ml.services.AuthServices;
 import com.diafarms.ml.services.PasswordResetService;
 import com.diafarms.ml.services.UtilisateursServices;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,6 +46,22 @@ public class authControllers {
     private final UtilisateursServices utilisateursServices;
     private final PasswordResetService passwordResetService;
     private final org.springframework.security.oauth2.jwt.JwtDecoder jwtDecoder;
+    private final LimiteurTentatives limiteur;
+
+    // Connexion par mot de passe : 5 erreurs par compte depuis une même adresse,
+    // 20 erreurs par adresse, 30 erreurs par compte (toutes adresses), sur 15 minutes.
+    private static final java.time.Duration FENETRE = java.time.Duration.ofMinutes(15);
+    private static final int MAX_COMPTE_IP = 5;
+    private static final int MAX_IP = 20;
+    private static final int MAX_COMPTE = 30;
+    // Demandes de code « mot de passe oublié » : par e-mail et par adresse.
+    private static final int MAX_DEMANDES_EMAIL = 3;
+    private static final int MAX_DEMANDES_IP = 10;
+
+    private static ResponseEntity<ApiResponse<Object>> tropDEssais(long minutes) {
+        String message = "Trop d'essais. Réessayez dans " + minutes + " minute" + (minutes > 1 ? "s" : "") + ".";
+        return ApiResponse.createResponse(message, HttpStatus.TOO_MANY_REQUESTS, null, List.of(message));
+    }
 
 
   @PostMapping("/auth")
@@ -59,11 +77,32 @@ public class authControllers {
         // (sans jar de cookies) continue de passer le paramètre explicitement.
         @CookieValue(value = CookieAuthUtils.REFRESH_COOKIE, required = false) String refreshTokenCookie,
         @RequestHeader(value = "X-Client-Type", required = false) String clientType,
+        HttpServletRequest httpServletRequest,
         HttpServletResponse httpServletResponse){
+        boolean parMotDePasse = "password".equalsIgnoreCase(grantType);
+        String ip = LimiteurTentatives.adresseIp(httpServletRequest);
+        String compte = identifiant == null ? "" : identifiant.trim().toLowerCase();
+        String cleCompteIp = "login:" + compte + "|" + ip;
+        String cleIp = "login-ip:" + ip;
+        String cleCompte = "login:" + compte;
+        if (parMotDePasse) {
+            long attente = Math.max(limiteur.minutesRestantes(cleCompteIp, MAX_COMPTE_IP),
+                    Math.max(limiteur.minutesRestantes(cleIp, MAX_IP), limiteur.minutesRestantes(cleCompte, MAX_COMPTE)));
+            if (attente > 0) return tropDEssais(attente);
+        }
         try {
             String refreshTokenAUtiliser = (refreshToken != null && !refreshToken.isBlank())
                     ? refreshToken : refreshTokenCookie;
             ResponseEntity<Object> result = serives.jwt(grantType, identifiant, password, ouiRefresh, refreshTokenAUtiliser, clientType);
+            if (parMotDePasse) {
+                if (result.getStatusCode().value() == 401) {
+                    limiteur.echec(cleCompteIp, MAX_COMPTE_IP, FENETRE);
+                    limiteur.echec(cleIp, MAX_IP, FENETRE);
+                    limiteur.echec(cleCompte, MAX_COMPTE, FENETRE);
+                } else if (result.getStatusCode().is2xxSuccessful()) {
+                    limiteur.effacer(cleCompteIp);
+                }
+            }
             Object body = result.getBody();
             boolean isMobileClient = "mobile".equalsIgnoreCase(clientType);
 
@@ -137,9 +176,19 @@ public class authControllers {
     // Toujours le même message de succès, que l'email existe ou non, pour ne
     // pas révéler quels emails sont enregistrés dans l'application.
     @PostMapping("/auth/forgot-password")
-    public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+    public ResponseEntity<ApiResponse<String>> forgotPassword(@RequestBody ForgotPasswordRequest request,
+                                                              HttpServletRequest httpServletRequest) {
         try {
-            passwordResetService.requestReset(request.getEmail());
+            // Limite silencieuse (même réponse) : évite d'inonder une boîte mail de codes
+            // et d'enchaîner les codes pour en deviner un.
+            String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
+            String cleEmail = "oubli:" + email;
+            String cleIp = "oubli-ip:" + LimiteurTentatives.adresseIp(httpServletRequest);
+            if (!limiteur.estBloque(cleEmail, MAX_DEMANDES_EMAIL) && !limiteur.estBloque(cleIp, MAX_DEMANDES_IP)) {
+                limiteur.echec(cleEmail, MAX_DEMANDES_EMAIL, FENETRE);
+                limiteur.echec(cleIp, MAX_DEMANDES_IP, FENETRE);
+                passwordResetService.requestReset(request.getEmail());
+            }
         } catch (Exception e) {
             // Ne jamais renvoyer l'échec au client : même comportement observable
             // qu'un email inconnu.

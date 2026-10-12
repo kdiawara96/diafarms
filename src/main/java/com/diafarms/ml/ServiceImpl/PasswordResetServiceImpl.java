@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.diafarms.ml.models.Utilisateurs;
 import com.diafarms.ml.repository.UtilisateursRepo;
+import com.diafarms.ml.security.LimiteurTentatives;
 import com.diafarms.ml.services.EmailService;
 import com.diafarms.ml.services.LogsServices;
 import com.diafarms.ml.services.PasswordResetService;
@@ -20,11 +21,14 @@ import lombok.RequiredArgsConstructor;
 public class PasswordResetServiceImpl implements PasswordResetService {
 
     private static final int CODE_VALIDITY_MINUTES = 5;
+    // Au 5e code faux, le code en cours est annulé : il faut en redemander un.
+    private static final int MAX_CODES_FAUX = 5;
 
     private final UtilisateursRepo utilisateursRepo;
     private final PasswordEncoder encoder;
     private final EmailService emailService;
     private final LogsServices logsServices;
+    private final LimiteurTentatives limiteur;
 
     @Override
     @Transactional
@@ -40,27 +44,30 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         user.setResetPasswordCode(code);
         user.setResetPasswordCodeExpiry(LocalDateTime.now().plusMinutes(CODE_VALIDITY_MINUTES));
         utilisateursRepo.save(user);
+        limiteur.effacer(cleCode(user));
 
         emailService.sendPasswordResetCode(user.getEmail(), user.getFullName(), code);
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public boolean verifyCode(String email, String code) {
         if (email == null || code == null) return false;
         Utilisateurs user = utilisateursRepo.findByEmail(email.trim());
-        return isCodeValid(user, code);
+        return verifierEtCompter(user, code);
     }
 
     @Override
-    @Transactional
+    // noRollbackFor : l'effacement du code au 5e essai faux doit être gardé même si
+    // la méthode finit en erreur « Code invalide ».
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public void resetPassword(String email, String code, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) {
             throw new IllegalArgumentException("Le nouveau mot de passe doit contenir au moins 8 caractères.");
         }
 
         Utilisateurs user = utilisateursRepo.findByEmail(email == null ? "" : email.trim());
-        if (!isCodeValid(user, code)) {
+        if (!verifierEtCompter(user, code)) {
             throw new IllegalArgumentException("Code invalide ou expiré.");
         }
 
@@ -69,12 +76,31 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         // Usage unique : le code ne doit plus pouvoir resservir une fois consommé.
         user.setResetPasswordCode(null);
         user.setResetPasswordCodeExpiry(null);
+        limiteur.effacer(cleCode(user));
         if (user.getInitialisation() != null) {
             user.getInitialisation().setUpdatedAt(LocalDateTime.now());
         }
         utilisateursRepo.save(user);
 
         logsServices.addLogs(user.getId(), user.getId(), "Utilisateurs", "Réinitialisation du mot de passe via code email");
+    }
+
+    private static String cleCode(Utilisateurs user) {
+        return "code:" + user.getId();
+    }
+
+    // Vérifie le code et compte les erreurs : au MAX_CODES_FAUX-ième code faux, le code
+    // est effacé, ce qui rend impossible de deviner un code en essayant tous les chiffres.
+    private boolean verifierEtCompter(Utilisateurs user, String code) {
+        if (isCodeValid(user, code)) return true;
+        if (user != null && user.getResetPasswordCode() != null
+                && limiteur.echec(cleCode(user), MAX_CODES_FAUX, java.time.Duration.ofMinutes(CODE_VALIDITY_MINUTES))) {
+            user.setResetPasswordCode(null);
+            user.setResetPasswordCodeExpiry(null);
+            utilisateursRepo.save(user);
+            limiteur.effacer(cleCode(user));
+        }
+        return false;
     }
 
     private boolean isCodeValid(Utilisateurs user, String code) {
