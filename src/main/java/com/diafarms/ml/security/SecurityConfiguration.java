@@ -170,7 +170,12 @@ public class SecurityConfiguration {
                 "http://localhost:8081",
                 "http://192.168.1.40:8081",
                 "https://api.diafarms.com",
-                "https://cocorico.batimanager.net"
+                // Ancienne adresse de l'application web, gardée pendant la transition.
+                "https://cocorico.batimanager.net",
+                // Domaine Cocorico (2026-10-12) : application web et site vitrine.
+                "https://app.cocoricoferme.com",
+                "https://cocoricoferme.com",
+                "https://www.cocoricoferme.com"
             ));
 
             configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));

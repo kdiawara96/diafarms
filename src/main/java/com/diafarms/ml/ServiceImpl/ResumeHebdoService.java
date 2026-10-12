@@ -56,7 +56,7 @@ public class ResumeHebdoService {
     public static final double STOCK_JOURS_MIN = 7.0;
     public static final int MORTS_MIN_HAUSSE = 3;
     // Page où le propriétaire de la ferme coupe le résumé (en-tête List-Unsubscribe).
-    static final String LIEN_REGLAGE = "https://cocorico.batimanager.net/parametres";
+    static final String LIEN_REGLAGE = "https://app.cocoricoferme.com/parametres";
 
     private final JdbcTemplate jdbc;
     private final AbonnementRepo abonnementRepo;
