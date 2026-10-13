@@ -72,6 +72,17 @@ public class AbonnementTarifService {
         return AbonnementTarif.regles(configRepo.findFirstByOrderByIdAsc());
     }
 
+    // Réglages publics du prix (site cocoricoferme.com).
+    public com.diafarms.ml.DTO.TarifPublicDTO tarifPublic() {
+        com.diafarms.ml.models.AbonnementConfig c = configRepo.findFirstByOrderByIdAsc();
+        AbonnementTarif.Regles r = AbonnementTarif.regles(c);
+        com.diafarms.ml.commons.AbonnementCredit.Regles cr = com.diafarms.ml.commons.AbonnementCredit.regles(c);
+        Integer essai = c != null ? c.getDureeEssaiJours() : null;
+        return new com.diafarms.ml.DTO.TarifPublicDTO(r.prixParPoule(), r.prixMinimumMensuel(), r.arrondi(),
+                cr.seuilSurDevis(), cr.bonusSeuil(), cr.bonusPourcent(), cr.creditParrainage(),
+                essai == null || essai < 0 ? 14 : essai, com.diafarms.ml.commons.AbonnementEcheance.delaiGraceJours(c));
+    }
+
     // Simulation (page d'inscription, FAQ) : prix pour un nombre de poules donné, sans prix fixe.
     public AbonnementTarifDTO simulation(int poules) {
         return AbonnementTarif.calculer(poules, null, null, regles(), false);

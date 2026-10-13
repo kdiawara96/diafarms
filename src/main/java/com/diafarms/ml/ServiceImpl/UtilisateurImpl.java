@@ -81,12 +81,16 @@ public class UtilisateurImpl implements UtilisateursServices {
     public UtilisateursDTO save(UserCreate data) {
 
         // Validate input data
+        // Un e-mail et un téléphone servent à se connecter : chacun ne désigne qu'un seul
+        // compte dans tout Cocorico (même un employé d'une autre ferme).
         if (utilisateursRepo.existsByEmail(data.getEmail())) {
-            throw new IllegalArgumentException("L'email '" + data.getEmail() + "' existe déjà.");
+            throw new IllegalArgumentException("L'e-mail '" + data.getEmail() + "' est déjà utilisé par un compte Cocorico "
+                    + "(par exemple comme employé d'une autre ferme). Utilisez une autre adresse, par exemple celle de votre ferme.");
         }
 
         if (utilisateursRepo.existsByTelephone(data.getTelephone())) {
-            throw new IllegalArgumentException("Le numéro de téléphone '" + data.getTelephone() + "' existe déjà.");
+            throw new IllegalArgumentException("Le numéro '" + data.getTelephone() + "' est déjà utilisé par un compte Cocorico "
+                    + "(par exemple comme employé d'une autre ferme). Utilisez un autre numéro.");
         }
 
         // Code de parrainage (facultatif) vérifié AVANT toute création : un code inconnu
@@ -397,7 +401,8 @@ public class UtilisateurImpl implements UtilisateursServices {
         }
              // Validate input data
         if (utilisateursRepo.existsByEmail(dto.getEmail())) {
-            throw new IllegalArgumentException("L'email '" + dto.getEmail() + "' existe déjà.");
+            throw new IllegalArgumentException("L'e-mail '" + dto.getEmail() + "' est déjà utilisé par un autre compte Cocorico. "
+                    + "Chaque e-mail sert à se connecter : utilisez une autre adresse pour cet employé.");
         }
 
         Utilisateurs u = new Utilisateurs();

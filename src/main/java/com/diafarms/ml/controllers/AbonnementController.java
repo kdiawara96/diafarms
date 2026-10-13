@@ -32,6 +32,17 @@ public class AbonnementController {
 
     // PUBLIC (sans connexion, voir SecurityConfiguration) : prix pour N poules avec les
     // réglages actuels. Utilisé par la page d'inscription et la FAQ. N de 0 à 1 000 000.
+    // PUBLIC : prix par poule, minimum, bonus, parrainage, essai et grâce actuels, pour le
+    // site cocoricoferme.com (qui suit ainsi les réglages de la console).
+    @GetMapping("/tarif-public")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.TarifPublicDTO>> tarifPublic() {
+        try {
+            return ApiResponse.createResponse("Tarif", HttpStatus.OK, tarifService.tarifPublic(), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/tarif-simulation")
     public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.AbonnementTarifDTO>> simulation(
             @RequestParam(required = false) String poules) {
