@@ -865,8 +865,8 @@ public class CreditService {
                 if (c.solde() <= 0) {
                     sb.append("\n\n").append(ech.delaiGraceJours() > 0
                             ? "Tout marche encore normalement jusqu'au " + AbonnementEcheance.date(ech.dernierJourAcces())
-                                    + ". Ensuite, l'application web sera bloquée."
-                            : "L'application web est bloquée jusqu'à la recharge.");
+                                    + ". Ensuite, l'application web passera en lecture seule : tout consulter, plus rien enregistrer."
+                            : "L'application web est en lecture seule jusqu'à la recharge : tout consulter, plus rien enregistrer.");
                     sb.append("\n\n").append(COMMENT_RECHARGER);
                 }
                 sb.append("\n\nUne question ? Écrivez-nous sur WhatsApp au ").append(NUMERO).append(".");

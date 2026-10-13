@@ -250,7 +250,7 @@ public final class AbonnementEcheance {
             sb.append("Après cette date, vous aurez encore ").append(jours(e.delaiGraceJours()))
               .append(" pour recharger avant que l'accès soit bloqué.");
         } else if (!e.enGrace()) {
-            sb.append("Après cette date, l'accès sera bloqué jusqu'à la recharge.");
+            sb.append("Après cette date, Cocorico passera en lecture seule jusqu'à la recharge : vous pourrez tout consulter, mais plus rien enregistrer.");
         } else {
             sb.append("Dernier jour d'accès : le ").append(date(e.dernierJourAcces())).append(".");
         }
@@ -299,7 +299,7 @@ public final class AbonnementEcheance {
             sb.append("Ensuite, vous aurez encore ").append(jours(e.delaiGraceJours()))
               .append(" pour recharger avant que l'accès soit bloqué.");
         } else if (!e.enGrace()) {
-            sb.append("Ensuite, l'accès sera bloqué jusqu'à la recharge.");
+            sb.append("Ensuite, Cocorico passera en lecture seule jusqu'à la recharge : vous pourrez tout consulter, mais plus rien enregistrer.");
         } else {
             sb.append("Dernier jour d'accès : le ").append(date(e.dernierJourAcces())).append(".");
         }

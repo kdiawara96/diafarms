@@ -142,6 +142,9 @@ public class SecurityConfiguration {
                 // refusées, envois de saisies toujours acceptés. Voir MobileAbonnementFilter.
                 .addFilterAfter(new MobileAbonnementFilter(abonnementAccesMobile),
                         org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
+                // Ferme expirée après la grâce : le web passe en lecture seule (écritures refusées).
+                .addFilterAfter(new WebLectureSeuleFilter(abonnementAccesMobile),
+                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
                 // Idempotency-Key (appli mobile) : un renvoi de la même saisie rejoue la
                 // première réponse au lieu de créer un doublon. Voir IdempotenceFilter.
                 .addFilterAfter(new IdempotenceFilter(idempotenceStore),
@@ -170,8 +173,6 @@ public class SecurityConfiguration {
                 "http://localhost:8081",
                 "http://192.168.1.40:8081",
                 "https://api.diafarms.com",
-                // Ancienne adresse de l'application web, gardée pendant la transition.
-                "https://cocorico.batimanager.net",
                 // Domaine Cocorico (2026-10-12) : application web et site vitrine.
                 "https://app.cocoricoferme.com",
                 "https://cocoricoferme.com",
