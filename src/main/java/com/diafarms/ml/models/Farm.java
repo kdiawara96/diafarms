@@ -49,6 +49,18 @@ public class Farm {
     @Column(name = "email", length = 100)
     private String email;
 
+    // Changement d'e-mail de la ferme : le nouvel e-mail attend ici le code à 6 chiffres
+    // envoyé à cette adresse (voir ChangementEmailService). Garantit que Cocorico peut
+    // joindre la ferme à l'adresse affichée sur ses factures et documents.
+    @Column(name = "email_en_attente", length = 100)
+    private String emailEnAttente;
+
+    @Column(name = "email_code", length = 6)
+    private String emailCode;
+
+    @Column(name = "email_code_expiry")
+    private java.time.LocalDateTime emailCodeExpiry;
+
     // Logo et tampon de la ferme — optionnels, insérés sur les factures et bulletins
     // de salaire générés en PDF (voir FactureServiceImpl/SalaireServiceImpl), laissés
     // vides si la ferme n'en a pas encore fourni. Stocke le nom d'objet MinIO (voir

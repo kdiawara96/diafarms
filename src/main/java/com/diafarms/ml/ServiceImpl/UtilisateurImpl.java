@@ -506,8 +506,7 @@ public class UtilisateurImpl implements UtilisateursServices {
         if (emailSaisi == null) {
             u.setEmail(null);
         } else if (!ChangementEmailService.memeEmail(emailSaisi, u.getEmail())
-                && !(ChangementEmailService.memeEmail(emailSaisi, u.getEmailEnAttente()) && u.getEmailCodeExpiry() != null
-                        && LocalDateTime.now().isBefore(u.getEmailCodeExpiry()))) {
+                && !ChangementEmailService.dejaEnAttente(emailSaisi, u.getEmailEnAttente(), u.getEmailCodeExpiry())) {
             changementEmailService.demander(u, emailSaisi);
         }
         u.setCity(dto.getCity());

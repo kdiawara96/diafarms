@@ -217,6 +217,53 @@ check "ADMIN confirme avec le code donné par l'employé" "code == 200 and d['da
 maj "$EMP_UID" "Employe $LETTRES" "$EMP_TEL" "" "Kati"
 check "e-mail vidé : retiré sans code" "code == 200 and d['data'].get('email') in (None, '')"
 
+# --- 5. E-mail de la ferme (Paramètres > Identité de la ferme)
+TOKEN="$TOKEN_A"
+FERME_ID_A="$(psql_run "select farm_id from utilisateurs where unique_id='$ADMIN_UID_A'")"
+identite() { # $1=nom $2=email
+  api PUT /farms/me/identite "{\"nom\":\"$1\",\"quartier\":\"Q\",\"ville\":\"Kati\",\"pays\":\"Mali\",\"telephone1\":\"\",\"telephone2\":\"\",\"email\":\"$2\"}"
+}
+FERME_MAIL="ferme-$SUFFIXE@t.local"
+identite "Ferme Awa $LETTRES" "$FERME_MAIL"
+check "ferme : nouvel e-mail en attente, nom enregistré tout de suite" \
+  "code == 200 and d['data']['email'] == '' and d['data']['emailEnAttente'] == '$FERME_MAIL' and d['data']['nom'] == 'Ferme Awa $LETTRES'"
+sleep 1
+CODE_F="$(mail_lu "$FERME_MAIL" "code de confirmation")"
+verifie "ferme : code reçu à la nouvelle adresse" '[ -n "$CODE_F" ]'
+api GET /farms/me
+check "ferme : /farms/me donne l'e-mail en attente" "d['data']['emailEnAttente'] == '$FERME_MAIL' and d['data']['email'] == ''"
+FAUX="$( [ "$CODE_F" = "000000" ] && echo 111111 || echo 000000 )"
+api POST /farms/me/confirmer-email "{\"code\":\"$FAUX\"}"
+check "ferme : code faux refusé" "code == 400 and 'incorrect' in d['message']"
+TOKEN="$TOKEN_B"
+api POST /farms/me/confirmer-email "{\"code\":\"$CODE_F\"}"
+check "ferme B : le code de la ferme A ne sert à rien" "code == 400"
+TOKEN="$TOKEN_A"
+api POST /farms/me/confirmer-email "{\"code\":\"$CODE_F\"}"
+check "ferme : bon code, e-mail changé" "code == 200 and d['data']['email'] == '$FERME_MAIL' and d['data']['emailEnAttente'] is None"
+verifie "base : e-mail de la ferme changé" '[ "$(psql_run "select email from farms where id=$FERME_ID_A")" = "$FERME_MAIL" ]'
+
+FERME_MAIL2="ferme2-$SUFFIXE@t.local"
+identite "Ferme Awa $LETTRES" "$FERME_MAIL2"
+check "ferme : 2e changement en attente" "code == 200 and d['data']['email'] == '$FERME_MAIL'"
+sleep 1
+CODE_F2="$(mail_lu "$FERME_MAIL2" "code de confirmation")"
+api POST /farms/me/confirmer-email "{\"code\":\"$CODE_F2\"}"
+check "ferme : 2e changement confirmé" "code == 200 and d['data']['email'] == '$FERME_MAIL2'"
+sleep 1
+verifie "ferme : ancienne adresse de la ferme prévenue" '[ "$(mail_lu "$FERME_MAIL" "a été changé" presence)" = "PRESENT" ]'
+
+identite "Ferme Awa $LETTRES" "faux-email"
+check "ferme : format invalide refusé" "code == 400 and 'pas valide' in str(d)"
+identite "Ferme Awa $LETTRES" "ferme3-$SUFFIXE@t.local"
+check "ferme : 3e envoi accepté" "code == 200"
+api POST /farms/me/annuler-email
+check "ferme : annulation" "code == 200 and d['data']['emailEnAttente'] is None and d['data']['email'] == '$FERME_MAIL2'"
+identite "Ferme Awa $LETTRES" "ferme4-$SUFFIXE@t.local"
+check "ferme : 4e envoi refusé (trop de demandes)" "code == 400 and 'Trop de codes' in str(d)"
+identite "Ferme Awa $LETTRES" ""
+check "ferme : e-mail vidé sans code" "code == 200 and d['data']['email'] == ''"
+
 echo
 echo "Résultat : $PASS OK, $FAIL ECHEC"
 [ "$FAIL" -eq 0 ]

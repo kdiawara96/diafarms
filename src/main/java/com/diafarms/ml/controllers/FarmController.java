@@ -35,6 +35,7 @@ public class FarmController {
     private final FarmsRepo farmsRepo;
     private final OtherService otherService;
     private final MinioService minioService;
+    private final com.diafarms.ml.ServiceImpl.ChangementEmailService changementEmailService;
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<Map<String, String>>> getMyFarm(HttpServletRequest request) {
@@ -51,6 +52,7 @@ public class FarmController {
         result.put("telephone1", farm.getTelephone1() == null ? "" : farm.getTelephone1());
         result.put("telephone2", farm.getTelephone2() == null ? "" : farm.getTelephone2());
         result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
+        result.put("emailEnAttente", farm.getEmailEnAttente());
         result.put("logoUrl", brandingUrlOrNull(request, farm, farm.getLogoNomMinio(), "logo"));
         result.put("tamponUrl", brandingUrlOrNull(request, farm, farm.getTamponNomMinio(), "tampon"));
         // Pays/devise (voir ModesPaiementService, GET /farm-settings/devise pour le détail).
@@ -141,7 +143,19 @@ public class FarmController {
         } catch (IllegalArgumentException e) {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         }
-        farm.setEmail(blankToNull(body.get("email")));
+        // Nouvel e-mail : appliqué seulement après saisie du code envoyé à cette adresse
+        // (voir ChangementEmailService). Vide = e-mail retiré, sans code.
+        String email = com.diafarms.ml.ServiceImpl.ChangementEmailService.normaliser(body.get("email"));
+        if (email == null) {
+            farm.setEmail(null);
+        } else if (!com.diafarms.ml.ServiceImpl.ChangementEmailService.memeEmail(email, farm.getEmail())
+                && !com.diafarms.ml.ServiceImpl.ChangementEmailService.dejaEnAttente(email, farm.getEmailEnAttente(), farm.getEmailCodeExpiry())) {
+            try {
+                changementEmailService.demanderFerme(farm, email);
+            } catch (IllegalArgumentException e) {
+                return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+            }
+        }
         farmsRepo.save(farm);
 
         Map<String, String> result = new HashMap<>();
@@ -152,7 +166,39 @@ public class FarmController {
         result.put("telephone1", farm.getTelephone1() == null ? "" : farm.getTelephone1());
         result.put("telephone2", farm.getTelephone2() == null ? "" : farm.getTelephone2());
         result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
+        result.put("emailEnAttente", farm.getEmailEnAttente());
         return ApiResponse.createResponse("Coordonnées de la ferme mises à jour", HttpStatus.OK, result, null);
+    }
+
+    @PostMapping("/me/confirmer-email")
+    public ResponseEntity<ApiResponse<Map<String, String>>> confirmerEmailFerme(@RequestBody Map<String, String> body) {
+        Farm farm = getCurrentUserFarm();
+        if (farm == null) {
+            return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.BAD_REQUEST, null, null);
+        }
+        try {
+            Farm saved = changementEmailService.confirmerFerme(farm, body.get("code"));
+            return ApiResponse.createResponse("E-mail de la ferme confirmé", HttpStatus.OK, emailsFerme(saved), null);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/me/annuler-email")
+    public ResponseEntity<ApiResponse<Map<String, String>>> annulerEmailFerme() {
+        Farm farm = getCurrentUserFarm();
+        if (farm == null) {
+            return ApiResponse.createResponse("Aucune ferme associée à ce compte", HttpStatus.BAD_REQUEST, null, null);
+        }
+        return ApiResponse.createResponse("Changement d'e-mail annulé", HttpStatus.OK,
+                emailsFerme(changementEmailService.annulerFerme(farm)), null);
+    }
+
+    private static Map<String, String> emailsFerme(Farm farm) {
+        Map<String, String> result = new HashMap<>();
+        result.put("email", farm.getEmail() == null ? "" : farm.getEmail());
+        result.put("emailEnAttente", farm.getEmailEnAttente());
+        return result;
     }
 
     private String blankToNull(String s) {
