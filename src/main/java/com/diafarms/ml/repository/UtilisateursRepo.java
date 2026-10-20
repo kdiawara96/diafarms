@@ -17,6 +17,8 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     
     Optional<Utilisateurs> findByUniqueId(String uniqueId);    
     Utilisateurs findByEmail(String email);
+    // Changement d'e-mail : « Awa@Gmail.com » et « awa@gmail.com » désignent la même adresse.
+    java.util.List<Utilisateurs> findByEmailIgnoreCase(String email);
     
     boolean existsByUniqueId(String uniqueId);
 

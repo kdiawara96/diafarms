@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 public class usersControllers {
 
     private final UtilisateursServices services;
+    private final com.diafarms.ml.ServiceImpl.ChangementEmailService changementEmailService;
 
     /**
      * Creates a new user with auto-generated username and password.
@@ -294,6 +295,36 @@ public class usersControllers {
             return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
+    /**
+     * Confirme le nouvel e-mail avec le code envoyé à cette adresse (voir ChangementEmailService).
+     */
+    @PostMapping("/confirmer-email/{uniqueId}")
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> confirmerEmail(@PathVariable String uniqueId,
+            @RequestBody java.util.Map<String, String> body) {
+        try {
+            UtilisateursDTO dto = UtilisateursDTO.fromEntity(changementEmailService.confirmer(uniqueId, body.get("code")));
+            return ApiResponse.createResponse("E-mail confirmé", HttpStatus.OK, dto, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.BAD_REQUEST, null, List.of(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/annuler-email/{uniqueId}")
+    public ResponseEntity<ApiResponse<UtilisateursDTO>> annulerEmail(@PathVariable String uniqueId) {
+        try {
+            UtilisateursDTO dto = UtilisateursDTO.fromEntity(changementEmailService.annuler(uniqueId));
+            return ApiResponse.createResponse("Changement d'e-mail annulé", HttpStatus.OK, dto, null);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.FORBIDDEN, null, List.of(e.getMessage()));
+        } catch (com.diafarms.ml.commons.CompteIntrouvableException e) {
+            return ApiResponse.createResponse(e.getMessage(), HttpStatus.NOT_FOUND, null, List.of(e.getMessage()));
         }
     }
 

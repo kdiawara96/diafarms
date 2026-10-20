@@ -41,6 +41,8 @@ public class UtilisateursDTO {
     // Réponse de l'inscription seulement : true si la ferme n'a pas d'essai gratuit
     // (téléphone ou e-mail déjà utilisé pour une autre ferme).
     private Boolean essaiRefuse;
+    // Nouvel e-mail en attente du code envoyé à cette adresse (null si aucun changement en cours).
+    private String emailEnAttente;
 
     private String infoQrcodeEncrypte;
 
@@ -81,6 +83,7 @@ public class UtilisateursDTO {
                 .qrExpiresAt(utilisateur.getQrExpiresAt())
                 .username(utilisateur.getUsername())
                 .email(utilisateur.getEmail())
+                .emailEnAttente(utilisateur.getEmailEnAttente())
                 .telephone(utilisateur.getTelephone())
                 .statut(utilisateur.getStatut())
                 .mustChangePassword(utilisateur.getMustChangePassword())
@@ -111,6 +114,7 @@ public class UtilisateursDTO {
                 .farmName(utilisateur.getFarmName())
                 .username(utilisateur.getUsername())
                 .email(utilisateur.getEmail())
+                .emailEnAttente(utilisateur.getEmailEnAttente())
                 .infoQrcodeEncrypte(utilisateur.getInfoQrcodeEncrypte())
                 .qrGeneratedAt(utilisateur.getQrGeneratedAt())
                 .qrExpiresAt(utilisateur.getQrExpiresAt())

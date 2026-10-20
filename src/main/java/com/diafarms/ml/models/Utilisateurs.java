@@ -113,6 +113,18 @@ public class Utilisateurs {
     @Column(name = "reset_password_code_expiry")
     private LocalDateTime resetPasswordCodeExpiry;
 
+    // Changement d'e-mail : le nouvel e-mail attend ici tant que le code à 6 chiffres
+    // envoyé à cette nouvelle adresse n'a pas été saisi (voir ChangementEmailService).
+    // L'e-mail du compte (connexion, code « mot de passe oublié ») ne change qu'après.
+    @Column(name = "email_en_attente", length = 50)
+    private String emailEnAttente;
+
+    @Column(name = "email_code", length = 6)
+    private String emailCode;
+
+    @Column(name = "email_code_expiry")
+    private LocalDateTime emailCodeExpiry;
+
     @JsonFormat(pattern = "dd-MM-yy HH:mm", shape = JsonFormat.Shape.STRING)
     @Column(name = "last_login", length = 50)
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)

@@ -63,6 +63,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     // Contrôle d'accès aux comptes par uniqueId (même ferme, ADMIN), voir AccesCompte.
     private final com.diafarms.ml.commons.AccesCompte acces;
     private final ParrainageService parrainageService;
+    private final ChangementEmailService changementEmailService;
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // tenterSuppressionReelle passe par le proxy Spring (un appel this.xxx()
@@ -498,7 +499,17 @@ public class UtilisateurImpl implements UtilisateursServices {
         // 3. Mise à jour des informations de base
         u.setFullName(dto.getFullName());
         u.setTelephone(com.diafarms.ml.commons.Telephone.verifier(dto.getTelephone()));
-        u.setEmail(dto.getEmail());
+        // E-mail : un nouvel e-mail ne remplace l'actuel qu'après saisie du code envoyé à
+        // cette adresse (voir ChangementEmailService). Vide = e-mail retiré, sans code
+        // (retirer son adresse ne donne accès à rien).
+        String emailSaisi = ChangementEmailService.normaliser(dto.getEmail());
+        if (emailSaisi == null) {
+            u.setEmail(null);
+        } else if (!ChangementEmailService.memeEmail(emailSaisi, u.getEmail())
+                && !(ChangementEmailService.memeEmail(emailSaisi, u.getEmailEnAttente()) && u.getEmailCodeExpiry() != null
+                        && LocalDateTime.now().isBefore(u.getEmailCodeExpiry()))) {
+            changementEmailService.demander(u, emailSaisi);
+        }
         u.setCity(dto.getCity());
         u.setRegion(dto.getRegion());
         
