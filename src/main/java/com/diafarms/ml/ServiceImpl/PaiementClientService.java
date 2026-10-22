@@ -346,7 +346,8 @@ public class PaiementClientService {
 
         List<PaiementClientDTO> paiements = paiementRepo.findAllByClientIdForHistorique(c.getId()).stream()
                 .map((PaiementClient p) -> PaiementClientDTO.fromEntity(p,
-                        CalculImputation.arrondi(imputationRepo.sumActivesByPaiementId(p.getId()))))
+                        CalculImputation.arrondi(imputationRepo.sumActivesByPaiementId(p.getId())),
+                        CalculImputation.arrondi(imputationRepo.sumRembourseesByPaiementId(p.getId()))))
                 .toList();
         List<RemboursementClientDTO> remboursements = remboursementRepo.findAllByClientId(c.getId()).stream()
                 .map(RemboursementClientDTO::fromEntity)

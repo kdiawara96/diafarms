@@ -12,6 +12,12 @@ public interface ImputationPaiementRepo extends JpaRepository<ImputationPaiement
            "AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF")
     Double sumActivesByPaiementId(@Param("paiementId") Long paiementId);
 
+    // Part d'un paiement rendue au client (imputations REMBOURSEMENT, voir CalculImputation.prelever).
+    @Query("SELECT COALESCE(SUM(i.montant), 0) FROM ImputationPaiement i WHERE i.paiement.id = :paiementId " +
+           "AND i.cibleType = com.diafarms.ml.enums.CibleImputation.REMBOURSEMENT " +
+           "AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF")
+    Double sumRembourseesByPaiementId(@Param("paiementId") Long paiementId);
+
     @Query("SELECT COALESCE(SUM(i.montant), 0) FROM ImputationPaiement i WHERE i.cibleType = :type " +
            "AND i.cibleUniqueId = :uid AND i.statut = com.diafarms.ml.enums.StatutMouvement.ACTIF")
     Double sumActivesByCible(@Param("type") CibleImputation type, @Param("uid") String uid);

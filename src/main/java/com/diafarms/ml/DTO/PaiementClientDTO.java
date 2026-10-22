@@ -41,10 +41,15 @@ public class PaiementClientDTO {
     private String motifAnnulation;
     private String annuleParNom;
     private LocalDateTime dateAnnulation;
-    private double impute;
+    private double impute;     // tout ce qui a été pris sur ce paiement : ventes + remboursements
+    private double rembourse;  // dont rendu au client
     private double disponible;
 
     public static PaiementClientDTO fromEntity(PaiementClient p, double impute) {
+        return fromEntity(p, impute, 0);
+    }
+
+    public static PaiementClientDTO fromEntity(PaiementClient p, double impute, double rembourse) {
         if (p == null) return null;
         double disponible = p.getStatut() == StatutMouvement.ACTIF ? CalculImputation.arrondi(p.getMontant() - impute) : 0;
         return PaiementClientDTO.builder()
@@ -66,6 +71,7 @@ public class PaiementClientDTO {
                 .annuleParNom(p.getAnnulePar() != null ? p.getAnnulePar().getFullName() : null)
                 .dateAnnulation(p.getDateAnnulation())
                 .impute(impute)
+                .rembourse(rembourse)
                 .disponible(disponible)
                 .build();
     }
