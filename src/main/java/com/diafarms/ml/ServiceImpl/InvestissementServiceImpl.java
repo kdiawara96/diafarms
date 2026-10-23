@@ -85,7 +85,9 @@ public class InvestissementServiceImpl implements InvestissementService {
     }
 
     // Relie les poulaillers existants (batimentIds, tous de la ferme de l'utilisateur)
-    // et crée les nouveaux (nouveauxPoulaillers) dans la transaction de l'appelant :
+    // ou crée le nouveau (nouveauxPoulaillers) : UN seul poulailler par investissement, sinon
+    // impossible de répartir son coût entre les Projets qui utilisent les poulaillers.
+    // Dans la transaction de l'appelant :
     // la moindre erreur annule tout, investissement compris. remplacer = true
     // (modification avec batimentIds fourni) : les liens absents de la liste sont
     // retirés, jamais les poulaillers eux-mêmes. Aucun effet sur les répartitions.
@@ -95,6 +97,9 @@ public class InvestissementServiceImpl implements InvestissementService {
         if (inv.getBatiments() == null) inv.setBatiments(new java.util.HashSet<>());
 
         if (batimentIds != null) {
+            if (batimentIds.stream().filter(b -> b != null && !b.isBlank()).distinct().count() > 1) {
+                throw new IllegalArgumentException("Un investissement concerne un seul poulailler.");
+            }
             java.util.Set<com.diafarms.ml.models.Batiment> voulus = new java.util.LinkedHashSet<>();
             for (String bid : batimentIds) {
                 if (bid == null || bid.isBlank()) continue;
@@ -116,6 +121,12 @@ public class InvestissementServiceImpl implements InvestissementService {
         }
 
         if (nouveaux == null || nouveaux.isEmpty()) return;
+        if (!inv.getBatiments().isEmpty()) {
+            throw new IllegalArgumentException("Un investissement concerne un seul poulailler : créez-le ou reliez un poulailler existant, pas les deux.");
+        }
+        if (nouveaux.size() > 1) {
+            throw new IllegalArgumentException("Un investissement concerne un seul poulailler.");
+        }
         ensureCanCreateBatiment(u);
         java.util.Set<String> nomsVus = new java.util.HashSet<>();
         for (com.diafarms.ml.request.create.NouveauPoulaillerRequest np : nouveaux) {

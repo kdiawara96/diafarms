@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Investissement « Construction & Protection » + poulaillers : script de bout en bout.
 #
-# 1. Création atomique : investissement + 2 poulaillers dans une seule transaction ;
+# 1. Création atomique : investissement + son poulailler dans une seule transaction ;
 #    un poulailler invalide (capacité 0, nom en double) annule TOUT (ni investissement
-#    ni poulailler créé).
+#    ni poulailler créé). UN seul poulailler par investissement : deux poulaillers, ou
+#    créer + relier, sont refusés.
 # 2. Lien vers un poulailler existant ; refus d'un poulailler d'une autre ferme.
 # 3. COMPTABLE : refus de créer un poulailler par ce chemin.
-# 4. Modification : retrait d'un lien (le poulailler reste), création d'un nouveau.
+# 4. Modification : changement de poulailler (l'ancien reste, seul le lien part).
 # 5. Suppression de l'investissement : les poulaillers restent, seuls les liens partent.
 #    Suppression d'un poulailler : seul son lien part, l'investissement reste.
 # 6. Le poulailler créé apparaît dans /batiments/list-paginated (badge investissement),
@@ -108,28 +109,25 @@ invest() { # $1 = nom, $2 = batimentIds JSON, $3 = nouveauxPoulaillers JSON
 nb_bat() { psql_run "SELECT count(*) FROM batiments WHERE farm_id = $FARM_ID AND nom = '$1'"; }
 nb_inv() { psql_run "SELECT count(*) FROM investissements WHERE nom = '$1'"; }
 
-echo "== 1. Création atomique investissement + 2 poulaillers"
-api POST /investissements/create "$(invest "Bâtiment $SUF" '[]' "[{\"nom\":\"$P1\",\"capacite\":1000,\"superficieM2\":120,\"description\":\"Construit en 2026\"},{\"nom\":\"$P2\",\"capacite\":500}]")"
-check "200, 2 poulaillers reliés" "code == 200 and len(d['data']['batiments']) == 2"
+echo "== 1. Création atomique investissement + poulailler"
+api POST /investissements/create "$(invest "Bâtiment $SUF" '[]' "[{\"nom\":\"$P1\",\"capacite\":1000,\"superficieM2\":120,\"description\":\"Construit en 2026\"}]")"
+check "200, 1 poulailler relié" "code == 200 and len(d['data']['batiments']) == 1"
 INV="$(jval "d['data']['uniqueId']")"
 check_sql "poulailler A créé (capacité 1000, 120 m², DISPONIBLE)" "SELECT capacite || ' ' || superficie_m2 || ' ' || statut FROM batiments WHERE farm_id = $FARM_ID AND nom = '$P1'" "1000 120 DISPONIBLE"
-check_sql "poulailler B créé" "$(printf "SELECT count(*) FROM batiments WHERE farm_id = %s AND nom = '%s' AND removed = false" "$FARM_ID" "$P2")" "1"
-check_sql "2 liens en base" "SELECT count(*) FROM investissement_batiments ib JOIN investissements i ON i.id = ib.investissement_id WHERE i.unique_id = '$INV'" "2"
+check_sql "1 lien en base" "SELECT count(*) FROM investissement_batiments ib JOIN investissements i ON i.id = ib.investissement_id WHERE i.unique_id = '$INV'" "1"
 check_sql "aucune répartition créée par le lien" "SELECT count(*) FROM investissement_repartitions r JOIN investissements i ON i.id = r.investissement_id WHERE i.unique_id = '$INV'" "0"
 B1="$(psql_run "SELECT unique_id FROM batiments WHERE farm_id = $FARM_ID AND nom = '$P1'")"
-B2="$(psql_run "SELECT unique_id FROM batiments WHERE farm_id = $FARM_ID AND nom = '$P2'")"
 
-echo "== 2. Rollback si un poulailler est invalide"
-api POST /investissements/create "$(invest "Rollback $SUF" '[]' "[{\"nom\":\"Rb1 $SUF\",\"capacite\":300},{\"nom\":\"Rb2 $SUF\",\"capacite\":0}]")"
+echo "== 2. Rollback si le poulailler est invalide, un seul poulailler"
+api POST /investissements/create "$(invest "Rollback $SUF" '[]' "[{\"nom\":\"Rb1 $SUF\",\"capacite\":0}]")"
 check "capacité 0 : 400" "code == 400 and 'capacité' in ' '.join(d.get('errors') or [])"
-check_sql "rollback : aucun investissement" "SELECT count(*) FROM investissements WHERE nom = 'Rollback $SUF'" "0"
-check_sql "rollback : premier poulailler non créé" "SELECT count(*) FROM batiments WHERE nom = 'Rb1 $SUF'" "0"
-api POST /investissements/create "$(invest "Doublon $SUF" '[]' "[{\"nom\":\"Rb3 $SUF\",\"capacite\":300},{\"nom\":\"$P1\",\"capacite\":10}]")"
+check_sql "rollback : rien créé" "SELECT (SELECT count(*) FROM investissements WHERE nom = 'Rollback $SUF') + (SELECT count(*) FROM batiments WHERE nom = 'Rb1 $SUF')" "0"
+api POST /investissements/create "$(invest "Doublon $SUF" '[]' "[{\"nom\":\"$P1\",\"capacite\":10}]")"
 check "nom déjà existant dans la ferme : 400" "code == 400 and 'existe déjà' in ' '.join(d.get('errors') or [])"
-check_sql "doublon : rien créé" "SELECT (SELECT count(*) FROM investissements WHERE nom = 'Doublon $SUF') + (SELECT count(*) FROM batiments WHERE nom = 'Rb3 $SUF')" "0"
-api POST /investissements/create "$(invest "Doublon2 $SUF" '[]' "[{\"nom\":\"Rb4 $SUF\",\"capacite\":300},{\"nom\":\"rb4 $SUF\",\"capacite\":10}]")"
-check "même nom deux fois dans la demande : 400" "code == 400"
-check_sql "doublon interne : rien créé" "SELECT count(*) FROM batiments WHERE lower(nom) = lower('Rb4 $SUF')" "0"
+check_sql "doublon : rien créé" "SELECT count(*) FROM investissements WHERE nom = 'Doublon $SUF'" "0"
+api POST /investissements/create "$(invest "Deux $SUF" '[]' "[{\"nom\":\"Rb3 $SUF\",\"capacite\":300},{\"nom\":\"Rb4 $SUF\",\"capacite\":300}]")"
+check "deux poulaillers à créer : 400 « seul poulailler »" "code == 400 and 'seul poulailler' in ' '.join(d.get('errors') or [])"
+check_sql "deux poulaillers : rien créé" "SELECT (SELECT count(*) FROM investissements WHERE nom = 'Deux $SUF') + (SELECT count(*) FROM batiments WHERE nom IN ('Rb3 $SUF', 'Rb4 $SUF'))" "0"
 
 echo "== 3. Relier un poulailler existant"
 api POST /batiments/create "{\"nom\":\"$PEX\",\"capacite\":800}"
@@ -161,25 +159,37 @@ if [ -z "$TOKEN" ]; then echo "ECHEC  connexion $COMPTA_EMAIL"; FAIL=$((FAIL+1))
 fi
 TOKEN="$TOKEN_ADMIN"
 
-echo "== 6. Modification : retirer un lien, créer un poulailler"
+echo "== 6. Un seul poulailler : mélange et double lien refusés"
+api POST /investissements/create "$(invest "Mixte $SUF" "[\"$BEX\"]" "[{\"nom\":\"Mixte $SUF\",\"capacite\":100}]")"
+check "créer + relier : 400" "code == 400 and 'seul poulailler' in ' '.join(d.get('errors') or [])"
+check_sql "créer + relier : rien créé" "SELECT (SELECT count(*) FROM investissements WHERE nom = 'Mixte $SUF') + (SELECT count(*) FROM batiments WHERE nom = 'Mixte $SUF')" "0"
+api POST /investissements/create "$(invest "Double $SUF" "[\"$BEX\",\"$B1\"]" '[]')"
+check "deux poulaillers existants : 400" "code == 400 and 'seul poulailler' in ' '.join(d.get('errors') or [])"
 api PUT "/investissements/update/$INV" "$(invest "Bâtiment $SUF" "[\"$B1\"]" "[{\"nom\":\"$P3\",\"capacite\":700}]")"
-check "200, liens A + C" "code == 200 and sorted(b['nom'] for b in d['data']['batiments']) == sorted(['$P1', '$P3'])"
-check_sql "poulailler B conservé (lien seul retiré)" "SELECT count(*) FROM batiments WHERE unique_id = '$B2' AND removed = false" "1"
-api PUT "/investissements/update/$INV" "$(invest "Bâtiment $SUF" 'null' '[]')"
-check "batimentIds absent : liens inchangés" "code == 200 and len(d['data']['batiments']) == 2"
+check "modification créer + relier : 400" "code == 400 and 'seul poulailler' in ' '.join(d.get('errors') or [])"
+api PUT "/investissements/update/$INV" "$(invest "Bâtiment $SUF" 'null' "[{\"nom\":\"$P3\",\"capacite\":700}]")"
+check "modification : création alors qu'un poulailler est déjà relié : 400" "code == 400 and 'seul poulailler' in ' '.join(d.get('errors') or [])"
+check_sql "poulailler C non créé" "SELECT count(*) FROM batiments WHERE nom = '$P3'" "0"
 
-echo "== 7. Listes de poulaillers"
+echo "== 7. Modification : changer de poulailler"
+api PUT "/investissements/update/$INV" "$(invest "Bâtiment $SUF" '[]' "[{\"nom\":\"$P3\",\"capacite\":700}]")"
+check "200, relié au seul poulailler C" "code == 200 and [b['nom'] for b in d['data']['batiments']] == ['$P3']"
+check_sql "poulailler A conservé (lien seul retiré)" "SELECT count(*) FROM batiments WHERE unique_id = '$B1' AND removed = false" "1"
+api PUT "/investissements/update/$INV" "$(invest "Bâtiment $SUF" 'null' '[]')"
+check "batimentIds absent : lien inchangé" "code == 200 and [b['nom'] for b in d['data']['batiments']] == ['$P3']"
+
+echo "== 8. Listes de poulaillers"
 api GET "/batiments/list-paginated?page=0&size=50&search=$SUF" ""
-check "Poulaillers : badge investissement" "code == 200 and any(b['nom'] == '$P1' and b['investissements'] == ['Bâtiment $SUF'] for b in d['data']['data'])"
+check "Poulaillers : badge investissement" "code == 200 and any(b['nom'] == '$P3' and b['investissements'] == ['Bâtiment $SUF'] for b in d['data']['data'])"
 api GET /batiments/select ""
 check "assistant Projet / mobile (select) : poulailler A présent" "code == 200 and any(b['uniqueId'] == '$B1' for b in d['data'])"
 api GET /batiments/tous ""
 check "mobile (tous) : poulailler C présent" "code == 200 and any(b['nom'] == '$P3' for b in d['data'])"
 
-echo "== 8. Suppressions"
+echo "== 9. Suppressions"
 api DELETE "/investissements/delete/$INV" ""
 check "suppression investissement : 200" "code == 200"
-check_sql "poulaillers A, B, C toujours là" "SELECT count(*) FROM batiments WHERE farm_id = $FARM_ID AND nom IN ('$P1', '$P2', '$P3') AND removed = false" "3"
+check_sql "poulaillers A et C toujours là" "SELECT count(*) FROM batiments WHERE farm_id = $FARM_ID AND nom IN ('$P1', '$P3') AND removed = false" "2"
 check_sql "liens supprimés" "SELECT count(*) FROM investissement_batiments ib JOIN batiments b ON b.id = ib.batiment_id WHERE b.nom IN ('$P1', '$P3')" "0"
 api PUT "/batiments/deleteOrRecover/$BEX" ""
 check "suppression du poulailler existant : 200" "code == 200"
