@@ -61,4 +61,7 @@ public interface AbonnementService {
     // petit rapport + filtres, faits côté web sur ce volume trivial). Retourne une
     // liste vide si l'utilisateur courant n'a pas de ferme (SUPER_ADMIN).
     List<PaiementAbonnementDTO> getHistorique();
+
+    /** Plus petite version de l'application mobile acceptée (versionCode), 0 = aucune. */
+    int versionMobileMinimale();
 }

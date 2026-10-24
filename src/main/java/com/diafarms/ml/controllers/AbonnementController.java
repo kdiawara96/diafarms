@@ -43,6 +43,18 @@ public class AbonnementController {
         }
     }
 
+    // PUBLIC : plus petite version de l'application mobile acceptée (versionCode Android,
+    // 0 = aucune). Lue par le téléphone dès qu'il a du réseau, même avant connexion.
+    @GetMapping("/version-mobile")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Integer>>> versionMobile() {
+        try {
+            return ApiResponse.createResponse("Version mobile", HttpStatus.OK,
+                    java.util.Map.of("versionMinimale", service.versionMobileMinimale()), null);
+        } catch (Exception e) {
+            return ApiResponse.createResponse("Erreur interne du serveur", HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+        }
+    }
+
     @GetMapping("/tarif-simulation")
     public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.AbonnementTarifDTO>> simulation(
             @RequestParam(required = false) String poules) {

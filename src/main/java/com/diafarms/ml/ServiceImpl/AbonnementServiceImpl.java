@@ -511,6 +511,14 @@ public class AbonnementServiceImpl implements AbonnementService {
         return AbonnementConfigDTO.fromEntity(getOuCreerConfig());
     }
 
+    // PUBLIC (voir AbonnementController.versionMobile) : 0 = aucune version imposée.
+    @Override
+    @Transactional(readOnly = true)
+    public int versionMobileMinimale() {
+        AbonnementConfig c = configRepo.findFirstByOrderByIdAsc();
+        return c == null || c.getVersionMobileMinimale() == null ? 0 : c.getVersionMobileMinimale();
+    }
+
     @Override
     @Transactional
     public AbonnementConfigDTO updateConfig(AbonnementConfigUpdateRequest request) {
@@ -556,6 +564,10 @@ public class AbonnementServiceImpl implements AbonnementService {
         if (request.getCreditParrainage() != null && (request.getCreditParrainage() < 0 || request.getCreditParrainage() > 1_000_000)) {
             throw new IllegalArgumentException("Le crédit de parrainage doit être compris entre 0 et 1 000 000 FCFA.");
         }
+        if (request.getVersionMobileMinimale() != null && (request.getVersionMobileMinimale() < 0 || request.getVersionMobileMinimale() > 100_000)) {
+            throw new IllegalArgumentException("La version minimale de l'application mobile doit être comprise entre 0 et 100 000.");
+        }
+        if (request.getVersionMobileMinimale() != null) config.setVersionMobileMinimale(request.getVersionMobileMinimale());
         if (request.getBonusSeuil() != null) config.setBonusSeuil(request.getBonusSeuil());
         if (request.getBonusPourcent() != null) config.setBonusPourcent(request.getBonusPourcent());
         if (request.getSeuilSurDevis() != null) config.setSeuilSurDevis(request.getSeuilSurDevis());

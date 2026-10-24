@@ -33,6 +33,8 @@ public class AbonnementConfigDTO {
     private Double bonusPourcent;
     private Integer seuilSurDevis;
     private Double creditParrainage;
+    // 0 = aucune version imposée (voir AbonnementConfig.versionMobileMinimale).
+    private Integer versionMobileMinimale;
 
     public static AbonnementConfigDTO fromEntity(AbonnementConfig c) {
         if (c == null) return null;
@@ -51,6 +53,7 @@ public class AbonnementConfigDTO {
                 .bonusPourcent(com.diafarms.ml.commons.AbonnementCredit.regles(c).bonusPourcent())
                 .seuilSurDevis(com.diafarms.ml.commons.AbonnementCredit.regles(c).seuilSurDevis())
                 .creditParrainage(com.diafarms.ml.commons.AbonnementCredit.regles(c).creditParrainage())
+                .versionMobileMinimale(c.getVersionMobileMinimale() == null ? 0 : c.getVersionMobileMinimale())
                 .build();
     }
 }

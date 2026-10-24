@@ -119,6 +119,7 @@ public class SecurityConfiguration {
                     "/diafarms/api/v1/abonnements/tarif-simulation",
                     // Prix actuels affichés sur le site cocoricoferme.com.
                     "/diafarms/api/v1/abonnements/tarif-public",
+                    "/diafarms/api/v1/abonnements/version-mobile",
                     // Vérification d'un code de parrainage (page d'inscription) : oui / non seulement.
                     "/diafarms/api/v1/parrainage/verifier",
                     "/diafarms/api/v1/test"

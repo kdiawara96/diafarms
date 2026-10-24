@@ -76,4 +76,10 @@ public class AbonnementConfig {
 
     @Column(name = "credit_parrainage")
     private Double creditParrainage;
+
+    // Plus petite version de l'application mobile acceptée (versionCode Android, ex. 43
+    // pour la 1.42). En dessous, le téléphone demande la mise à jour avant de continuer
+    // (après avoir envoyé ses saisies). Nullable : null ou 0 = aucune version imposée.
+    @Column(name = "version_mobile_minimale")
+    private Integer versionMobileMinimale;
 }

@@ -21,4 +21,6 @@ public class AbonnementConfigUpdateRequest {
     private Double bonusPourcent;
     private Integer seuilSurDevis;
     private Double creditParrainage;
+    // versionCode Android ; 0 = aucune version imposée.
+    private Integer versionMobileMinimale;
 }
