@@ -727,6 +727,115 @@ public class AdminConsoleService {
         return detailFerme(farmUniqueId);
     }
 
+    /**
+     * Supprime définitivement une ferme et tout ce qui lui appartient (doublon d'inscription,
+     * ferme de test...). Il faut retaper le nom exact de la ferme. Refusé si la ferme a un
+     * paiement d'abonnement validé (argent réellement reçu) ou un compte SUPER_ADMIN.
+     *
+     * Les lignes à effacer sont trouvées en suivant les clés étrangères de la base à partir
+     * de la ferme : une table ajoutée plus tard est donc prise en compte sans changer ce code.
+     * Si une de ces lignes appartient à une autre ferme, rien n'est supprimé.
+     * essais_gratuits (sans clé étrangère) est gardé : l'essai déjà donné reste compté.
+     */
+    @Transactional
+    public void supprimerFerme(String farmUniqueId, String nomConfirme) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        String nom = nom(f);
+        // Nom affiché dans la console : nom de la ferme, sinon nom donné à l'inscription.
+        java.util.Set<String> nomsAcceptes = new java.util.HashSet<>();
+        nomsAcceptes.add(nom.trim());
+        jdbc.queryForList("SELECT DISTINCT farm_name FROM utilisateurs WHERE farm_id = ? AND farm_name IS NOT NULL", String.class, f.getId())
+                .forEach(n -> nomsAcceptes.add(n.trim()));
+        if (nomConfirme == null || nomConfirme.isBlank() || !nomsAcceptes.contains(nomConfirme.trim())) {
+            throw new IllegalArgumentException("Le nom tapé ne correspond pas au nom de la ferme.");
+        }
+        Integer payes = jdbc.queryForObject("SELECT COUNT(*) FROM paiements_abonnement p JOIN abonnements a ON a.id = p.abonnement_id "
+                + "WHERE a.farm_id = ? AND p.statut = 'VALIDE'", Integer.class, f.getId());
+        if (payes != null && payes > 0) {
+            throw new IllegalArgumentException("Cette ferme a déjà payé un abonnement : elle ne peut pas être supprimée. Suspendez-la plutôt.");
+        }
+        Integer supers = jdbc.queryForObject("SELECT COUNT(*) FROM utilisateurs u JOIN roles_users ru ON ru.id_utilisateurs = u.id "
+                + "JOIN roles r ON r.id = ru.id_roles WHERE u.farm_id = ? AND UPPER(r.role) = 'SUPER_ADMIN'", Integer.class, f.getId());
+        if (supers != null && supers > 0) {
+            throw new IllegalArgumentException("Cette ferme contient un compte super admin : elle ne peut pas être supprimée.");
+        }
+
+        // Clés étrangères : table enfant, colonne -> table parente (colonne id).
+        List<String[]> fks = new ArrayList<>();
+        for (Map<String, Object> r : jdbc.queryForList(
+                "SELECT tc.table_name AS enfant, kcu.column_name AS col, ccu.table_name AS parent "
+                        + "FROM information_schema.table_constraints tc "
+                        + "JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema "
+                        + "JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema "
+                        + "WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'")) {
+            fks.add(new String[] { (String) r.get("enfant"), (String) r.get("col"), (String) r.get("parent") });
+        }
+        java.util.Set<String> avecId = new java.util.HashSet<>(jdbc.queryForList(
+                "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'id'", String.class));
+        java.util.Set<String> avecFerme = new java.util.HashSet<>(jdbc.queryForList(
+                "SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'farm_id'", String.class));
+
+        // 1. Toutes les lignes qui dépendent de la ferme, de proche en proche.
+        Map<String, java.util.Set<Long>> ids = new LinkedHashMap<>();
+        ids.put("farms", new java.util.HashSet<>(List.of(f.getId())));
+        java.util.Deque<String[]> aTraiter = new java.util.ArrayDeque<>(); // {table, ids séparés par des virgules}
+        aTraiter.add(new String[] { "farms", String.valueOf(f.getId()) });
+        while (!aTraiter.isEmpty()) {
+            String[] t = aTraiter.poll();
+            for (String[] fk : fks) {
+                if (!fk[2].equals(t[0]) || !avecId.contains(fk[0])) continue;
+                List<Long> enfants = jdbc.queryForList("SELECT id FROM \"" + fk[0] + "\" WHERE \"" + fk[1] + "\" IN (" + t[1] + ")", Long.class);
+                java.util.Set<Long> deja = ids.computeIfAbsent(fk[0], k -> new java.util.HashSet<>());
+                List<Long> nouveaux = enfants.stream().filter(deja::add).toList();
+                if (!nouveaux.isEmpty()) {
+                    aTraiter.add(new String[] { fk[0], nouveaux.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) });
+                }
+            }
+        }
+        ids.values().removeIf(java.util.Set::isEmpty);
+
+        // 2. Sécurité : aucune ligne d'une autre ferme dans le lot.
+        for (Map.Entry<String, java.util.Set<Long>> e : ids.entrySet()) {
+            if (e.getKey().equals("farms") || !avecFerme.contains(e.getKey())) continue;
+            Integer autres = jdbc.queryForObject("SELECT COUNT(*) FROM \"" + e.getKey() + "\" WHERE id IN (" + liste(e.getValue())
+                    + ") AND farm_id IS NOT NULL AND farm_id <> ?", Integer.class, f.getId());
+            if (autres != null && autres > 0) {
+                throw new IllegalArgumentException("Suppression annulée : des données d'une autre ferme (" + e.getKey() + ") sont liées à cette ferme.");
+            }
+        }
+
+        // 3. Effacement, les enfants avant les parents.
+        for (String[] fk : fks) { // références d'une table vers elle-même : on les vide d'abord
+            if (fk[0].equals(fk[2]) && ids.containsKey(fk[0])) {
+                jdbc.update("UPDATE \"" + fk[0] + "\" SET \"" + fk[1] + "\" = NULL WHERE id IN (" + liste(ids.get(fk[0])) + ")");
+            }
+        }
+        for (String[] fk : fks) { // tables de liaison sans id (roles_users...)
+            if (!avecId.contains(fk[0]) && ids.containsKey(fk[2])) {
+                jdbc.update("DELETE FROM \"" + fk[0] + "\" WHERE \"" + fk[1] + "\" IN (" + liste(ids.get(fk[2])) + ")");
+            }
+        }
+        java.util.Set<String> restantes = new java.util.LinkedHashSet<>(ids.keySet());
+        while (!restantes.isEmpty()) {
+            String feuille = restantes.stream()
+                    .filter(t -> fks.stream().noneMatch(fk -> fk[2].equals(t) && !fk[0].equals(t) && restantes.contains(fk[0])))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("Suppression annulée : ordre d'effacement impossible (" + restantes + ")."));
+            jdbc.update("DELETE FROM \"" + feuille + "\" WHERE id IN (" + liste(ids.get(feuille)) + ")");
+            restantes.remove(feuille);
+        }
+
+        int lignes = ids.values().stream().mapToInt(java.util.Set::size).sum();
+        LOG.info("Ferme {} ({}) supprimée par {} : {} ligne(s) dans {} table(s)", nom, f.getUniqueId(), sa.getId(), lignes, ids.size());
+        logs.addLogs(sa.getId(), f.getId(), ENTITE_ADMIN_FERME, ("Suppression définitive de la ferme " + nom
+                + " (" + ids.getOrDefault("utilisateurs", java.util.Set.of()).size() + " utilisateur(s))"));
+    }
+
+    private static String liste(java.util.Collection<Long> ids) {
+        return ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+    }
+
     @Transactional
     public AdminConsoleDTO.FermeDetail reactiver(String farmUniqueId) {
         Utilisateurs sa = superAdmin();

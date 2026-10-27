@@ -1,6 +1,7 @@
 package com.diafarms.ml.controllers;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import org.springframework.http.HttpStatus;
@@ -78,6 +79,16 @@ public class AdminConsoleController {
     public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> suspendre(@PathVariable String farmUniqueId,
             @RequestBody(required = false) AdminSuspendreRequest request) {
         return repondre("Ferme suspendue", () -> service.suspendre(farmUniqueId, request));
+    }
+
+    // Suppression définitive : {"nom": "<nom exact de la ferme>"}.
+    @PostMapping("/fermes/{farmUniqueId}/supprimer")
+    public ResponseEntity<ApiResponse<Boolean>> supprimer(@PathVariable String farmUniqueId,
+            @RequestBody(required = false) Map<String, String> request) {
+        return repondre("Ferme supprimée", () -> {
+            service.supprimerFerme(farmUniqueId, request == null ? null : request.get("nom"));
+            return true;
+        });
     }
 
     @PostMapping("/fermes/{farmUniqueId}/reactiver")
