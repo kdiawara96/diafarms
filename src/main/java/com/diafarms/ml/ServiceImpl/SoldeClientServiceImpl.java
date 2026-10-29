@@ -13,7 +13,7 @@ import com.diafarms.ml.repository.ClientRepo;
 
 import lombok.RequiredArgsConstructor;
 
-// Petit service partagé par VenteOeufsImpl et VenteReformeImpl — même principe que
+// Petit service partagé par VenteOeufsImpl et VenteReformeImpl, même principe que
 // SoldeVendeurServiceImpl, mais utilisé uniquement quand une vente a un client
 // identifié (voir VenteOeufs/VenteReforme.client) : l'écart théorique/rapporté est
 // alors imputé au client (vente à crédit), pas au vendeur.

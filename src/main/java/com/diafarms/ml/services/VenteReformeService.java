@@ -12,15 +12,15 @@ public interface VenteReformeService {
 
     VenteReformeDTO update(String uniqueId, VenteReformeUpdate data);
 
-    // Réservé ADMIN/RESPONSABLE (toggle direct, delete ou restore) — voir
+    // Réservé ADMIN/RESPONSABLE (toggle direct, delete ou restore), voir
     // VenteReformeImpl.deleteOrRecover.
     String deleteOrRecover(String uniqueId, String motif);
 
-    /** Marque une demande de suppression — ADMIN/RESPONSABLE/COMPTABLE, jamais le
-     * vendeur (VENTE), même pour sa propre vente — voir VenteOeufsService (même règle). */
+    /** Marque une demande de suppression, ADMIN/RESPONSABLE/COMPTABLE, jamais le
+     * vendeur (VENTE), même pour sa propre vente, voir VenteOeufsService (même règle). */
     VenteReformeDTO demanderSuppression(String uniqueId, String motif);
 
-    /** Confirme une demande en attente — supprime réellement. ADMIN/RESPONSABLE seulement. */
+    /** Confirme une demande en attente, supprime réellement. ADMIN/RESPONSABLE seulement. */
     VenteReformeDTO confirmerSuppression(String uniqueId);
 
     /** Refuse une demande en attente (la vente reste active). ADMIN/RESPONSABLE. */
@@ -33,6 +33,6 @@ public interface VenteReformeService {
     VenteReformeDTO detail(String uniqueId);
 
     // Statistiques réforme sur la période (bornes optionnelles), ferme entière ou un
-    // projet — voir StatsReformeDTO.
+    // projet, voir StatsReformeDTO.
     com.diafarms.ml.DTO.StatsReformeDTO stats(java.time.LocalDate dateDebut, java.time.LocalDate dateFin, String projetUniqueId);
 }

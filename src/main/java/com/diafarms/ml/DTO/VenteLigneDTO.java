@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Une ligne de la page Ventes, lue directement dans la table de la vente (ventes_oeufs,
-// ventes_reforme, ventes_diverses) — une ligne par VENTE, plus une par part de projet
+// ventes_reforme, ventes_diverses), une ligne par VENTE, plus une par part de projet
 // comme quand la page reconstruisait les ventes depuis la comptabilité.
 @Getter
 @Setter
@@ -34,7 +34,7 @@ public class VenteLigneDTO {
     private Double montantReel; // montantRapporte, sinon montant ; pour une vente avec client = payé
     private String clientUniqueId;
     private String clientNom;
-    // Champs propres à une vente AVEC client (voir CompteClientService) — null pour une
+    // Champs propres à une vente AVEC client (voir CompteClientService), null pour une
     // vente sans client (ANCIEN comportement montantRapporte/montantReel encore utilisé)
     // et pour les ventes diverses (jamais de client).
     private Double paye;
@@ -44,9 +44,9 @@ public class VenteLigneDTO {
     // (valeur proposée par défaut, voir VenteOeufsImpl.update).
     private Double payeALaVente;
     // "PAYEE" | "PARTIELLE" | "NON_PAYEE" (vente à un client, voir ClientVenteLigneDTO) ou
-    // "COMPTANT" (vente sans client, encaissée directement — diverses comprises).
+    // "COMPTANT" (vente sans client, encaissée directement, diverses comprises).
     private String statutPaiement;
-    // Non null = cette vente est la livraison d'une Commande — voir VenteOeufs/VenteReforme.commande.
+    // Non null = cette vente est la livraison d'une Commande, voir VenteOeufs/VenteReforme.commande.
     private String commandeUniqueId;
     private String magasinNom;
     private String creeParUniqueId;
@@ -63,7 +63,7 @@ public class VenteLigneDTO {
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;
     private String motifSuppression;
-    // Vente réforme seulement (null sinon) — voir VenteReformeDTO pour le détail.
+    // Vente réforme seulement (null sinon), voir VenteReformeDTO pour le détail.
     private String typeVente; // "TETE" ou "KILO"
     private Double poidsTotalKg;
     private Double poidsMoyenParSujet;

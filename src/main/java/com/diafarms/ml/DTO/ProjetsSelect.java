@@ -24,7 +24,7 @@ public class ProjetsSelect {
      private String titre;
      private LocalDate debut;
      private LocalDate finPrevue;
-     private boolean active; // !initialisation.archive — le vrai statut actif/archivé, pas une date
+     private boolean active; // !initialisation.archive, le vrai statut actif/archivé, pas une date
      private Objectif objectif; // pour adapter les saisies proposées côté mobile (ex: pas de collecte d'œufs sur un projet REFORME)
 
      public static ProjetsSelect selectEntity(Projets data) {

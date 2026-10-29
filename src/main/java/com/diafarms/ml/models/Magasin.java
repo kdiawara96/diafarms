@@ -17,7 +17,7 @@ import lombok.Setter;
 // (voir type), chacun avec son propre stock (œufs/réforme). Un magasin de stockage
 // reçoit directement les collectes (voir CollecteOeufs.magasinStockage) ; un magasin
 // de vente reçoit des transferts explicites depuis un magasin de stockage ou
-// directement un projet (voir MagasinTransfert) — remplace la répartition automatique
+// directement un projet (voir MagasinTransfert), remplace la répartition automatique
 // proportionnelle qui existait à la vente (voir VenteOeufsImpl/VenteReformeImpl,
 // désormais scopés par magasin plutôt que farm-wide). Les champs vendeurs/seuils de
 // vente n'ont de sens que pour type=VENTE, seuilAlerteAlveoles que pour type=STOCKAGE
@@ -48,21 +48,21 @@ public class Magasin {
     private String description;
 
     // Seuils d'alerte stock bas (nullable = alerte désactivée pour ce type dans ce
-    // magasin) — configurés par l'admin/responsable à la création/modification du
+    // magasin), configurés par l'admin/responsable à la création/modification du
     // magasin. Voir NotificationServiceImpl.addMagasinStockAlerts : notifie les
     // RESPONSABLE des projets qui contribuent actuellement au stock de CE magasin dès
     // que le stock passe sous le seuil. N'a de sens que pour type=VENTE.
-    // Exprimé en ALVÉOLES (pas en œufs — plus lisible pour un usage quotidien, même
+    // Exprimé en ALVÉOLES (pas en œufs, plus lisible pour un usage quotidien, même
     // convention que seuilAlerteAlveoles pour un magasin de STOCKAGE), converti en
-    // œufs pour comparer au disponible réel — voir NotificationServiceImpl.checkMagasinStockAlert.
+    // œufs pour comparer au disponible réel, voir NotificationServiceImpl.checkMagasinStockAlert.
     @Column(name = "seuil_alerte_oeufs")
     private Integer seuilAlerteOeufs;
 
     @Column(name = "seuil_alerte_reforme")
     private Integer seuilAlerteReforme;
 
-    // Seuil d'alerte stock bas, en ALVÉOLES (pas en œufs — plus lisible pour un usage
-    // quotidien) — n'a de sens que pour type=STOCKAGE. Null = alerte désactivée. Voir
+    // Seuil d'alerte stock bas, en ALVÉOLES (pas en œufs, plus lisible pour un usage
+    // quotidien), n'a de sens que pour type=STOCKAGE. Null = alerte désactivée. Voir
     // NotificationServiceImpl.addMagasinStockageAlerts.
     @Column(name = "seuil_alerte_alveoles")
     private Integer seuilAlerteAlveoles;
@@ -74,7 +74,7 @@ public class Magasin {
     // N'a de sens que pour type=STOCKAGE : magasin de VENTE vers lequel transférer
     // automatiquement chaque collecte dès sa saisie (voir CollecteOeufsImpl.create),
     // pour qu'une petite ferme qui démarre (admin peu disponible) puisse vendre sans
-    // attendre un transfert manuel — voir MagasinTransfertServiceImpl, réservé à
+    // attendre un transfert manuel, voir MagasinTransfertServiceImpl, réservé à
     // ADMIN/RESPONSABLE. Null = pas d'automatisation, transfert manuel comme avant.
     // Choix explicite, pas de déduction automatique ("un seul magasin de vente sur la
     // ferme") : reste correct même si un deuxième magasin de vente est ajouté plus tard.
@@ -89,7 +89,7 @@ public class Magasin {
             inverseJoinColumns = @JoinColumn(name = "vendeur_id"))
     private List<Utilisateurs> vendeurs = new ArrayList<>();
 
-    // Coordonnées GPS directes (optionnelles) — contrairement au poulailler, un
+    // Coordonnées GPS directes (optionnelles), contrairement au poulailler, un
     // magasin de vente peut être en pleine ville, sans rapport avec un Site de la
     // ferme : pas de notion de Site ici, juste sa position propre.
     @Column(name = "latitude")

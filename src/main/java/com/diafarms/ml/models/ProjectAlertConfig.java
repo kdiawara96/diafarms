@@ -39,7 +39,7 @@ public class ProjectAlertConfig {
 
     @Column(name = "threshold_key", nullable = false)
     @Enumerated(EnumType.STRING)
-    private ThresholdKey thresholdKey;     // "DAILY_WARNING", "DAILY_CRITICAL", "WEEKLY_CRITICAL", "CUMULATIVE_CRITICAL" == tu as 3 seuils CRITIQUE pour MORTALITE — impossible de savoir lequel est journalier, hebdomadaire ou cumulé.
+    private ThresholdKey thresholdKey;     // "DAILY_WARNING", "DAILY_CRITICAL", "WEEKLY_CRITICAL", "CUMULATIVE_CRITICAL" == tu as 3 seuils CRITIQUE pour MORTALITE, impossible de savoir lequel est journalier, hebdomadaire ou cumulé.
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

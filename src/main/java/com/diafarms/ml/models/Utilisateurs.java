@@ -96,7 +96,7 @@ public class Utilisateurs {
     // immédiatement, plutôt que de rester valable jusqu'à son expiration naturelle
     // (7 jours) même après clic sur "Déconnexion". Ne concerne QUE les tokens web
     // (mot de passe) : les tokens QR mobile (type=QR_CODE, voir QRCodeService) n'ont
-    // pas ce claim et ne sont jamais affectés — une déconnexion web ne doit pas
+    // pas ce claim et ne sont jamais affectés, une déconnexion web ne doit pas
     // couper l'accès mobile déjà distribué. Boolean (pas Integer) évité ici
     // volontairement : Integer, jamais NULL en pratique après ddl-auto=update grâce
     // au défaut Java, mais traité comme 0 si NULL par sécurité côté code (lignes

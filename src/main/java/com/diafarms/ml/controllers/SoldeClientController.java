@@ -30,7 +30,7 @@ public class SoldeClientController {
         }
     }
 
-    // Vue d'ensemble farm-wide — pour repérer les dettes client en cours (Clients,
+    // Vue d'ensemble farm-wide, pour repérer les dettes client en cours (Clients,
     // Comptabilité, Reporting).
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<List<SoldeClientDTO>>> list() {

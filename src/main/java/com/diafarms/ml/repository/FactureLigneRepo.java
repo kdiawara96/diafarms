@@ -15,13 +15,13 @@ public interface FactureLigneRepo extends JpaRepository<FactureLigne, Long> {
 
     List<FactureLigne> findByFacture_Id(Long factureId);
 
-    // Une vente déjà présente sur une facture non annulée ne peut pas être refacturée —
+    // Une vente déjà présente sur une facture non annulée ne peut pas être refacturée,
     // voir FactureServiceImpl.genererDepuis. Une facture ANNULEE libère ses ventes.
     @Query("SELECT COUNT(l) > 0 FROM FactureLigne l WHERE l.venteType = :t AND l.venteUniqueId = :u " +
         "AND l.facture.statut <> com.diafarms.ml.models.Facture.StatutFacture.ANNULEE")
     boolean venteDejaFacturee(@Param("t") CibleImputation t, @Param("u") String u);
 
-    // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente — jumeau de
+    // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente, jumeau de
     // venteDejaFacturee, pour l'afficher dans la fiche client (voir
     // ClientServiceImpl.getReport). Au plus un résultat en pratique : une vente n'est
     // jamais facturée deux fois tant qu'une facture active existe déjà dessus.

@@ -43,7 +43,7 @@ public interface ConsommationAlimentRepo extends JpaRepository<ConsommationAlime
         "AND c.date >= :debut AND c.date <= :fin")
     Double sumConsommeByProjetIdEntre(@Param("projetId") Long projetId, @Param("debut") LocalDate debut, @Param("fin") LocalDate fin);
 
-    // Toutes les consommations vivantes d'un projet — sert au rapport PDF du projet
+    // Toutes les consommations vivantes d'un projet, sert au rapport PDF du projet
     // (ProjetRapportPdfServiceImpl), qui agrège en mémoire sur la période demandée.
     @Query("SELECT c FROM ConsommationAliment c WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
     java.util.List<ConsommationAliment> findAllByProjetId(@Param("projetId") Long projetId);

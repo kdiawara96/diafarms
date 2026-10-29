@@ -14,7 +14,7 @@ import com.diafarms.ml.request.others.RejeterPaiementAbonnementRequest;
 public interface AbonnementService {
 
     // Appelé une seule fois, juste après la création d'une nouvelle Farm (voir
-    // UtilisateurImpl.save, Task 7) — crée l'essai initial (ESSAI, dateDebut =
+    // UtilisateurImpl.save, Task 7), crée l'essai initial (ESSAI, dateDebut =
     // aujourd'hui, dateFin = aujourd'hui + config.dureeEssaiJours).
     void creerEssaiPourFarm(Farm farm);
 
@@ -49,7 +49,7 @@ public interface AbonnementService {
     // SUPER_ADMIN uniquement. Ne touche pas à Abonnement.dateFin.
     PaiementAbonnementDTO rejeter(String paiementUniqueId, RejeterPaiementAbonnementRequest request);
 
-    // Lecture publique (tout utilisateur connecté) — pour afficher les prix courants
+    // Lecture publique (tout utilisateur connecté), pour afficher les prix courants
     // sur le bouton "J'ai payé".
     AbonnementConfigDTO getConfig();
 
@@ -57,7 +57,7 @@ public interface AbonnementService {
     AbonnementConfigDTO updateConfig(AbonnementConfigUpdateRequest request);
 
     // Historique complet des déclarations de paiement de la ferme courante (toutes
-    // statuts confondus, plus récentes d'abord) — pour la page Abonnement (liste +
+    // statuts confondus, plus récentes d'abord), pour la page Abonnement (liste +
     // petit rapport + filtres, faits côté web sur ce volume trivial). Retourne une
     // liste vide si l'utilisateur courant n'a pas de ferme (SUPER_ADMIN).
     List<PaiementAbonnementDTO> getHistorique();

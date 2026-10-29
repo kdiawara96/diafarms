@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Une ligne = une vente (VenteOeufs ou VenteReforme) facturée, snapshot figé au moment
-// de la génération — description/quantité/prix/montant ne bougent plus après, même si
+// de la génération, description/quantité/prix/montant ne bougent plus après, même si
 // la vente d'origine est modifiée plus tard (même principe que Facture, voir Facture.java).
 // Une facture "legacy" (Facture.legacy = true, générée avant cette refonte) n'a AUCUNE
 // ligne : FactureServiceImpl reconstruit alors une ligne unique pour l'affichage/le PDF
@@ -35,7 +35,7 @@ public class FactureLigne {
     @JoinColumn(name = "facture_id", nullable = false)
     private Facture facture;
 
-    // Toujours VENTE_OEUFS ou VENTE_REFORME ici (jamais REMBOURSEMENT — voir
+    // Toujours VENTE_OEUFS ou VENTE_REFORME ici (jamais REMBOURSEMENT, voir
     // CibleImputation) : c'est aussi le type utilisé pour interroger
     // CompteClientService.payeVente et calculer le montant payé de cette ligne.
     @Enumerated(EnumType.STRING)

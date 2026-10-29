@@ -11,10 +11,10 @@ import lombok.Setter;
 
 // Solde cumulé, reporté d'une vente à l'autre, entre le montant théorique et le
 // montant réellement rapporté d'une vente faite À CE CLIENT (voir VenteOeufs/
-// VenteReforme.client) — positif = le client doit de l'argent à la ferme (vente à
+// VenteReforme.client), positif = le client doit de l'argent à la ferme (vente à
 // crédit pas encore intégralement payée), négatif = trop payé (avance sur une
 // prochaine vente). Même principe que SoldeVendeur, mais utilisé UNIQUEMENT quand
-// une vente a un client identifié — une vente sans client continue d'imputer
+// une vente a un client identifié, une vente sans client continue d'imputer
 // l'écart au solde du vendeur (voir VenteOeufsImpl/VenteReformeImpl).
 @Entity
 @Table(name = "soldes_client")

@@ -17,7 +17,7 @@ import com.diafarms.ml.services.VenteOeufsService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente d'œufs (Finance) : à l'échelle de la ferme entière, pas d'un projet précis —
+// Vente d'œufs (Finance) : à l'échelle de la ferme entière, pas d'un projet précis,
 // pas de paramètre projetUniqueId ici, contrairement aux endpoints Production.
 @RestController
 @RequestMapping("/diafarms/api/v1/ventes-oeufs")
@@ -86,7 +86,7 @@ public class VenteOeufsControllers {
         }
     }
 
-    // Suppression en deux temps (demande puis confirmation) — voir VenteOeufsImpl :
+    // Suppression en deux temps (demande puis confirmation), voir VenteOeufsImpl :
     // jamais le vendeur, même pour sa propre vente.
     @PutMapping("/demander-suppression/{uniqueId}")
     public ResponseEntity<ApiResponse<VenteOeufsDTO>> demanderSuppression(@PathVariable String uniqueId,

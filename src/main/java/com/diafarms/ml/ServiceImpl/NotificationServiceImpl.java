@@ -113,7 +113,7 @@ public class NotificationServiceImpl implements NotificationService {
         //
         // Un PRODUCTION pur DOIT voir ces notifications (c'est son métier) mais
         // uniquement pour SES projets assignés (responsableProduction). Un RESPONSABLE
-        // pur les voit aussi, scopées à SES projets (champ Projets.responsable) — il
+        // pur les voit aussi, scopées à SES projets (champ Projets.responsable), il
         // supervise, comme le producteur, mais sur son propre périmètre de gestion.
         boolean sansNotifsProduction = isPureComptable(currentUser) || isPureVente(currentUser);
         if (!sansNotifsProduction) {
@@ -140,7 +140,7 @@ public class NotificationServiceImpl implements NotificationService {
             }
 
             // Stock bas dans un magasin de vente : concerne RESPONSABLE (ses projets) et
-            // ADMIN (tous), pas un PRODUCTION pur — la vente n'est pas son métier. Pas de
+            // ADMIN (tous), pas un PRODUCTION pur, la vente n'est pas son métier. Pas de
             // notion de "responsable d'un magasin" (un magasin peut être alimenté par
             // plusieurs projets, donc plusieurs responsables potentiels) : on notifie
             // quiconque gère au moins un des projets qui contribuent ACTUELLEMENT au
@@ -148,7 +148,7 @@ public class NotificationServiceImpl implements NotificationService {
             if (!isPureProduction(currentUser)) {
                 addMagasinStockAlerts(result, farmId, projets);
                 // Stock bas dans un magasin de STOCKAGE (avant même d'atteindre un
-                // magasin de vente — alerte plus précoce), même périmètre que
+                // magasin de vente, alerte plus précoce), même périmètre que
                 // l'alerte magasin ci-dessus : RESPONSABLE/ADMIN, pas PRODUCTION
                 // (qui collecte mais ne décide ni des transferts ni des ventes).
                 addMagasinStockageAlerts(result, farmId, projets);
@@ -160,7 +160,7 @@ public class NotificationServiceImpl implements NotificationService {
             // ni pour un PRODUCTION pur (jamais de pouvoir de validation).
             if (isPureResponsable(currentUser)) {
                 List<Long> projetIds = projets.stream().map(Projets::getId).toList();
-                // Bornes toujours concrètes (jamais null) — voir
+                // Bornes toujours concrètes (jamais null), voir
                 // TransactionServiceImpl.deb()/fin() : Postgres échoue à déterminer le
                 // type d'un paramètre comparé directement à NULL dans cette requête agrégat.
                 long nbAttente = projetIds.isEmpty() ? 0
@@ -222,7 +222,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /** Un magasin peut être alimenté par plusieurs projets (transferts depuis
-     * plusieurs bâtiments de stockage) — pas de notion de "responsable du magasin".
+     * plusieurs bâtiments de stockage), pas de notion de "responsable du magasin".
      * On notifie donc quiconque appelle cette méthode dès qu'AU MOINS UN de ses
      * projets gérés contribue actuellement au stock d'un magasin sous son seuil. */
     private void addMagasinStockAlerts(List<NotificationDTO> result, Long farmId, List<Projets> projetsGeres) {
@@ -236,7 +236,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /** Seuil OEUFS saisi/affiché en ALVÉOLES (voir CreateMagasinDialog côté web,
-     * même convention que Magasin.seuilAlerteAlveoles pour un magasin de STOCKAGE) —
+     * même convention que Magasin.seuilAlerteAlveoles pour un magasin de STOCKAGE),
      * converti en œufs pour comparer au disponible réel. Seuil REFORME reste un
      * nombre de sujets brut (pas de notion d'alvéole pour la réforme). */
     private void checkMagasinStockAlert(List<NotificationDTO> result, Magasin m, TypeStockMagasin type,
@@ -271,7 +271,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     /** Même raisonnement que addMagasinStockAlerts, un cran plus tôt dans la chaîne :
      * un magasin de stockage n'a pas non plus "un" responsable (plusieurs projets
-     * peuvent y avoir déposé des œufs) — on notifie quiconque gère au moins un des
+     * peuvent y avoir déposé des œufs), on notifie quiconque gère au moins un des
      * projets qui y contribuent actuellement. Seuil en ALVÉOLES (voir
      * Magasin.seuilAlerteAlveoles), converti en œufs pour comparer au disponible réel. */
     private void addMagasinStockageAlerts(List<NotificationDTO> result, Long farmId, List<Projets> projetsGeres) {
@@ -324,7 +324,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     /**
      * Seuils WEATHER_* configurés via /alertes (ProjectAlertConfig, alertType=METEO) mais
-     * jamais évalués jusqu'ici faute d'appel météo — voir ProjectAlertTemplate pour le
+     * jamais évalués jusqu'ici faute d'appel météo, voir ProjectAlertTemplate pour le
      * mapping ThresholdKey -> métrique : DAILY_WARNING/DAILY_CRITICAL = seuils de
      * température, CUMULATIVE_CRITICAL = humidité max, WEEKLY_CRITICAL = humidité min.
      */
@@ -372,7 +372,7 @@ public class NotificationServiceImpl implements NotificationService {
      * jours (chair) à 330+ jours (ponte), un seuil fixe serait déclenché bien trop tôt
      * pour les cycles courts ou bien trop tard pour les longs. On avertit dans les
      * derniers 10% de la durée totale prévue, et on signale un dépassement dès que
-     * finPrevue est passée — sans jamais archiver automatiquement (voir
+     * finPrevue est passée, sans jamais archiver automatiquement (voir
      * ProjetImpl.cloturerProjet, seule action qui clôture réellement).
      */
     private void addEcheanceNotification(List<NotificationDTO> result, Projets p) {
@@ -398,7 +398,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     /**
      * Une transaction que CET utilisateur a créée (vente, saisie manuelle...) vient
-     * d'être rejetée par un ADMIN — universel (pas réservé à FINANCIER), mais c'est
+     * d'être rejetée par un ADMIN, universel (pas réservé à FINANCIER), mais c'est
      * la seule notification farm-wide qui reste montrée à un financier pur (voir
      * getActiveNotifications) : contrairement au stock/mortalité/"en attente", ça le
      * concerne directement, lui et personne d'autre.

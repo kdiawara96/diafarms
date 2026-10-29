@@ -11,7 +11,7 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 
 // Styles/couleurs/cellules partagés par les PDF générés côté back (facture,
-// bulletin de paie — voir FactureServiceImpl/SalaireServiceImpl) pour qu'ils aient
+// bulletin de paie, voir FactureServiceImpl/SalaireServiceImpl) pour qu'ils aient
 // une identité visuelle cohérente entre eux plutôt que du texte brut sans mise en
 // forme. Couleur PRIMARY = vert Diafarms (hsl(152,45%,28%) côté web, voir
 // Diafarms_web/src/index.css --primary), pas une couleur choisie au hasard.
@@ -34,7 +34,7 @@ public final class PdfStyle {
     public static Font tableHeader() { return new Font(Font.HELVETICA, 10, Font.BOLD, WHITE); }
     public static Font badge() { return new Font(Font.HELVETICA, 10, Font.BOLD, WHITE); }
 
-    /** Bandeau de couleur pleine largeur, sans contenu — sépare l'en-tête du reste
+    /** Bandeau de couleur pleine largeur, sans contenu, sépare l'en-tête du reste
      * du document (mirroir visuel du bandeau utilisé sur le web, voir DashboardLayout). */
     public static PdfPTable colorBand(float heightPt) {
         PdfPTable t = new PdfPTable(1);
@@ -69,7 +69,7 @@ public final class PdfStyle {
         return c;
     }
 
-    /** Encart discret (fond vert très clair, sans bordure) pour un bloc d'infos —
+    /** Encart discret (fond vert très clair, sans bordure) pour un bloc d'infos,
      * client sur une facture, employé sur un bulletin de paie. */
     public static PdfPCell infoBox(List<Paragraph> lignes) {
         PdfPCell c = new PdfPCell();
@@ -80,7 +80,7 @@ public final class PdfStyle {
         return c;
     }
 
-    /** Étiquette colorée (fond plein, texte blanc) — statut d'une facture. */
+    /** Étiquette colorée (fond plein, texte blanc), statut d'une facture. */
     public static PdfPCell badgeCell(String texte, Color couleur) {
         PdfPCell c = new PdfPCell(new Paragraph(texte, badge()));
         c.setBackgroundColor(couleur);
@@ -97,7 +97,7 @@ public final class PdfStyle {
         return new Color(185, 45, 45); // IMPAYEE
     }
 
-    /** Bloc plein-largeur, fond PRIMARY, texte blanc — met en avant LE montant qui
+    /** Bloc plein-largeur, fond PRIMARY, texte blanc, met en avant LE montant qui
      * compte (reste dû sur une facture, net payé sur un bulletin). */
     public static PdfPTable highlightAmount(String libelle, String montant) {
         PdfPTable t = new PdfPTable(1);
@@ -116,7 +116,7 @@ public final class PdfStyle {
     }
 
     /** Bloc "qui envoie ce document" (nom de la ferme, adresse, contact) affiché à
-     * gauche de l'en-tête facture/bulletin, à côté du logo — prend des chaînes plutôt
+     * gauche de l'en-tête facture/bulletin, à côté du logo, prend des chaînes plutôt
      * que l'entité Farm pour que ce module reste indépendant du package models. Une
      * ligne n'est ajoutée que si non vide, pour ne pas laisser de lignes fantômes tant
      * que la ferme n'a pas rempli ses coordonnées (voir Paramètres > Identité de la

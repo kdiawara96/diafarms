@@ -11,7 +11,7 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
     // Disponibilité calculée en direct à partir des dates d'occupation, plutôt
     // que via Batiment.statut (un simple flag mis à jour manuellement à chaque
     // assignation/libération, jamais recalculé automatiquement quand une
-    // dateSortie passe) — même logique que BatimentRepo.findAvailableByFarmId,
+    // dateSortie passe), même logique que BatimentRepo.findAvailableByFarmId,
     // pour que la liste de sélection et la validation à la création soient
     // toujours d'accord sur ce qui est "occupé".
     @Query("""
@@ -22,7 +22,7 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
         """)
     boolean existsOccupationActive(@Param("batimentId") Long batimentId);
 
-    // Occupation active (en cours) d'un bâtiment — sert à lire nbSujetsDansBatiment
+    // Occupation active (en cours) d'un bâtiment, sert à lire nbSujetsDansBatiment
     // pour calculer son effectif vivant (voir CollecteOeufsImpl.effectifVivantBatiment).
     // S'il y en avait plusieurs (ne devrait pas arriver), la plus récente prime.
     @Query("""
@@ -45,7 +45,7 @@ public interface OccupationBatimentRepo extends JpaRepository<OccupationBatiment
                                                               @Param("date") java.time.LocalDate date);
 
     // Tous les poulaillers occupés par un projet, occupations terminées comprises (une
-    // saisie peut être antidatée) — voir PoulaillerObligatoire.
+    // saisie peut être antidatée), voir PoulaillerObligatoire.
     @Query("SELECT DISTINCT o.batiment FROM OccupationBatiment o WHERE o.projet.id = :projetId")
     java.util.List<com.diafarms.ml.models.Batiment> findBatimentsByProjetId(@Param("projetId") Long projetId);
 

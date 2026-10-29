@@ -30,14 +30,14 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     boolean existsByUsername(String username);
 
     // Idempotence du bootstrap SUPER_ADMIN (voir MlApplication.run()) : vérifie qu'AU
-    // MOINS UN compte SUPER_ADMIN existe déjà, quel que soit son username — contrairement
+    // MOINS UN compte SUPER_ADMIN existe déjà, quel que soit son username, contrairement
     // à existsByUsername(seedUsername), ne recrée pas un doublon quand la base restaurée
     // a déjà un SUPER_ADMIN sous un autre nom que celui du JSON de seed.
     @Query("SELECT COUNT(u) > 0 FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN'")
     boolean existsSuperAdmin();
 
     // Destinataires de l'email "abonnement à valider" (voir
-    // AbonnementServiceImpl.declarerPaiement) — potentiellement plusieurs comptes
+    // AbonnementServiceImpl.declarerPaiement), potentiellement plusieurs comptes
     // SUPER_ADMIN sur la plateforme.
     @Query("SELECT u FROM Utilisateurs u JOIN u.roles r WHERE r.role = 'SUPER_ADMIN' " +
             "AND u.initialisation.removed = false AND u.initialisation.archive = false")
@@ -84,7 +84,7 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     List<Utilisateurs> searchUsers(@Param("search") String search);
 
     // Liste active (page Utilisateurs) : exclut les comptes archivés (corbeille, voir
-    // findArchivedByFarm) — avant ce correctif, un compte archivé restait visible ici
+    // findArchivedByFarm), avant ce correctif, un compte archivé restait visible ici
     // indéfiniment, la corbeille et la liste active affichant les mêmes comptes.
     // searchTerm jamais nul ("" = pas de filtre) : pas de "(:x IS NULL OR ...)", voir CommandeRepo.search.
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND " +
@@ -100,7 +100,7 @@ public interface UtilisateursRepo extends JpaRepository<Utilisateurs, Long>  {
     );
 
     // Corbeille (page Utilisateurs) : comptes archivés faute de suppression réelle
-    // possible — voir UtilisateurImpl.supprimerOuArchiverUtilisateur.
+    // possible, voir UtilisateurImpl.supprimerOuArchiverUtilisateur.
     @Query("SELECT u FROM Utilisateurs u WHERE u.farm.id = :farmId AND u.initialisation.archive = true")
     Page<Utilisateurs> findArchivedByFarm(@Param("farmId") Long farmId, Pageable pageable);
 

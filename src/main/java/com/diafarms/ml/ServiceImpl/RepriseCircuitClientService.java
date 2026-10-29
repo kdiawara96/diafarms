@@ -341,7 +341,7 @@ public class RepriseCircuitClientService {
         return n;
     }
 
-    // Ancien libellé : "Acompte sur commande — ..." sans référence à la commande. Rattaché
+    // Ancien libellé : "Acompte sur commande, ..." sans référence à la commande. Rattaché
     // seulement s'il n'y a aucune ambiguïté (une seule commande du client avec cet acompte).
     private Commande commandeDeLAcompte(Client c, Transaction t) {
         List<Commande> candidates = em.createQuery(

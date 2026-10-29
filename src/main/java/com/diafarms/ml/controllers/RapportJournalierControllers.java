@@ -15,7 +15,7 @@ import com.diafarms.ml.services.RapportJournalierService;
 
 import lombok.RequiredArgsConstructor;
 
-// Voir RapportJournalierServiceImpl — rapport jour par jour (production + finance)
+// Voir RapportJournalierServiceImpl, rapport jour par jour (production + finance)
 // reconstitué à partir des données déjà en base pour UN projet précis.
 @RestController
 @RequestMapping("/diafarms/api/v1/rapports")

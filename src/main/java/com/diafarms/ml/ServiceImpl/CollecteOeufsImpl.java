@@ -169,12 +169,12 @@ public class CollecteOeufsImpl implements CollecteOeufsService {
         CollecteOeufs saved = collecteOeufsRepo.save(c);
 
         // Transfert automatique vers le magasin de vente par défaut de CE magasin de
-        // stockage (voir Magasin.magasinVenteParDefaut) — pour qu'une ferme sans
+        // stockage (voir Magasin.magasinVenteParDefaut), pour qu'une ferme sans
         // admin/responsable disponible en permanence puisse quand même vendre sans
         // attendre un transfert manuel (voir MagasinTransfertServiceImpl, réservé à
         // ADMIN/RESPONSABLE). Rien ne se passe si non configuré (comportement inchangé).
         // Deux transferts distincts, même magasin cible : le vendable/bon état (OEUFS)
-        // et les cassés (OEUFS_CASSES) — deux pools de stock totalement séparés, voir
+        // et les cassés (OEUFS_CASSES), deux pools de stock totalement séparés, voir
         // VenteOeufsImpl (une vente d'œufs cassés ne peut jamais puiser dans le stock
         // vendable et inversement). Les non utilisables ne sont JAMAIS transférés nulle
         // part (perte pure, voir CollecteOeufs.oeufsNonUtilisables).

@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Ventilation d'une VenteOeufs (Finance, ferme entière) entre les projets qui ont
-// contribué au lot vendu — mirroir d'InvestissementRepartition, mais côté recette
+// contribué au lot vendu, mirroir d'InvestissementRepartition, mais côté recette
 // au lieu de coût. La part de chaque projet est calculée au prorata de son stock
 // d'œufs disponible au moment de la vente (voir VenteOeufsImpl.repartirEtVendre).
 // Chaque ligne génère sa propre Transaction "entrée" rattachée directement à

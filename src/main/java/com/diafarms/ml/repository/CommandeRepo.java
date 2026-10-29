@@ -20,7 +20,7 @@ public interface CommandeRepo extends JpaRepository<Commande, Long> {
     Commande findByUniqueIdForUpdate(@Param("uid") String uniqueId);
 
     // Pas d'ORDER BY ici : le tri vient du Pageable (Sort.by("dateCommande") côté
-    // service) — un ORDER BY explicite en plus provoquerait un conflit.
+    // service), un ORDER BY explicite en plus provoquerait un conflit.
     // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel :
     // "(:x IS NULL OR ...)" fait planter Postgres ("could not determine data type of
     // parameter", voir TransactionRepo.search / FactureRepo.search). statut et

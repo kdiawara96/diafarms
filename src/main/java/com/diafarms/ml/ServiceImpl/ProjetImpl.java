@@ -101,7 +101,7 @@ public class ProjetImpl implements ProjetServices {
                 .orElseThrow(() -> new IllegalArgumentException(libelle + " non trouvé avec l'id : " + id));
     }
 
-    // Poulailler obligatoire à la création + couverture de capacité — voir
+    // Poulailler obligatoire à la création + couverture de capacité, voir
     // createProjet. Ne vérifie PAS l'occupation active des bâtiments ici (fait plus
     // loin, au moment de la création réelle des occupations) : cette étape ne
     // contrôle que la cohérence des chiffres saisis, avant toute résolution d'entité.
@@ -138,7 +138,7 @@ public class ProjetImpl implements ProjetServices {
         }
     }
 
-    // Libère les poulaillers encore occupés par ce projet (suppression ou clôture) —
+    // Libère les poulaillers encore occupés par ce projet (suppression ou clôture),
     // sans ça, un projet supprimé/clôturé bloquait indéfiniment son poulailler pour
     // tout nouveau projet, même une fois le lot terminé (voir OccupationBatimentRepo/
     // BatimentRepo.findAvailableByFarmId, qui ne regardent QUE dateSortie, jamais
@@ -178,7 +178,7 @@ public class ProjetImpl implements ProjetServices {
     private static final int TAUX_PONTE_WINDOW_DAYS = 7;
 
     // Achat sujets (nbSujets × puSujet) et "autres charges" saisis à la création/
-    // modification du projet sont de vrais frais de démarrage — ils comptaient dans
+    // modification du projet sont de vrais frais de démarrage, ils comptaient dans
     // caTotalSujets (mal nommé : c'est un coût, pas un CA) mais ne généraient jamais
     // de sortie comptable réelle avant ça. sourceUniqueId synthétique et stable
     // (pas d'entité dédiée pour cette "dépense") pour que syncSortie retrouve
@@ -234,7 +234,7 @@ public class ProjetImpl implements ProjetServices {
     }
 
     // Mortalité cumulée réelle (morts / effectif initial) et taux de ponte
-    // récent (moyenne journalière des 7 derniers jours / effectif actuel) —
+    // récent (moyenne journalière des 7 derniers jours / effectif actuel),
     // ProjetsDTO.fromEntity(data) seul les mettait à 0.0 en dur.
     private Double computeMortaliteCumulee(Projets p) {
         if (p.getNbSujets() == null || p.getNbSujets() <= 0) return 0.0;
@@ -244,7 +244,7 @@ public class ProjetImpl implements ProjetServices {
     }
 
     // Chiffre d'affaires réel (pas une projection) : somme des transactions "entrée"
-    // validées du projet. Voir ProjetsDTO.fromEntity/fromEntityList — remplace
+    // validées du projet. Voir ProjetsDTO.fromEntity/fromEntityList, remplace
     // data.getChiffreAffaires(), figé à 0.0 depuis la création du projet.
     private Double computeChiffreAffairesReel(Projets p) {
         Double montant = transactionRepo.sumMontantValideByProjetIdAndType(p.getId(), TypeTransaction.ENTREE);
@@ -271,7 +271,7 @@ public class ProjetImpl implements ProjetServices {
         return Math.round(taux * 10) / 10.0;
     }
 
-    // Effectif vivant (nbSujets initial - mortalité - déjà réformés, Production) —
+    // Effectif vivant (nbSujets initial - mortalité - déjà réformés, Production),
     // même calcul que celui validé à la création par ReformeImpl, exposé ici pour
     // l'affichage (Fiche Projet, bilan de clôture) sans dupliquer le calcul côté
     // front. sujetsReformesCumulee vient de Reforme (comptage Production), plus de
@@ -415,7 +415,7 @@ public class ProjetImpl implements ProjetServices {
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
 
         // Un poulailler est désormais obligatoire (les poussins doivent physiquement
-        // être quelque part) et la répartition doit couvrir tout l'effectif — sur
+        // être quelque part) et la répartition doit couvrir tout l'effectif, sur
         // plusieurs poulaillers si un seul n'a pas la capacité (ex: 12 000 sujets à
         // répartir sur 3 poulaillers de 4 000 places). Validé AVANT toute écriture en
         // base pour échouer proprement sans laisser de projet à moitié créé.
@@ -481,7 +481,7 @@ public class ProjetImpl implements ProjetServices {
         // Sauvegarder le projet d'abord (pour avoir l'ID pour les relations)
         Projets savedProjet = projetsRepo.save(projet);
 
-        // Achat sujets + autres charges de démarrage — voir syncAchatSujets/
+        // Achat sujets + autres charges de démarrage, voir syncAchatSujets/
         // syncAutresCharges : jusqu'ici jamais transformés en vraie sortie comptable.
         syncAchatSujets(savedProjet, currentUser);
         syncAutresCharges(savedProjet, currentUser);
@@ -511,7 +511,7 @@ public class ProjetImpl implements ProjetServices {
         // APPEL DE TA MÉTHODE POUR CRÉER LES ALERTES PAR DÉFAUT
         projectAlertConfigService.insertDefaultAlertsForProject(savedProjet);
 
-        // 6. Créer les vaccinations — voir Soins.java, TypeSoin.VACCINATION (fusion de
+        // 6. Créer les vaccinations, voir Soins.java, TypeSoin.VACCINATION (fusion de
         // l'ancienne entité Vaccination le 2026-09-16).
         if (data.getVaccins() != null && !data.getVaccins().isEmpty()) {
             for (VaccinCreate vaccinData : data.getVaccins()) {
@@ -637,10 +637,10 @@ public class ProjetImpl implements ProjetServices {
     }
 
     /**
-     * Clôture (archive) définitivement un projet — DISTINCT de deleteOrRecoverProjet
+     * Clôture (archive) définitivement un projet, DISTINCT de deleteOrRecoverProjet
      * (removed = suppression/corbeille). C'est le SEUL mécanisme qui fait passer
      * initialisation.archive à true : un projet ne devient jamais "terminé" tout seul
-     * juste parce que sa date de fin prévue est dépassée (fréquent en élevage réel —
+     * juste parce que sa date de fin prévue est dépassée (fréquent en élevage réel,
      * un lot peut durer plus longtemps que prévu), il faut une action explicite de
      * l'admin. C'est ce champ "active" (!archive) qui est ensuite utilisé partout
      * pour ne pas ramener un projet clos sur le mobile hors ligne (voir
@@ -652,7 +652,7 @@ public class ProjetImpl implements ProjetServices {
      * son insu, affiché comme une clôture réussie côté front.
      *
      * Fige aussi les répartitions d'investissement (Ventilation analytique) encore
-     * actives sur ce projet — sinon elles restaient affichées "En cours / Continu"
+     * actives sur ce projet, sinon elles restaient affichées "En cours / Continu"
      * indéfiniment après la clôture, continuant silencieusement à accumuler de
      * l'amortissement pour un projet pourtant terminé. Même logique que
      * deleteOrRecoverProjet (corbeille), qui le faisait déjà pour la suppression
@@ -694,7 +694,7 @@ public class ProjetImpl implements ProjetServices {
     }
 
     /**
-     * Rouvre un projet clôturé — refusé si sa date de fin prévue est déjà passée :
+     * Rouvre un projet clôturé, refusé si sa date de fin prévue est déjà passée :
      * un projet rouvert au-delà de cette date resterait "actif" indéfiniment, avec
      * un cheptel qu'on continuerait à saisir sur un lot censé être terminé. Refusé
      * aussi si le projet n'est pas clôturé (rien à rouvrir).
@@ -702,7 +702,7 @@ public class ProjetImpl implements ProjetServices {
      * Le stock d'aliment déjà transféré vers un autre projet lors de la clôture
      * (voir transfererStock) n'est PAS restitué par cette méthode : la réouverture
      * ne touche jamais Alimentation/ConsommationAliment, uniquement le flag archive
-     * — le transfert reste définitif, comme un vrai mouvement de stock physique.
+     *, le transfert reste définitif, comme un vrai mouvement de stock physique.
      */
     @Override
     @Transactional
@@ -765,7 +765,7 @@ public class ProjetImpl implements ProjetServices {
 
     /**
      * Transfère le stock d'aliment restant (achats - consommations) d'un projet vers
-     * un autre, typiquement juste avant sa clôture — pour ne pas perdre un reste de
+     * un autre, typiquement juste avant sa clôture, pour ne pas perdre un reste de
      * sac déjà payé. Valorisé au prix moyen d'achat au kg du projet source (pas juste
      * la quantité), sinon la valeur du stock disparaîtrait du bilan à la clôture.
      * Concrètement : un nouvel achat (Alimentation) dans le projet cible, compensé par
@@ -938,7 +938,7 @@ public class ProjetImpl implements ProjetServices {
     /**
      * Liste des projets pour les sélecteurs (dropdowns web + mobile). Un ADMIN/SUPER_ADMIN
      * voit tous les projets de sa ferme ; un PRODUCTEUR/FINANCIER ne voit que ceux où il
-     * est explicitement désigné responsableProduction ou responsableFinance — avant ce
+     * est explicitement désigné responsableProduction ou responsableFinance, avant ce
      * correctif, n'importe quel utilisateur authentifié recevait tous les projets de
      * toutes les fermes, sans distinction de rôle ni d'affectation.
      */
@@ -951,7 +951,7 @@ public class ProjetImpl implements ProjetServices {
 
         boolean isAdmin = currentUser.getRoles() != null && currentUser.getRoles().stream()
                 .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getRole()) || "SUPER_ADMIN".equalsIgnoreCase(r.getRole()));
-        // COMPTABLE reste farm-wide (comme sur Comptabilité) même dans ce sélecteur —
+        // COMPTABLE reste farm-wide (comme sur Comptabilité) même dans ce sélecteur,
         // contrairement à RESPONSABLE/VENTE/PRODUCTION qui ne voient que leurs projets
         // assignés, un COMPTABLE doit pouvoir rattacher une transaction manuelle à
         // n'importe quel projet de la ferme.

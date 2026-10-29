@@ -37,7 +37,7 @@ public class VenteReformeDTO {
     // Calculés, jamais stockés (voir les helpers statiques plus bas) :
     // poidsMoyenParSujet = poidsTotalKg / nombreSujets (KILO seulement, 3 décimales) ;
     // prixParKg = montant / poidsTotalKg (KILO seulement) ; prixParTete = montant /
-    // nombreSujets (toute vente) — équivalents comparables entre ventes TETE et KILO.
+    // nombreSujets (toute vente), équivalents comparables entre ventes TETE et KILO.
     private Double poidsMoyenParSujet;
     private Double prixParKg;
     private Double prixParTete;
@@ -45,7 +45,7 @@ public class VenteReformeDTO {
     private String commandeUniqueId;
     private String creeParNom;
     private LocalDateTime createdAt;
-    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // Non null = suppression en attente de validation par un admin/responsable, voir
     // VenteReformeImpl.demanderSuppression.
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;

@@ -13,7 +13,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 
-// Poulailler (bâtiment d'élevage) — le stockage/la vente d'œufs vivent désormais dans
+// Poulailler (bâtiment d'élevage), le stockage/la vente d'œufs vivent désormais dans
 // Magasin (type STOCKAGE/VENTE), Batiment ne sert plus qu'à l'élevage : où sont les
 // poules, via OccupationBatiment (voir CollecteOeufs.batiment, distinct de
 // CollecteOeufs.magasinStockage qui répond "où sont les œufs").
@@ -58,7 +58,7 @@ public class Batiment {
     @JoinColumn(name = "farm_id")
     private Farm farm;
 
-    // Coordonnées GPS directes (optionnelles), même convention que Magasin — un
+    // Coordonnées GPS directes (optionnelles), même convention que Magasin, un
     // poulailler n'a pas forcément besoin d'un Site (regroupement multi-bâtiments)
     // pour être localisé précisément.
     @Column(name = "latitude")

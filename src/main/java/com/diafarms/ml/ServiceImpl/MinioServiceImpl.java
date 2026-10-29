@@ -83,7 +83,7 @@ public class MinioServiceImpl  implements MinioService{
     }
 
     /**
-     * Type MIME stocké lors de l'upload (voir putObject ci-dessus) — utile pour
+     * Type MIME stocké lors de l'upload (voir putObject ci-dessus), utile pour
      * renvoyer le bon Content-Type en re-streamant un fichier côté back.
      */
     public String getContentType(String nomMinio) throws Exception {

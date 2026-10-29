@@ -15,7 +15,7 @@ import com.diafarms.ml.services.VenteDiverseService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente de fientes / autre vente — voir VenteDiverse.
+// Vente de fientes / autre vente, voir VenteDiverse.
 @RestController
 @RequestMapping("/diafarms/api/v1/ventes-diverses")
 @RequiredArgsConstructor

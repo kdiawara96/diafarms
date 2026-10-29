@@ -73,7 +73,7 @@ public class AuthImpl implements AuthServices {
         String scope = null;
         // tokenVersion embarqué dans le refresh token décodé (null pour un login mot
         // de passe classique, comparé plus bas à celui en base uniquement pour un
-        // refresh — voir Utilisateurs.tokenVersion). Number (pas Integer) : Nimbus
+        // refresh, voir Utilisateurs.tokenVersion). Number (pas Integer) : Nimbus
         // décode les claims numériques du JWT en Long, un cast direct vers Integer
         // levait une ClassCastException à chaque refresh.
         Number refreshTokenVersion = null;
@@ -131,7 +131,7 @@ public class AuthImpl implements AuthServices {
 
         // =============================== ON RÉCUPÈRE LE USER ===============================
         // Pour un refresh, "identifiant" n'est pas renseigné par l'appelant (le web ne
-        // connaît que le refresh token, pas l'identifiant de session) — on retrouve
+        // connaît que le refresh token, pas l'identifiant de session), on retrouve
         // l'utilisateur par le "subject" décodé du refresh token lui-même, jamais par
         // le paramètre "identifiant" dans ce cas.
         String cleIdentification = grantType.equals("refreshToken") ? subject : identifiant;
@@ -154,7 +154,7 @@ public class AuthImpl implements AuthServices {
 
         // =============================== ACCÈS APP (PRODUCTEUR/FINANCIER) ===============================
         // Ne s'applique qu'au login mot de passe (web ou mobile), pas au refresh d'une
-        // session déjà en cours — voir UserStatusJwtValidator pour la revalidation
+        // session déjà en cours, voir UserStatusJwtValidator pour la revalidation
         // continue des tokens issus d'un QR (mobile), qui elle s'applique à chaque requête.
         if (grantType.equals("password") && currentUser.getFarm() != null) {
             java.util.Set<String> roles = currentUser.getRoles() == null ? java.util.Set.of()

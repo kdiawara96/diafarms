@@ -25,7 +25,7 @@ public class TransactionStatsDTO {
     // Ferme entière, ignore le scope projet/comptable (voir TransactionServiceImpl.
     // getStats) : le montant réellement rapporté par les vendeurs (pas le théorique
     // quantité×prix déjà dans totalVenteOeufs/totalVenteReforme) et la dette vendeur
-    // cumulée en cours — servent au web à afficher "Total entrées" en distinguant
+    // cumulée en cours, servent au web à afficher "Total entrées" en distinguant
     // théorique/réel plutôt que de sommer aveuglément le théorique comme du cash réel.
     private Double totalMontantRecuVentes;
     private Double totalDuParVendeurs;
@@ -35,7 +35,7 @@ public class TransactionStatsDTO {
     private Double totalDuParClients;
 
     // Circuit argent client (voir TransactionServiceImpl.getStats) : vue ferme entière
-    // uniquement (vueParProjet = false) — sinon vendu seul est renseigné (théorique
+    // uniquement (vueParProjet = false), sinon vendu seul est renseigné (théorique
     // œufs+réforme) et les autres valent 0, faute de pouvoir scoper encaissé/remboursé/
     // dû/avances par projet (paiements et remboursements clients ne sont pas rattachés
     // à un projet précis).

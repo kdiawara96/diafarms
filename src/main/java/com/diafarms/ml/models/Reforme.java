@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Réforme (sujets retirés du cheptel vivant pour abattage/vente), saisie Production
-// au même titre que Mortalité — un pur comptage, jamais de prix. La vente réelle
+// au même titre que Mortalité, un pur comptage, jamais de prix. La vente réelle
 // (avec montant) est une opération Finance distincte (VenteReforme), qui puise dans
 // le total réformé de toute la ferme, pas projet par projet.
 @Entity

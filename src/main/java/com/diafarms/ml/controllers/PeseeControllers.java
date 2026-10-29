@@ -84,7 +84,7 @@ public class PeseeControllers {
         }
     }
 
-    // Poids moyen de la dernière session TERMINEE du projet (data null si aucune) — pour
+    // Poids moyen de la dernière session TERMINEE du projet (data null si aucune), pour
     // estimer le poids d'une commande/vente de réforme au kilo.
     @GetMapping("/dernier-poids-moyen")
     public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.DernierPoidsMoyenDTO>> dernierPoidsMoyen(

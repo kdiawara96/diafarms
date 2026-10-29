@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Stock de sujets réformés vendables, à l'échelle de la ferme entière — distinct de
+// Stock de sujets réformés vendables, à l'échelle de la ferme entière, distinct de
 // EffectifReformeDTO (effectif vivant d'UN projet, côté Production/ReformeImpl).
 @Getter
 @Setter

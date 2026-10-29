@@ -8,7 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Une ligne de l'historique d'un client (voir ClientReportDTO) — vente d'œufs ou de
+// Une ligne de l'historique d'un client (voir ClientReportDTO), vente d'œufs ou de
 // réforme, paiement ou remboursement, unifiées ici pour l'affichage chronologique.
 @Getter
 @Setter
@@ -28,8 +28,8 @@ public class ClientVenteLigneDTO {
     private Double paye;
     private Double resteAPayer;
     private String statutPaiement; // "PAYEE" | "PARTIELLE" | "NON_PAYEE"
-    private Integer quantite; // quantiteOeufs / nombreSujets — null hors ventes
-    // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente, null si aucune —
+    private Integer quantite; // quantiteOeufs / nombreSujets, null hors ventes
+    // Numéro de la facture ACTIVE (non ANNULEE) contenant cette vente, null si aucune,
     // voir FactureLigneRepo.numeroFactureActive.
     private String factureNumero;
     // Qui a fait la vente : un vendeur ne facture que ses propres ventes (voir FactureServiceImpl).

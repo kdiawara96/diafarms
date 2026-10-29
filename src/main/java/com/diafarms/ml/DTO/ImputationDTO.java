@@ -13,7 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// "Tel paiement règle telle vente (ou tel remboursement) pour tel montant" — voir
+// "Tel paiement règle telle vente (ou tel remboursement) pour tel montant", voir
 // ImputationPaiement.
 @Getter
 @Setter

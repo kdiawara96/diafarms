@@ -20,7 +20,7 @@ import com.diafarms.ml.services.PersonnelService;
 
 import lombok.RequiredArgsConstructor;
 
-// Membre du personnel de la ferme — voir Personnel.java. Distinct d'un compte
+// Membre du personnel de la ferme, voir Personnel.java. Distinct d'un compte
 // Utilisateurs : sert notamment à payer un employé (gardien, ouvrier...) qui n'a
 // jamais besoin de se connecter à l'application (voir Salaire.employe). Permissions
 // alignées sur SalaireServiceImpl : gestion RH réservée à ADMIN/RESPONSABLE/COMPTABLE.
@@ -135,7 +135,7 @@ public class PersonnelServiceImpl implements PersonnelService {
         personnelRepo.save(p);
 
         // Archive/restaure la grille salariale en même temps, pour qu'elle
-        // disparaisse (ou réapparaisse) des listes actives avec l'employé — sans
+        // disparaisse (ou réapparaisse) des listes actives avec l'employé, sans
         // ça, la fiche Salaire resterait visible en référençant un Personnel
         // archivé. Ne touche jamais à l'historique des paiements déjà effectués.
         if (p.getFarm() != null) {

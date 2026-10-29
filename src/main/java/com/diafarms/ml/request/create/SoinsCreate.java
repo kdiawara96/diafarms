@@ -13,9 +13,9 @@ public class SoinsCreate {
     private String type; // "VACCINATION" | "MEDICAMENT" | "AUTRE"
     private String produit;
     private Double quantite;
-    private Double prixUnitaire; // renseigné seulement si type = VACCINATION — voir Soins.calculerCoutTotal
+    private Double prixUnitaire; // renseigné seulement si type = VACCINATION, voir Soins.calculerCoutTotal
     private Double coutTotal;
-    private List<String> modeAdministration; // ex: ["Oral", "Injection"] — renseigné seulement si type = VACCINATION
+    private List<String> modeAdministration; // ex: ["Oral", "Injection"], renseigné seulement si type = VACCINATION
     private String observations;
     private Boolean depuisStock; // true = pris dans le stock de médicaments du projet
     private String unite; // unité du médicament en stock (flacon, ml, sachet...)

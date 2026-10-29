@@ -46,7 +46,7 @@ public class PaiementAbonnementDTO {
 
     // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
     // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
-    // Farm tant que l'ADMIN n'a pas visité Paramètres → Identité de la ferme) — un
+    // Farm tant que l'ADMIN n'a pas visité Paramètres → Identité de la ferme), un
     // UUID brut n'aide personne à identifier la ferme dans le portail SUPER_ADMIN,
     // donc on retombe sur le nom saisi à l'inscription avant l'UUID en dernier
     // recours. Même logique que AbonnementServiceImpl.resoudreFarmNom.

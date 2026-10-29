@@ -56,7 +56,7 @@ import com.diafarms.ml.services.VenteReformeService;
 
 import lombok.RequiredArgsConstructor;
 
-// Commande = ce qu'un client demande AVANT que la vente ne soit finalisée — voir
+// Commande = ce qu'un client demande AVANT que la vente ne soit finalisée, voir
 // Commande.java. Cycle de vie : EN_ATTENTE -> CONFIRMEE -> (EN_LIVRAISON) -> CONVERTIE
 // (livrée intégralement, voir livrer()) ; ou CLOTUREE (arrêtée après une livraison
 // partielle, voir cloturer()) ; ou ANNULEE (rien livré, voir annuler()) à tout moment
@@ -113,7 +113,7 @@ public class CommandeServiceImpl implements CommandeService {
     }
 
     // Décider du sort d'une commande (clôture, annulation) : mêmes rôles que
-    // PaiementClientService.ensureCanAnnuler/rembourser — de l'argent ou un
+    // PaiementClientService.ensureCanAnnuler/rembourser, de l'argent ou un
     // engagement client est en jeu.
     private void ensureCanDecider(Utilisateurs u) {
         if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
@@ -122,7 +122,7 @@ public class CommandeServiceImpl implements CommandeService {
     }
 
     // Enregistrer un paiement (acompte/règlement) : mêmes rôles que
-    // PaiementClientService.ensureCanEncaisser — distinct de ensureCanManage, qui gère
+    // PaiementClientService.ensureCanEncaisser, distinct de ensureCanManage, qui gère
     // les commandes elles-mêmes (création, livraison) mais pas qui peut encaisser
     // l'argent d'un client.
     private void ensureCanEncaisser(Utilisateurs u) {
@@ -241,7 +241,7 @@ public class CommandeServiceImpl implements CommandeService {
     }
 
     // Construit le CommandeDTO enrichi : chiffres et historique de livraisons
-    // recalculés à partir des ventes/paiements réels de la commande — rien n'est
+    // recalculés à partir des ventes/paiements réels de la commande, rien n'est
     // stocké, comme CompteClientService.compte pour un client. Appelé par toutes les
     // méthodes qui renvoient un CommandeDTO (y compris list(), acceptable à l'échelle
     // d'une ferme).
@@ -434,7 +434,7 @@ public class CommandeServiceImpl implements CommandeService {
                         + (saved.getTarification() == TypeVenteReforme.KILO ? ", au kilo" : "") + ") pour " + client.getNom());
 
         // L'acompte est de l'argent RÉELLEMENT encaissé dès maintenant, pas seulement un
-        // nombre théorique sur la commande — enregistré comme un vrai paiement client
+        // nombre théorique sur la commande, enregistré comme un vrai paiement client
         // (PaiementClientService.enregistrerInterne), pas juste imputable plus tard.
         if (nz(saved.getMontantAcompte()) > 0) {
             paiementClientService.enregistrerInterne(client, saved.getMontantAcompte(), mode(data.getModePaiement(), client),
@@ -479,7 +479,7 @@ public class CommandeServiceImpl implements CommandeService {
             appliquerTarification(c, data, false);
         }
         // Un acompte supplémentaire est désormais un paiement à part entière (voir
-        // enregistrerPaiement/PaiementClientService.enregistrerInterne) — plus un simple
+        // enregistrerPaiement/PaiementClientService.enregistrerInterne), plus un simple
         // delta discret sur ce champ, qui n'était ni tracé ni visible dans l'historique
         // des paiements. montantAcompte reste donc figé après la création : c'est
         // l'historique du tout premier acompte, rien d'autre.
@@ -580,7 +580,7 @@ public class CommandeServiceImpl implements CommandeService {
     @Transactional
     public CommandeDTO convertirEnVente(String uniqueId) {
         // Livre tout ce qu'il reste, en un coup, sans nouvel argent compté à cet
-        // instant — l'ancien comportement à un seul coup, gardé pour compatibilité
+        // instant, l'ancien comportement à un seul coup, gardé pour compatibilité
         // (bouton "Convertir en vente" historique).
         return livrer(uniqueId, null, 0.0, null, null, null, null, null);
     }
@@ -661,7 +661,7 @@ public class CommandeServiceImpl implements CommandeService {
         }
 
         // montantRapporte/modePaiement laissés vides à la création de la vente : cette
-        // livraison n'est PAS un paiement en elle-même — on crée nous-mêmes le paiement
+        // livraison n'est PAS un paiement en elle-même, on crée nous-mêmes le paiement
         // LIVRAISON juste après (ou on laisse l'acompte déjà encaissé régler la
         // livraison via compteClientService.imputer), une fois la vente rattachée à la
         // commande (sinon l'imputation ne saurait pas prioriser cette commande).
@@ -728,7 +728,7 @@ public class CommandeServiceImpl implements CommandeService {
         boolean complete = quantiteLivreeApres >= c.getQuantite();
         // vente_unique_id n'est plus réécrit ici : ce champ ne peut de toute façon plus
         // pointer qu'une seule vente alors qu'une commande peut désormais en avoir
-        // plusieurs (livraisons multiples) — conservé en lecture pour l'historique des
+        // plusieurs (livraisons multiples), conservé en lecture pour l'historique des
         // commandes converties avant ce changement.
         c.setStatut(complete ? StatutCommande.CONVERTIE : StatutCommande.EN_LIVRAISON);
         Commande saved = commandeRepo.save(c);

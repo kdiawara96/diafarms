@@ -52,7 +52,7 @@ import com.diafarms.ml.services.VenteReformeService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente réforme (Finance) : voir VenteOeufsImpl pour le détail du mécanisme — vendue
+// Vente réforme (Finance) : voir VenteOeufsImpl pour le détail du mécanisme, vendue
 // DEPUIS un magasin précis, alimenté par des transferts explicites depuis un ou
 // plusieurs projets (voir MagasinTransfert).
 @Service
@@ -184,7 +184,7 @@ public class VenteReformeImpl implements VenteReformeService {
         List<RepartitionUtil.Part> parts = RepartitionUtil.repartir(nombreSujets, montant, disponible);
         List<VenteReformeRepartition> lignes = new java.util.ArrayList<>();
 
-        // Traçabilité de l'écart directement dans la ligne — voir le commentaire
+        // Traçabilité de l'écart directement dans la ligne, voir le commentaire
         // équivalent dans VenteOeufsImpl.repartirEtCreerTransactions.
         String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
 
@@ -209,7 +209,7 @@ public class VenteReformeImpl implements VenteReformeService {
     }
 
     /** " · Rapporté : X / Y théoriques (manque/surplus Z)" (montants dans la devise de la ferme), vide si pas
-     * encore de montant rapporté saisi ou si égal au théorique — même helper que
+     * encore de montant rapporté saisi ou si égal au théorique, même helper que
      * VenteOeufsImpl (dupliqué, pas de base commune entre les deux services), même
      * convention de signe que SoldeVendeurServiceImpl.ajusterSolde. */
     private String suffixeEcartRapporte(Double montantTheorique, Double montantRapporte) {
@@ -239,7 +239,7 @@ public class VenteReformeImpl implements VenteReformeService {
         if (data.getMontant() == null || data.getMontant() <= 0) {
             throw new IllegalArgumentException("Le montant de la vente doit être positif.");
         }
-        // Requis côté serveur en dernier ressort — voir VenteOeufsImpl.create (même
+        // Requis côté serveur en dernier ressort, voir VenteOeufsImpl.create (même
         // raisonnement).
         if (data.getPrixUnitaire() == null || data.getPrixUnitaire() <= 0) {
             throw new IllegalArgumentException("Le prix unitaire est obligatoire.");
@@ -472,7 +472,7 @@ public class VenteReformeImpl implements VenteReformeService {
         }
 
         // Vente à un client (avant OU après cette modification) : plus de montantRapporte
-        // manuel — l'argent reçu passe par un paiement enregistré depuis la fiche client
+        // manuel, l'argent reçu passe par un paiement enregistré depuis la fiche client
         // (voir PaiementClientService), pas par ce formulaire de vente.
         boolean venteAUnClient = ancienClient != null || v.getClient() != null;
         if (venteAUnClient && data.getMontantRapporte() != null) {
@@ -509,7 +509,7 @@ public class VenteReformeImpl implements VenteReformeService {
             }
         } else if (clientChanged) {
             // Client A -> client B : l'argent de A déjà imputé sur cette vente redevient
-            // une avance de A, et l'avance éventuelle de B règle la vente — ré-imputé plus
+            // une avance de A, et l'avance éventuelle de B règle la vente, ré-imputé plus
             // bas, une fois la vente sauvegardée.
             compteClientService.annulerImputationsCible(CibleImputation.VENTE_REFORME, uniqueId, "Client de la vente modifié");
         } else if (data.getMontant() != null && v.getMontant() < nz(ancienMontant)) {
@@ -543,7 +543,7 @@ public class VenteReformeImpl implements VenteReformeService {
             lignesActuelles = repartirEtCreerTransactions(saved, saved.getFarm(), saved.getNombreSujets(), saved.getMontant(), saved.getCreePar() != null ? saved.getCreePar() : currentUser);
         } else {
             lignesActuelles = repartitionRepo.findByVenteReforme_UniqueId(saved.getUniqueId());
-            // Pas de redistribution, mais l'écart rapporté a pu changer — voir le
+            // Pas de redistribution, mais l'écart rapporté a pu changer, voir le
             // commentaire équivalent dans VenteOeufsImpl.update().
             if (ecartChange) {
                 String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
@@ -595,7 +595,7 @@ public class VenteReformeImpl implements VenteReformeService {
         v.getInitialisation().setRemoved(removed);
         venteReformeRepo.save(v);
 
-        // Set explicite (jamais un toggle) — voir VenteOeufsImpl.deleteOrRecover pour
+        // Set explicite (jamais un toggle), voir VenteOeufsImpl.deleteOrRecover pour
         // le raisonnement complet.
         for (VenteReformeRepartition r : repartitionRepo.findByVenteReforme_UniqueId(uniqueId)) {
             transactionService.setRemovedBySource(r.getUniqueId(), removed);
@@ -891,7 +891,7 @@ public class VenteReformeImpl implements VenteReformeService {
         Long farmId = currentUser.getFarm().getId();
 
         // Indicateur farm-wide global (reporting admin), distinct du stock par magasin
-        // qui seul plafonne une vente précise — voir VenteOeufsImpl.getStock.
+        // qui seul plafonne une vente précise, voir VenteOeufsImpl.getStock.
         int totalReforme = nz(reformeRepo.sumSujetsByFarmId(farmId));
         int totalVendu = nz(venteReformeRepo.sumSujetsVendusByFarmId(farmId));
         int restant = totalReforme - totalVendu;

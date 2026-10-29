@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class CommandeCreate {
-    private String clientUniqueId; // obligatoire — voir Commande.client
+    private String clientUniqueId; // obligatoire, voir Commande.client
     private String magasinUniqueId; // obligatoire, magasin de vente destination
     private String type; // "OEUFS" ou "REFORME"
     private Integer quantite;
@@ -13,7 +13,7 @@ public class CommandeCreate {
     private Double montantAcompte; // optionnel
     private String dateCommande; // optionnel, défaut = aujourd'hui
     private String dateLivraisonPrevue; // optionnel
-    private String modePaiement; // ModePaiement de l'acompte, optionnel — défaut ESPECES
+    private String modePaiement; // ModePaiement de l'acompte, optionnel, défaut ESPECES
     // Réforme seulement : "TETE" (défaut) ou "KILO". En KILO, prixKgEstime obligatoire,
     // poidsEstimeKg optionnel ; montantEstime calculé par le serveur si le poids est
     // connu, sinon obligatoire comme d'habitude. Quantité toujours en sujets.

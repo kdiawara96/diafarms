@@ -6,7 +6,7 @@ import lombok.Data;
 @Data
 public class ProjetUpdate {
     private String titre;
-    private Long responsableId;      // Utilisateur RESPONSABLE — remplace l'ancien nomResponsable en texte libre
+    private Long responsableId;      // Utilisateur RESPONSABLE, remplace l'ancien nomResponsable en texte libre
     private String dateDebut;        // Changé en String pour le Front
     private String dateFinPrevue;    // Changé en String pour le Front
     private Integer nbSujets;
@@ -17,6 +17,6 @@ public class ProjetUpdate {
     private Long responsableFinanceId;
     private String fournisseursPoussins;
     private Double autresDepense;
-    // optionnel — voir Projets.site. Chaîne vide/blanche = retire le rattachement.
+    // optionnel, voir Projets.site. Chaîne vide/blanche = retire le rattachement.
     private String siteUniqueId;
 }

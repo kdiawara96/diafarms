@@ -10,9 +10,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Grille salariale d'un membre du personnel (Personnel, pas forcément un compte
-// Utilisateurs — voir Personnel.java) — un seul Salaire par personnel (voir
+// Utilisateurs, voir Personnel.java), un seul Salaire par personnel (voir
 // SalaireServiceImpl.definir, upsert). tauxBase a un sens différent selon
-// modePaiement : montant fixe mensuel, taux par jour, ou taux par heure — voir
+// modePaiement : montant fixe mensuel, taux par jour, ou taux par heure, voir
 // SalaireServiceImpl.payer pour le calcul du montant réel à chaque paiement.
 // L'historique des paiements réels vit dans PaiementSalaire, un par période payée.
 @Entity

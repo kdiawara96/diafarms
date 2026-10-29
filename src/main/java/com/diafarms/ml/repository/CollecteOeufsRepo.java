@@ -40,7 +40,7 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     Integer sumOeufsByProjetIdEntre(@Param("projetId") Long projetId, @Param("debut") LocalDate debut, @Param("fin") LocalDate fin);
 
     // Cumul déjà collecté CE JOUR-LÀ, pour le projet entier (aucun bâtiment
-    // sélectionné) — une poule ne pond qu'un œuf par JOUR, pas par collecte : deux
+    // sélectionné), une poule ne pond qu'un œuf par JOUR, pas par collecte : deux
     // collectes le même jour (matin + soir) doivent être cumulées avant comparaison
     // à l'effectif vivant, voir CollecteOeufsImpl.effectifVivant/create/update.
     // excludeId : exclut la collecte en cours d'édition (update), sinon elle se
@@ -52,7 +52,7 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     Integer sumOeufsByProjetIdAndDateExcluding(@Param("projetId") Long projetId, @Param("date") LocalDate date, @Param("excludeId") Long excludeId);
 
     // Même chose mais scopé à UN bâtiment précis (quand un bâtiment est sélectionné à
-    // la saisie) — les autres bâtiments du même projet ont leur propre effectif,
+    // la saisie), les autres bâtiments du même projet ont leur propre effectif,
     // donc leur propre plafond, indépendant de celui-ci.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.batiment.id = :batimentId AND c.date = :date AND c.initialisation.removed = false " +
@@ -74,7 +74,7 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     Integer sumOeufsNonUtilisablesByFarmId(@Param("farmId") Long farmId);
 
     // Totaux vie-entière PAR PROJET : servent à répartir proportionnellement chaque
-    // vente farm-wide entre les projets contributeurs (voir VenteOeufsImpl —
+    // vente farm-wide entre les projets contributeurs (voir VenteOeufsImpl,
     // la part de chaque projet dans la vente = sa part dans le stock disponible).
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
@@ -91,7 +91,7 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
     // Totaux PAR PROJET *dans un bâtiment de stockage précis* : servent à répartir
     // proportionnellement un transfert vers un magasin entre les projets contributeurs
     // DE CE BÂTIMENT (voir MagasinTransfertServiceImpl.disponibleParProjetDansBatimentStockage)
-    // — remplace le calcul farm-wide par projet ci-dessus pour les transferts d'œufs,
+    //, remplace le calcul farm-wide par projet ci-dessus pour les transferts d'œufs,
     // maintenant que le stock physique est rattaché à un bâtiment, pas juste au projet.
     @Query("SELECT COALESCE(SUM(c.oeufsCollectes), 0) FROM CollecteOeufs c " +
         "WHERE c.projet.id = :projetId AND c.magasinStockage.id = :magasinStockageId AND c.initialisation.removed = false")
@@ -105,14 +105,14 @@ public interface CollecteOeufsRepo extends JpaRepository<CollecteOeufs, Long> {
         "WHERE c.projet.id = :projetId AND c.magasinStockage.id = :magasinStockageId AND c.initialisation.removed = false")
     Integer sumOeufsNonUtilisablesByProjetIdAndMagasinStockageId(@Param("projetId") Long projetId, @Param("magasinStockageId") Long magasinStockageId);
 
-    // Quels projets ont déjà déposé des œufs dans ce bâtiment de stockage — sert à
+    // Quels projets ont déjà déposé des œufs dans ce bâtiment de stockage, sert à
     // construire la carte "disponible par projet" sans avoir à connaître les projets
     // à l'avance.
     @Query("SELECT DISTINCT c.projet.id FROM CollecteOeufs c " +
         "WHERE c.magasinStockage.id = :magasinStockageId AND c.initialisation.removed = false")
     java.util.List<Long> findDistinctProjetIdsByMagasinStockageId(@Param("magasinStockageId") Long magasinStockageId);
 
-    // Toutes les collectes vivantes d'un projet — sert à RapportJournalierServiceImpl à
+    // Toutes les collectes vivantes d'un projet, sert à RapportJournalierServiceImpl à
     // reconstituer jour par jour NTO/NEC/non utilisables sur toute la vie du projet.
     @Query("SELECT c FROM CollecteOeufs c WHERE c.projet.id = :projetId AND c.initialisation.removed = false")
     java.util.List<CollecteOeufs> findAllByProjetId(@Param("projetId") Long projetId);

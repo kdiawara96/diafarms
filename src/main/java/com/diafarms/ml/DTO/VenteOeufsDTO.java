@@ -35,12 +35,12 @@ public class VenteOeufsDTO {
     private TypeVenteOeufs typeOeuf;
     private String creeParNom;
     private LocalDateTime createdAt;
-    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // Non null = suppression en attente de validation par un admin/responsable, voir
     // VenteOeufsImpl.demanderSuppression.
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;
     private String motifSuppression;
-    // Part de chaque projet contributeur dans cette vente (voir VenteOeufsRepartition) —
+    // Part de chaque projet contributeur dans cette vente (voir VenteOeufsRepartition),
     // permet d'afficher qui a apporté quoi, la vraie donnée reste les Transactions
     // générées une par projet.
     private List<VenteOeufsRepartitionDTO> repartitions;

@@ -28,7 +28,7 @@ public class Farm {
     @Column(name = "ville", length = 100)
     private String ville;
 
-    // Coordonnées de la ferme — optionnelles, affichées dans l'en-tête des factures
+    // Coordonnées de la ferme, optionnelles, affichées dans l'en-tête des factures
     // et bulletins de salaire générés en PDF (voir PdfStyle/FactureServiceImpl/
     // SalaireServiceImpl), configurables depuis Paramètres > Identité de la ferme.
     @Column(name = "nom", length = 150)
@@ -61,7 +61,7 @@ public class Farm {
     @Column(name = "email_code_expiry")
     private java.time.LocalDateTime emailCodeExpiry;
 
-    // Logo et tampon de la ferme — optionnels, insérés sur les factures et bulletins
+    // Logo et tampon de la ferme, optionnels, insérés sur les factures et bulletins
     // de salaire générés en PDF (voir FactureServiceImpl/SalaireServiceImpl), laissés
     // vides si la ferme n'en a pas encore fourni. Stocke le nom d'objet MinIO (voir
     // FarmController, MinioService), jamais le fichier lui-même en base.

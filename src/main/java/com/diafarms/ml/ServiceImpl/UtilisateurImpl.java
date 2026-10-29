@@ -67,7 +67,7 @@ public class UtilisateurImpl implements UtilisateursServices {
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // tenterSuppressionReelle passe par le proxy Spring (un appel this.xxx()
-    // ignorerait complètement son @Transactional(REQUIRES_NEW)) — voir
+    // ignorerait complètement son @Transactional(REQUIRES_NEW)), voir
     // AbonnementServiceImpl pour le même principe déjà utilisé ailleurs dans ce
     // projet. Sans l'isolation REQUIRES_NEW, un échec de suppression (contrainte de
     // clé étrangère) avorterait TOUTE la transaction appelante et empêcherait le
@@ -165,7 +165,7 @@ public class UtilisateurImpl implements UtilisateursServices {
 
         // Jamais le mot de passe en clair dans la réponse HTTP, même en cas d'échec
         // d'envoi (emailSent=false) : c'était auparavant affiché en repli côté front
-        // (Login.tsx), ce qui exposait le mot de passe temporaire à l'écran — voir
+        // (Login.tsx), ce qui exposait le mot de passe temporaire à l'écran, voir
         // resetPasswordAndNotify pour le cas "email non reçu" (l'admin déclenche un
         // renvoi plutôt que de lire le mot de passe affiché).
         UtilisateursDTO dto = UtilisateursDTO.fromEntity(user, null, emailSent);
@@ -602,10 +602,10 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // Isolée dans sa propre transaction : si la suppression échoue (le compte a créé
-    // des transactions/ventes/saisies — contrainte de clé étrangère), seule CETTE
+    // des transactions/ventes/saisies, contrainte de clé étrangère), seule CETTE
     // transaction avorte, jamais celle de l'appelant, qui peut alors se replier sur
     // l'archivage (voir supprimerOuArchiverUtilisateur). Ne tente de recenser aucune
-    // table manuellement (fragile, se périmerait à chaque nouvelle fonctionnalité) —
+    // table manuellement (fragile, se périmerait à chaque nouvelle fonctionnalité),
     // laisse simplement la base répondre.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean tenterSuppressionReelle(Long id) {
@@ -626,7 +626,7 @@ public class UtilisateurImpl implements UtilisateursServices {
                 throw new RuntimeException("Vous ne pouvez pas supprimer votre propre compte.");
             }
         } catch (IllegalStateException e) {
-            // Pas d'utilisateur authentifié résolu — voir revoquerUtilisateur.
+            // Pas d'utilisateur authentifié résolu, voir revoquerUtilisateur.
         }
 
         Utilisateurs u = acces.cible(uniqueId, false);
@@ -635,7 +635,7 @@ public class UtilisateurImpl implements UtilisateursServices {
             return "Compte supprimé définitivement.";
         }
 
-        // Le compte a déjà créé des données (transactions, ventes, saisies...) —
+        // Le compte a déjà créé des données (transactions, ventes, saisies...),
         // suppression réelle impossible sans casser la traçabilité : on archive à la
         // place (même convention que RolesImpl.archive() : archive=true), invisible
         // dans les listes actives mais récupérable, voir restaurerUtilisateur.
@@ -719,7 +719,7 @@ public class UtilisateurImpl implements UtilisateursServices {
     }
 
     // Réservé à un ADMIN/SUPER_ADMIN (bouton "Réinitialiser" sur la fiche
-    // utilisateur) : génère un nouveau mot de passe, l'envoie par email — jamais
+    // utilisateur) : génère un nouveau mot de passe, l'envoie par email, jamais
     // affiché à l'écran, voir save()/createUtilisateurProdOrFinan() pour le même
     // principe à la création.
     @Override

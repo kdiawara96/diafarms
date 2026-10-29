@@ -7,7 +7,7 @@ import java.util.stream.Collectors;
 
 /**
  * Répartit une quantité (et son montant associé) entre plusieurs projets au
- * prorata de leur part disponible — méthode du plus grand reste (largest
+ * prorata de leur part disponible, méthode du plus grand reste (largest
  * remainder), pour que la somme des parts arrondies retombe exactement sur la
  * quantité/le montant total (jamais un œuf ou un FCFA perdu/en trop par arrondi
  * cumulé). Partagé par VenteOeufsImpl et VenteReformeImpl : une vente Finance

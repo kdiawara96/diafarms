@@ -80,7 +80,7 @@ public class Projets {
     private Farm farm;
 
     // Gère/clôture ce projet, valide/rejette les transactions et ventes qui lui sont
-    // liées (voir TransactionServiceImpl) — remplace l'ancien champ "responsable" en
+    // liées (voir TransactionServiceImpl), remplace l'ancien champ "responsable" en
     // texte libre, désormais une vraie sélection parmi les utilisateurs RESPONSABLE.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "responsable_user_id")
@@ -90,7 +90,7 @@ public class Projets {
     @JoinColumn(name = "production_user_id")
     private Utilisateurs responsableProduction;
 
-    // Sourcé sur le rôle COMPTABLE (remplace FINANCIER) — sert au filtre admin
+    // Sourcé sur le rôle COMPTABLE (remplace FINANCIER), sert au filtre admin
     // "voir comme un comptable" sur Comptabilité (TransactionServiceImpl
     // .resolveProjetIdsScope*), le rôle COMPTABLE lui-même restant farm-wide.
     @ManyToOne(fetch = FetchType.LAZY)
@@ -101,7 +101,7 @@ public class Projets {
     @JoinColumn(name = "race_id", nullable = false)
     private Race race;
 
-    // Emplacement (optionnel) où se déroule ce projet — voir Site.java.
+    // Emplacement (optionnel) où se déroule ce projet, voir Site.java.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "site_id")
     private Site site;

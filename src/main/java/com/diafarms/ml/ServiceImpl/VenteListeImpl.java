@@ -37,7 +37,7 @@ import com.diafarms.ml.repository.VenteReformeRepo;
 import lombok.RequiredArgsConstructor;
 
 // Page Ventes : chaque vente est lue dans SA table (œufs, réforme, diverses), plus
-// reconstruite depuis les transactions — la comptabilité reste le grand livre, la vente
+// reconstruite depuis les transactions, la comptabilité reste le grand livre, la vente
 // reste l'original. Mêmes restrictions de visibilité que TransactionServiceImpl.list :
 // un VENTE pur ne voit que ses ventes, un ADMIN ou COMPTABLE pur peut filtrer par
 // vendeur, un RESPONSABLE pur ne voit que les ventes auxquelles ses projets ont contribué.
@@ -237,7 +237,7 @@ public class VenteListeImpl {
     }
 
     // Vente AVEC client : l'argent passe par des paiements/imputations (voir
-    // CompteClientService), pas par montantRapporte — payé/reste remplacent
+    // CompteClientService), pas par montantRapporte, payé/reste remplacent
     // montantRapporte/montantReel, et montantRapporte est forcé à null (même s'il traîne
     // encore une ancienne valeur en base). Sans client : COMPTANT, rien à changer (déjà
     // posé par base()).

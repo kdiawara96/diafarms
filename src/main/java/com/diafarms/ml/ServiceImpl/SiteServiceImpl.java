@@ -17,7 +17,7 @@ import com.diafarms.ml.services.SiteService;
 
 import lombok.RequiredArgsConstructor;
 
-// Emplacement physique de la ferme — voir Site.java. Permissions alignées sur
+// Emplacement physique de la ferme, voir Site.java. Permissions alignées sur
 // BatimentImpl/MagasinServiceImpl : gestion réservée à ADMIN/RESPONSABLE (même
 // périmètre que les poulaillers/magasins qu'un site regroupe).
 @Service

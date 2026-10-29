@@ -13,7 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Argent rendu à un client — voir RemboursementClient.
+// Argent rendu à un client, voir RemboursementClient.
 @Getter
 @Setter
 @AllArgsConstructor

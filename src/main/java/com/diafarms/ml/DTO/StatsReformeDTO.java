@@ -9,7 +9,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Statistiques des ventes de réformes sur une période (GET /ventes-reforme/stats) —
+// Statistiques des ventes de réformes sur une période (GET /ventes-reforme/stats),
 // voir VenteReformeImpl.stats. Toujours en SUJETS pour les quantités ; le poids ne
 // concerne que les ventes au kilo (typeVente=KILO). Les moyennes sont null quand le
 // dénominateur est nul (aucune vente, aucune vente au kilo).

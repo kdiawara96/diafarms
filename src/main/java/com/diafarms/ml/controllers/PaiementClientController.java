@@ -18,7 +18,7 @@ import com.diafarms.ml.request.others.MotifSuppressionRequest;
 import lombok.RequiredArgsConstructor;
 
 // Paiements/remboursements client (voir PaiementClientService) et compte complet d'un
-// client (chiffres + historique) — même style de réponses que VenteDiverseControllers.
+// client (chiffres + historique), même style de réponses que VenteDiverseControllers.
 @RestController
 @RequestMapping("/diafarms/api/v1")
 @RequiredArgsConstructor

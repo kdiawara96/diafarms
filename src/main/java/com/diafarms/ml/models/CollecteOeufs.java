@@ -47,7 +47,7 @@ public class CollecteOeufs {
     private Integer oeufsCasses = 0;
 
     // Œufs collectés mais impropres à la vente même à prix réduit (sales, contaminés,
-    // trop déformés...) — distinct des cassés (voir TypeStockMagasin.OEUFS_CASSES,
+    // trop déformés...), distinct des cassés (voir TypeStockMagasin.OEUFS_CASSES,
     // vendables moins cher) : jamais transférés vers aucun magasin, perte pure. "Bon
     // état" = oeufsCollectes - oeufsCasses - oeufsNonUtilisables, toujours dérivé,
     // jamais saisi directement (voir CollecteOeufsImpl).
@@ -59,7 +59,7 @@ public class CollecteOeufs {
     @JoinColumn(name = "projet_id", nullable = false)
     private Projets projet;
 
-    // Bâtiment d'élevage où la collecte a eu lieu (via OccupationBatiment du projet) —
+    // Bâtiment d'élevage où la collecte a eu lieu (via OccupationBatiment du projet),
     // distinct de batimentStockage ci-dessous : ici on répond "où sont les poules",
     // pas "où sont physiquement les œufs une fois ramassés".
     @ManyToOne(fetch = FetchType.LAZY)
@@ -67,7 +67,7 @@ public class CollecteOeufs {
     private Batiment batiment;
 
     // Magasin de STOCKAGE (Magasin.TypeMagasin.STOCKAGE) où les œufs sont
-    // physiquement déposés après collecte — c'est CE stock, par magasin, qui
+    // physiquement déposés après collecte, c'est CE stock, par magasin, qui
     // plafonne les transferts vers un magasin de vente (MagasinTransfert), pas le
     // stock théorique du projet. Nullable pour compat des collectes antérieures à ce
     // champ (leur contribution reste alors invisible aux transferts, voir

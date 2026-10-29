@@ -7,5 +7,5 @@ public class PersonnelCreate {
     private String nom;
     private String poste; // optionnel
     private String telephone; // optionnel
-    private String utilisateurCompteUniqueId; // optionnel — lien vers un compte existant
+    private String utilisateurCompteUniqueId; // optionnel, lien vers un compte existant
 }

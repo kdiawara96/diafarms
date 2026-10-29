@@ -57,7 +57,7 @@ public class CommandeController {
         }
     }
 
-    // Une commande n'ayant encore rien livré : plus de motif optionnel — voir
+    // Une commande n'ayant encore rien livré : plus de motif optionnel, voir
     // AnnulationCommandeRequest/CommandeServiceImpl.annuler. rembourserAcompte rend en
     // argent ce qui restait disponible côté de cette commande (sinon avance client).
     @PutMapping("/{uniqueId}/annuler")
@@ -76,7 +76,7 @@ public class CommandeController {
         }
     }
 
-    // Clôture une commande livrée en partie seulement — voir CommandeServiceImpl.cloturer.
+    // Clôture une commande livrée en partie seulement, voir CommandeServiceImpl.cloturer.
     @PutMapping("/{uniqueId}/cloturer")
     public ResponseEntity<ApiResponse<CommandeDTO>> cloturer(@PathVariable String uniqueId,
             @RequestBody(required = false) MotifSuppressionRequest request) {
@@ -102,7 +102,7 @@ public class CommandeController {
     }
 
     // Livraison partielle ou totale d'une commande (grosse commande livrée au fil de la
-    // collecte, en plusieurs fois) — voir CommandeServiceImpl.livrer. quantite absente =
+    // collecte, en plusieurs fois), voir CommandeServiceImpl.livrer. quantite absente =
     // tout ce qu'il reste (même résultat que /convertir-en-vente) ; montantRecu = argent
     // NOUVEAU reçu à CETTE livraison précise, 0/absent si rien de neuf ; mode = mode de
     // paiement de cet argent nouveau, ESPECES par défaut. Commande de réforme au KILO :
@@ -130,7 +130,7 @@ public class CommandeController {
         }
     }
 
-    // Paiement (acompte ou règlement) rattaché à cette commande — le client et la
+    // Paiement (acompte ou règlement) rattaché à cette commande, le client et la
     // commande sont déduits de l'URL, pas du corps (voir CommandeServiceImpl.enregistrerPaiement).
     @PostMapping("/{uniqueId}/paiement")
     public ResponseEntity<ApiResponse<CommandeDTO>> paiement(@PathVariable String uniqueId,

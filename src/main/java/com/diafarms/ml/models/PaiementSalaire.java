@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Un paiement de salaire pour UNE période (format "AAAA-MM", ex "2026-08") — au plus un
+// Un paiement de salaire pour UNE période (format "AAAA-MM", ex "2026-08"), au plus un
 // par (salaire, periode), voir SalaireServiceImpl.payer. Génère systématiquement une
 // vraie Transaction (SORTIE, catégorie "Salaires", SourceTransaction.SALAIRE pointant
 // vers uniqueId ici) plutôt que de laisser l'utilisateur ressaisir une transaction
@@ -42,14 +42,14 @@ public class PaiementSalaire {
     @Column(name = "montant_paye", nullable = false)
     private Double montantPaye;
 
-    // Nombre de jours/heures travaillés pour cette période — renseigné uniquement si
+    // Nombre de jours/heures travaillés pour cette période, renseigné uniquement si
     // le Salaire était en mode JOURNALIER/HORAIRE au moment du paiement (null pour
     // MENSUEL), gardé pour trace même si la grille change ensuite.
     @Column(name = "quantite")
     private Double quantite;
 
     // Mode/taux réellement en vigueur pour la PÉRIODE payée (voir
-    // SalaireServiceImpl.resolveTauxPourPeriode) — gardés ici, pas seulement déduits
+    // SalaireServiceImpl.resolveTauxPourPeriode), gardés ici, pas seulement déduits
     // de Salaire.modePaiement/tauxBase actuels, pour que le bulletin de paie reste
     // exact même après un changement de grille ultérieur (ex: augmentation de
     // salaire après coup, paiement en retard d'un mois à l'ancien taux).

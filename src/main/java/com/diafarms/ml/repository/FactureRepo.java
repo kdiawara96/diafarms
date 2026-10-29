@@ -19,10 +19,10 @@ public interface FactureRepo extends JpaRepository<Facture, Long> {
 
     long countByFarm_Id(Long farmId);
 
-    // Une seule facture par vente/commande d'origine — voir FactureServiceImpl.genererDepuis.
+    // Une seule facture par vente/commande d'origine, voir FactureServiceImpl.genererDepuis.
     boolean existsBySourceTypeAndSourceUniqueId(Facture.SourceFacture sourceType, String sourceUniqueId);
 
-    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel —
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel,
     // comparer un paramètre directement à NULL ("(:x IS NULL OR ...)") fait planter
     // Postgres ("could not determine data type of parameter", SQLState 42P18), voir
     // TransactionRepo.search pour le même motif. statut/clientUniqueId reçoivent une
@@ -38,7 +38,7 @@ public interface FactureRepo extends JpaRepository<Facture, Long> {
                           @Param("hasCreateur") boolean hasCreateur, @Param("createurId") Long createurId,
                           Pageable pageable);
 
-    // Même filtre que search(), sans pagination base — utilisé par
+    // Même filtre que search(), sans pagination base, utilisé par
     // FactureServiceImpl.list quand le statut demandé (PAYEE/PARTIELLE/IMPAYEE) est
     // calculé à la volée (pas stocké) : il faut charger toutes les factures
     // correspondant aux AUTRES filtres, calculer leur DTO, filtrer par statut calculé,

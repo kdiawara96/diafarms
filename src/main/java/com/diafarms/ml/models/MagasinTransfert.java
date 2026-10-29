@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Mouvement explicite de stock (œufs ou réforme) d'UN projet vers UN magasin —
+// Mouvement explicite de stock (œufs ou réforme) d'UN projet vers UN magasin,
 // plafonné par le stock de ce projet pas encore transféré ailleurs, voir
 // MagasinTransfertServiceImpl. C'est ce transfert (pas la vente) qui porte
 // désormais l'attribution à un projet précis pour le chiffre d'affaires

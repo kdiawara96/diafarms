@@ -41,7 +41,7 @@ import com.diafarms.ml.services.LogsServices;
 
 import lombok.RequiredArgsConstructor;
 
-// Clients d'une ferme (acheteurs) — voir Client.java. Un client est optionnel sur
+// Clients d'une ferme (acheteurs), voir Client.java. Un client est optionnel sur
 // une vente (VenteOeufs/VenteReforme), gestion accessible à ADMIN/RESPONSABLE/VENTE
 // en création (un vendeur rencontre de nouveaux clients sur le terrain), modification
 // et suppression réservées à ADMIN/RESPONSABLE.
@@ -105,7 +105,7 @@ public class ClientServiceImpl implements ClientService {
     }
 
     // Rembourser fait sortir de l'argent de la caisse (contrairement à payerDette, qui
-    // en fait entrer) : un cran plus strict, VENTE exclu — un vendeur ne doit pas
+    // en fait entrer) : un cran plus strict, VENTE exclu, un vendeur ne doit pas
     // pouvoir décider seul de sortir de l'argent de la ferme, même pour rendre une
     // avance à un client.
     private void ensureCanRembourser(Utilisateurs u) {
@@ -245,7 +245,7 @@ public class ClientServiceImpl implements ClientService {
         List<ClientDTO> dtoList = clientPage.getContent().stream().map(ClientDTO::fromEntity).toList();
 
         // Un seul appel groupé (pas un par client) pour rester utilisable sur une
-        // liste paginée — voir SoldeClientServiceImpl.listNonZero, déjà farm-scopé.
+        // liste paginée, voir SoldeClientServiceImpl.listNonZero, déjà farm-scopé.
         Map<String, Double> soldesParClient = soldeClientService.listNonZero(currentUser.getFarm()).stream()
                 .collect(Collectors.toMap(SoldeClientDTO::getClientUniqueId, SoldeClientDTO::getSolde));
         dtoList.forEach(dto -> {
@@ -266,7 +266,7 @@ public class ClientServiceImpl implements ClientService {
         return v == null ? 0.0 : v;
     }
 
-    // Numéro de la facture ACTIVE (non ANNULEE) portant cette vente, null si aucune —
+    // Numéro de la facture ACTIVE (non ANNULEE) portant cette vente, null si aucune,
     // voir FactureLigneRepo.numeroFactureActive. Au plus une facture active par vente
     // (FactureServiceImpl.genererDepuis l'empêche), on prend la première par sécurité.
     private String factureNumeroActive(CibleImputation type, String venteUniqueId) {
@@ -333,7 +333,7 @@ public class ClientServiceImpl implements ClientService {
         }
         // Paiements/avances directs (voir payerDette) : pas de vente associée, donc
         // absents de venteOeufsRepo/venteReformeRepo, mais ils affectent bien le solde
-        // (compte, ci-dessous) — sans ça, le solde du client change sans qu'aucune ligne
+        // (compte, ci-dessous), sans ça, le solde du client change sans qu'aucune ligne
         // de l'historique n'explique pourquoi (ce que remontait l'utilisateur : un client
         // avec un solde non nul mais "aucun achat pour l'instant"). Les paiements annulés
         // sont inclus (statut ANNULE) pour que l'historique reste complet, mais seuls les
@@ -384,7 +384,7 @@ public class ClientServiceImpl implements ClientService {
                 .build();
     }
 
-    // Un client vient payer (tout ou partie de) sa dette en cours — pas liée à une
+    // Un client vient payer (tout ou partie de) sa dette en cours, pas liée à une
     // nouvelle vente, donc pas de VenteOeufs/VenteReforme ici : juste une Transaction
     // "entrée" classique (l'argent rentre vraiment dans la caisse à ce moment-là,
     // voir TransactionServiceImpl.create) et l'ajustement du solde en conséquence.
@@ -424,7 +424,7 @@ public class ClientServiceImpl implements ClientService {
 
     // Rend en argent au client une avance qu'il a déjà payée (ex: acompte sur une
     // commande d'œufs, mais il préfère finalement récupérer son argent plutôt que
-    // d'attendre la livraison, ou l'échanger contre autre chose) — jumeau de payerDette
+    // d'attendre la livraison, ou l'échanger contre autre chose), jumeau de payerDette
     // mais dans l'autre sens : une Transaction "sortie" (l'argent sort vraiment de la
     // caisse à ce moment-là) et le solde qui remonte d'autant vers zéro. Plafonné à
     // l'avance réellement disponible : on ne peut pas rembourser plus que ce que le

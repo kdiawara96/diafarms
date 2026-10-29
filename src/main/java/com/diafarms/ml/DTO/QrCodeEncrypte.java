@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 // trop long force un QR avec beaucoup de modules, illisible par une caméra de téléphone
 // (c'est ce qui rendait le scan impossible). role/fullNameUser/qrGeneratedAt sont retirés
 // car déjà dupliqués (le token JWT porte déjà uniqueId/fullName/role, et qrGeneratedAt
-// n'était lu nulle part — voir Utilisateurs.qrGeneratedAt côté DB si besoin d'historique).
+// n'était lu nulle part, voir Utilisateurs.qrGeneratedAt côté DB si besoin d'historique).
 @Getter
 @Setter
 @AllArgsConstructor

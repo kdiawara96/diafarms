@@ -23,7 +23,7 @@ public interface SoldeClientRepo extends JpaRepository<SoldeClient, Long> {
     @Query("SELECT s FROM SoldeClient s WHERE s.farm.id = :farmId AND s.solde <> 0.0 ORDER BY s.solde DESC")
     List<SoldeClient> findAllNonZeroByFarmId(@Param("farmId") Long farmId);
 
-    // Somme des dettes client en cours (soldes positifs uniquement) — même principe
+    // Somme des dettes client en cours (soldes positifs uniquement), même principe
     // que SoldeVendeurRepo.sumSoldePositifByFarmId, pour un futur KPI "Total dû par
     // les clients" distinct du "Total dû par les vendeurs".
     @Query("SELECT COALESCE(SUM(s.solde), 0) FROM SoldeClient s WHERE s.farm.id = :farmId AND s.solde > 0.0")

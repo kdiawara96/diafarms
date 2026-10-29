@@ -1,6 +1,6 @@
 package com.diafarms.ml.enums;
 
-// Mode de tarification d'une VenteReforme — voir VenteReforme.typeVente. Ne change
+// Mode de tarification d'une VenteReforme, voir VenteReforme.typeVente. Ne change
 // jamais la répartition entre projets contributeurs (toujours par nombreSujets) ni le
 // stock (toujours en sujets). Seuls le sens de VenteReforme.prixUnitaire (prix par sujet
 // ou par kg) et la présence de poidsTotalKg en dépendent. Montant : transmis par le

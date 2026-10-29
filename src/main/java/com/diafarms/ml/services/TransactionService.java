@@ -24,7 +24,7 @@ public interface TransactionService {
     /**
      * Crée une transaction "entrée" directement liée à une vente (une ligne de
      * VenteOeufsRepartition/VenteReformeRepartition), sans passer par le DTO de
-     * saisie manuelle — statut EN_ATTENTE comme toute transaction créée
+     * saisie manuelle, statut EN_ATTENTE comme toute transaction créée
      * normalement, même workflow de validation, pas de bypass. Appelée depuis
      * VenteOeufsImpl/VenteReformeImpl.create() une fois par projet contributeur
      * (projet n'est jamais null ici : chaque part de la vente est directement
@@ -39,7 +39,7 @@ public interface TransactionService {
 
     /**
      * Crée une transaction "sortie" commune (pas de projet, pas de client) tracée
-     * jusqu'à sa source — utilisée par SalaireServiceImpl.payer pour que "Payer le
+     * jusqu'à sa source, utilisée par SalaireServiceImpl.payer pour que "Payer le
      * salaire" génère une vraie Transaction (catégorie "Salaires",
      * SourceTransaction.SALAIRE) au lieu de laisser l'utilisateur ressaisir une
      * transaction manuelle non structurée. Même statut VALIDE par défaut que create().
@@ -54,9 +54,9 @@ public interface TransactionService {
             SourceTransaction source, String sourceUniqueId, Utilisateurs creePar);
 
     /** Bascule removed sur la transaction liée à une vente supprimée/restaurée
-     * (retrouvée via sourceUniqueId) — pas de recette fantôme après suppression. */
+     * (retrouvée via sourceUniqueId), pas de recette fantôme après suppression. */
     /** Aligne le `removed` de la transaction générée par une source (aliment, soins,
-     * vente, investissement, salaire...) sur celui, déjà décidé, de cette source —
+     * vente, investissement, salaire...) sur celui, déjà décidé, de cette source,
      * jamais un simple flip : une source qui appelle ceci deux fois de suite (ex: sa
      * propre transaction a été supprimée séparément entre-temps) doit retomber juste,
      * pas inverser un état qu'elle ne connaît pas. Remplace l'ancien
@@ -66,26 +66,26 @@ public interface TransactionService {
     TransactionDTO findDtoBySource(String sourceUniqueId);
 
     /**
-     * Demande la suppression d'une transaction (ADMIN/RESPONSABLE/COMPTABLE) — ne
+     * Demande la suppression d'une transaction (ADMIN/RESPONSABLE/COMPTABLE), ne
      * supprime rien tout de suite, marque juste la ligne comme "en attente de
      * suppression" jusqu'à ce qu'un admin/responsable du projet confirme (voir
      * confirmerSuppression) ou refuse (voir annulerDemandeSuppression).
      */
     TransactionDTO demanderSuppression(String uniqueId, String motif);
 
-    /** Confirme une demande de suppression en attente — même autorité que
+    /** Confirme une demande de suppression en attente, même autorité que
      * valider/rejeter (ADMIN ou responsable du projet). Supprime réellement
      * (removed=true) mais garde qui/quand a demandé, pour la traçabilité. */
     TransactionDTO confirmerSuppression(String uniqueId);
 
-    /** Refuse une demande de suppression en attente — la transaction reste
+    /** Refuse une demande de suppression en attente, la transaction reste
      * inchangée, la demande est simplement annulée. Même autorité que
      * confirmerSuppression. */
     TransactionDTO annulerDemandeSuppression(String uniqueId);
 
     /**
      * Crée, met à jour ou retire la transaction "sortie" liée à une source
-     * (Alimentation/Soins/Vaccination/Investissement) — point d'entrée unique appelé
+     * (Alimentation/Soins/Vaccination/Investissement), point d'entrée unique appelé
      * aussi bien à la création qu'à la modification de la source, pour que le coût
      * saisi côté Production/Investissement compte automatiquement comme une vraie
      * sortie en Comptabilité, sans ressaisie manuelle. projet à null = dépense commune
@@ -105,7 +105,7 @@ public interface TransactionService {
     /** Met à jour le montant de la transaction liée à une vente modifiée. */
     void updateMontantBySource(String sourceUniqueId, Double montant);
 
-    /** Met à jour la description de la transaction liée à une vente modifiée — utilisé
+    /** Met à jour la description de la transaction liée à une vente modifiée, utilisé
      * quand seul le montant rapporté change (pas la quantité/le montant théorique) :
      * pas de nouvelle répartition, juste rafraîchir le texte de traçabilité de l'écart. */
     void updateDescriptionBySource(String sourceUniqueId, String description);
@@ -128,9 +128,9 @@ public interface TransactionService {
      * financierUniqueId/vendeurUniqueId/dateDebut/dateFin sont optionnels : voir
      * TransactionServiceImpl.resolveProjetIdsScope (restriction par projet, pour
      * Comptabilité) et resolveVendeurScopeForList (restriction par créateur, pour
-     * Ventes) — deux axes différents. Un FINANCIER pur (voir hasOnlyRole côté front)
+     * Ventes), deux axes différents. Un FINANCIER pur (voir hasOnlyRole côté front)
      * est de toute façon forcé sur ses propres ventes, quel que soit vendeurUniqueId
-     * reçu — seul un ADMIN/SUPER_ADMIN peut choisir "voir comme" un vendeur précis.
+     * reçu, seul un ADMIN/SUPER_ADMIN peut choisir "voir comme" un vendeur précis.
      */
     PaginatedResponse<TransactionDTO> list(int page, int size, String search, TypeTransaction type, StatutTransaction statut,
                                             String projetUniqueId, String financierUniqueId, String vendeurUniqueId,
@@ -149,11 +149,11 @@ public interface TransactionService {
 
     TransactionStatsDTO getStats(String financierUniqueId, LocalDate dateDebut, LocalDate dateFin);
 
-    /** Montant théorique/réel des ventes (œufs + réforme) PAR PROJET sur la période —
+    /** Montant théorique/réel des ventes (œufs + réforme) PAR PROJET sur la période,
      * "Entrées (théorique)" par projet existe déjà via list()/le web (somme directe
      * des Transactions), mais aucune vue par projet du réel n'existait avant : voir
      * TransactionServiceImpl pour le détail du calcul au prorata. Ferme entière, pas
-     * de scope RESPONSABLE/COMPTABLE ici — c'est Reporting.tsx qui filtre côté client
+     * de scope RESPONSABLE/COMPTABLE ici, c'est Reporting.tsx qui filtre côté client
      * aux projets pertinents pour l'utilisateur courant. */
     List<ProjetVenteReelDTO> getVentesReelParProjet(LocalDate dateDebut, LocalDate dateFin);
 

@@ -24,11 +24,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Journal des actions d'entretien/maintenance — un pendant de Soins pour
+// Journal des actions d'entretien/maintenance, un pendant de Soins pour
 // l'infrastructure plutôt que le cheptel. Volontairement PAS lié à Projets : nettoyer
 // un poulailler ou débroussailler le site n'a rien à voir avec un lot en cours (un
 // poulailler peut être vide/inoccupé au moment de son entretien). Volontairement
-// aucun montant ici non plus : voir Soins pour la même règle — la Production suit le
+// aucun montant ici non plus : voir Soins pour la même règle, la Production suit le
 // fait, le coût réel se saisit en Comptabilité (catégories "Entretien / Maintenance",
 // "Copeau" déjà existantes, voir CreateTransactionDialog côté web).
 @Entity

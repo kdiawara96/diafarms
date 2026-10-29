@@ -446,7 +446,7 @@ public class usersControllers {
 
     /**
      * Supprime réellement le compte s'il n'a jamais rien créé dans le système, sinon
-     * l'archive (corbeille) — voir UtilisateurImpl.supprimerOuArchiverUtilisateur.
+     * l'archive (corbeille), voir UtilisateurImpl.supprimerOuArchiverUtilisateur.
      */
     @PutMapping("/delete-or-archive/{uniqueId}")
     public ResponseEntity<ApiResponse<String>> deleteOrArchiveUser(@PathVariable String uniqueId) {

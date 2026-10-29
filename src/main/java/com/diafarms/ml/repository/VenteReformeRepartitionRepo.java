@@ -33,25 +33,25 @@ public interface VenteReformeRepartitionRepo extends JpaRepository<VenteReformeR
         "FROM VenteReformeRepartition r, Transaction t " +
         "WHERE t.sourceUniqueId = r.uniqueId AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +
         "AND r.projet.farm.id = :farmId AND r.venteReforme.initialisation.removed = false " +
-        // dateDebut/dateFin ATTENDUS NON-NULS — voir TransactionRepo.countByProjetIdsAndStatut.
+        // dateDebut/dateFin ATTENDUS NON-NULS, voir TransactionRepo.countByProjetIdsAndStatut.
         "AND r.venteReforme.date >= :dateDebut AND r.venteReforme.date <= :dateFin")
     List<VenteRepartitionReelDTO> findReelParProjet(@Param("farmId") Long farmId,
                                                       @Param("dateDebut") java.time.LocalDate dateDebut,
                                                       @Param("dateFin") java.time.LocalDate dateFin);
 
-    // Déjà vendu POUR CE PROJET — voir VenteOeufsRepartitionRepo.sumQuantiteByProjetId.
+    // Déjà vendu POUR CE PROJET, voir VenteOeufsRepartitionRepo.sumQuantiteByProjetId.
     @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
         "WHERE r.projet.id = :projetId AND r.venteReforme.initialisation.removed = false")
     Integer sumSujetsByProjetId(@Param("projetId") Long projetId);
 
-    // Déjà vendu POUR CE PROJET, DEPUIS CE MAGASIN précis — voir
+    // Déjà vendu POUR CE PROJET, DEPUIS CE MAGASIN précis, voir
     // VenteReformeImpl.disponibleParProjetDansMagasin.
     @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
         "WHERE r.projet.id = :projetId AND r.venteReforme.magasin.id = :magasinId " +
         "AND r.venteReforme.initialisation.removed = false")
     Integer sumSujetsByProjetIdAndMagasinId(@Param("projetId") Long projetId, @Param("magasinId") Long magasinId);
 
-    // Total vendu DEPUIS ce magasin, tous projets contributeurs confondus — pour
+    // Total vendu DEPUIS ce magasin, tous projets contributeurs confondus, pour
     // l'aperçu global de stock du magasin (StockMagasinDTO).
     @Query("SELECT COALESCE(SUM(r.nombreSujetsAttribue), 0) FROM VenteReformeRepartition r " +
         "WHERE r.venteReforme.magasin.id = :magasinId AND r.venteReforme.initialisation.removed = false")

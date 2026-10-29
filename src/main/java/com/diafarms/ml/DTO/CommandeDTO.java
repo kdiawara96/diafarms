@@ -25,18 +25,18 @@ public class CommandeDTO {
     private String magasinNom;
     private String type;
     private Integer quantite;
-    // Cumul déjà livré et ce qu'il reste — voir Commande.quantiteLivree/CommandeServiceImpl.livrer.
+    // Cumul déjà livré et ce qu'il reste, voir Commande.quantiteLivree/CommandeServiceImpl.livrer.
     private Integer quantiteLivree;
     private Integer quantiteRestante;
     private Double prixUnitaireEstime;
     private Double montantEstime;
-    // "TETE" (défaut, prix par sujet) ou "KILO" (réforme au kilo) — voir Commande.tarification.
+    // "TETE" (défaut, prix par sujet) ou "KILO" (réforme au kilo), voir Commande.tarification.
     private String tarification;
     private Double prixKgEstime; // KILO seulement
     private Double poidsEstimeKg; // KILO seulement, optionnel
     // KILO : Σ poids pesés (kg) des livraisons actives ; null pour une commande TETE.
     private Double poidsLivreKg;
-    // Historique du tout premier acompte versé à la création — plus jamais réécrit
+    // Historique du tout premier acompte versé à la création, plus jamais réécrit
     // ensuite, voir CommandeServiceImpl.update (un acompte supplémentaire est un
     // paiement à part entière, pas un nouveau montantAcompte).
     private Double montantAcompte;
@@ -45,13 +45,13 @@ public class CommandeDTO {
     private String statut;
     // Historique legacy : dernière vente créée par une conversion pré-refonte
     // (une seule livraison possible avant ce changement). Plus jamais écrit depuis
-    // livrer() — une commande peut désormais avoir plusieurs livraisons, voir
+    // livrer(), une commande peut désormais avoir plusieurs livraisons, voir
     // le champ `livraisons` ci-dessous pour la liste à jour.
     private String venteUniqueId;
     private String creeParNom;
     private LocalDateTime createdAt;
 
-    // Champs enrichis — calculés par CommandeServiceImpl.enrichir(Commande), jamais
+    // Champs enrichis, calculés par CommandeServiceImpl.enrichir(Commande), jamais
     // stockés : reflètent l'état réel de l'argent/des livraisons de cette commande.
     private Double montantLivre; // Σ montants des ventes actives de la commande
     private Double acompteRecu; // Σ paiements ACTIFS d'origine ACOMPTE de la commande

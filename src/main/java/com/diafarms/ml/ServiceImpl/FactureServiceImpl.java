@@ -59,7 +59,7 @@ import com.lowagie.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
 
 // Facture = document figé généré depuis une ou plusieurs ventes (FactureLigne) ou une
-// commande — voir Facture.java/FactureLigne.java. montantPaye/statut ne sont plus
+// commande, voir Facture.java/FactureLigne.java. montantPaye/statut ne sont plus
 // stockés pour les nouvelles factures (legacy = false) : ils sont recalculés à la volée
 // depuis les imputations de chaque ligne (CompteClientService.payeVente), voir toDto.
 // Permissions alignées sur la note du roadmap ("la facturation reste une action web
@@ -187,7 +187,7 @@ public class FactureServiceImpl implements FactureService {
         return r;
     }
 
-    // Détermine la liste explicite de ventes à facturer à partir de la requête — ou
+    // Détermine la liste explicite de ventes à facturer à partir de la requête, ou
     // renvoie null si la source est une commande (voir venteRefsDeCommande, appelé
     // séparément par genererDepuis une fois la commande résolue et vérifiée).
     private List<VenteRef> resolveVenteRefs(FactureGenerateRequest data) {
@@ -342,7 +342,7 @@ public class FactureServiceImpl implements FactureService {
         f.setDateEmission(LocalDate.now());
         f.setSourceType(sourceType);
         // VENTES n'a pas d'identifiant de source unique (plusieurs ventes) : on utilise
-        // l'identifiant de la facture elle-même — sourceUniqueId est NOT NULL en base.
+        // l'identifiant de la facture elle-même, sourceUniqueId est NOT NULL en base.
         f.setSourceUniqueId(sourceType == SourceFacture.COMMANDE ? sourceUniqueIdCommande : f.getUniqueId());
         f.setDescription(lignesAGenerer.size() == 1 ? lignesAGenerer.get(0).description()
                 : lignesAGenerer.size() + " vente(s)");
@@ -399,7 +399,7 @@ public class FactureServiceImpl implements FactureService {
         if (lignes.isEmpty()) {
             // Facture ancienne (pré-refonte) jamais reprise : sans ligne, le paiement ne
             // vise aucune vente et le circuit argent client (PaiementClient/SoldeClient)
-            // n'a rien de cohérent à enregistrer — mieux vaut refuser clairement que
+            // n'a rien de cohérent à enregistrer, mieux vaut refuser clairement que
             // créer silencieusement un paiement orphelin. Voir genererFacture, qui crée
             // toujours au moins une ligne pour une facture générée par le nouveau circuit.
             throw new IllegalArgumentException("Cette facture ancienne n'est pas encore reprise dans le nouveau circuit : lancez la reprise des données avant de l'encaisser.");
@@ -494,10 +494,10 @@ public class FactureServiceImpl implements FactureService {
 
     // ===================== DTO / montant payé =====================
 
-    // Facture non-legacy : Σ min(ligne.montant, payeVente(ligne)) — plafonné ligne par
+    // Facture non-legacy : Σ min(ligne.montant, payeVente(ligne)), plafonné ligne par
     // ligne. Facture legacy (d'avant la refonte) : montantPaye historique (colonne, qui
     // comptait déjà l'argent reçu à la vente et les anciens « marquer payée ») + paiements
-    // reçus sur cette facture depuis la reprise (payer), plafonné au total — sinon elle
+    // reçus sur cette facture depuis la reprise (payer), plafonné au total, sinon elle
     // restait payable indéfiniment sans jamais changer de statut.
     private double calculerMontantPaye(Facture f, List<FactureLigne> lignes) {
         if (Boolean.TRUE.equals(f.getLegacy())) {
@@ -519,7 +519,7 @@ public class FactureServiceImpl implements FactureService {
 
     // ===================== PDF =====================
 
-    // Logo/tampon sont optionnels (voir Farm.logoNomMinio/tamponNomMinio) — laissés
+    // Logo/tampon sont optionnels (voir Farm.logoNomMinio/tamponNomMinio), laissés
     // vides si la ferme n'en a pas encore fourni, jamais d'espace réservé/placeholder.
     // Échec de chargement (MinIO indisponible...) traité comme absent plutôt que de
     // faire échouer toute la génération du PDF.
@@ -554,9 +554,9 @@ public class FactureServiceImpl implements FactureService {
         }
         Farm farm = f.getFarm();
         FactureDTO dto = toDto(f);
-        // Une facture sans ligne (legacy, ou ancienne facture pas encore reprise —
+        // Une facture sans ligne (legacy, ou ancienne facture pas encore reprise,
         // Task 11) : on reconstruit une ligne unique depuis les champs historiques de
-        // Facture, seule trace disponible pour cette facture — voir FactureLigne.java.
+        // Facture, seule trace disponible pour cette facture, voir FactureLigne.java.
         boolean reconstruire = dto.getLignes() == null || dto.getLignes().isEmpty();
 
         try {
@@ -566,7 +566,7 @@ public class FactureServiceImpl implements FactureService {
             document.open();
 
             // ===== En-tête : logo + identité de la ferme à gauche, titre + n°/date à
-            // droite — voir Farm.nom/quartier/ville/pays/telephone1/telephone2/email,
+            // droite, voir Farm.nom/quartier/ville/pays/telephone1/telephone2/email,
             // configurables depuis Paramètres > Identité de la ferme côté web.
             PdfPTable header = new PdfPTable(2);
             header.setWidthPercentage(100);

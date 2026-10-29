@@ -8,7 +8,7 @@ import com.diafarms.ml.request.create.FactureGenerateRequest;
 
 public interface FactureService {
     // Crée la facture depuis une liste de ventes (VENTES), une commande (COMMANDE) ou,
-    // par compatibilité, une seule vente (VENTE_OEUFS/VENTE_REFORME) — voir
+    // par compatibilité, une seule vente (VENTE_OEUFS/VENTE_REFORME), voir
     // FactureServiceImpl pour la résolution exacte de la source.
     FactureDTO genererDepuis(FactureGenerateRequest data);
 
@@ -20,7 +20,7 @@ public interface FactureService {
     // Conservé pour compatibilité : adaptateur vers payer(uid, montant, "ESPECES", null).
     FactureDTO marquerPayee(String uniqueId, Double montant);
 
-    // Motif obligatoire — voir MotifSuppressionRequest. Les ventes de la facture
+    // Motif obligatoire, voir MotifSuppressionRequest. Les ventes de la facture
     // redeviennent facturables, les paiements déjà faits ne bougent pas.
     FactureDTO annuler(String uniqueId, String motif);
 

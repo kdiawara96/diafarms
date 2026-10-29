@@ -49,7 +49,7 @@ public class MortaliteImpl implements MortaliteService {
     }
 
     // Une mortalité ne peut pas dépasser l'effectif encore vivant (bâtiment s'il est
-    // connu, sinon projet entier — même périmètre que le plafond de ponte, voir
+    // connu, sinon projet entier, même périmètre que le plafond de ponte, voir
     // EffectifVivantHelper) : sans ça, l'effectif vivant devenait négatif et la
     // mortalité cumulée dépassait 100 %. dejaComptees : ce que la saisie modifiée
     // comptait déjà avant modification (0 à la création).

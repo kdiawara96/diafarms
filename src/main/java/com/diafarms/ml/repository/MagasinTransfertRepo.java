@@ -19,7 +19,7 @@ public interface MagasinTransfertRepo extends JpaRepository<MagasinTransfert, Lo
         "ORDER BY t.date DESC")
     Page<MagasinTransfert> searchByMagasin(@Param("magasinId") Long magasinId, Pageable pageable);
 
-    // Déjà transféré depuis CE projet (tous magasins confondus) — plafonne un nouveau
+    // Déjà transféré depuis CE projet (tous magasins confondus), plafonne un nouveau
     // transfert : on ne peut pas transférer plus que le stock du projet pas encore
     // envoyé nulle part (voir MagasinTransfertServiceImpl.disponibleATransfererDepuisProjet).
     @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t " +
@@ -27,7 +27,7 @@ public interface MagasinTransfertRepo extends JpaRepository<MagasinTransfert, Lo
     Integer sumQuantiteByProjetIdAndType(@Param("projetId") Long projetId, @Param("type") TypeStockMagasin type);
 
     // Déjà transféré depuis CE projet mais spécifiquement DEPUIS CE BÂTIMENT de
-    // stockage (OEUFS uniquement) — le même projet peut avoir du stock dans plusieurs
+    // stockage (OEUFS uniquement), le même projet peut avoir du stock dans plusieurs
     // bâtiments, chacun avec son propre disponible, voir
     // MagasinTransfertServiceImpl.disponibleParProjetDansMagasinStockage.
     @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t " +
@@ -37,7 +37,7 @@ public interface MagasinTransfertRepo extends JpaRepository<MagasinTransfert, Lo
                                                                @Param("magasinStockageId") Long magasinStockageId,
                                                                @Param("type") TypeStockMagasin type);
 
-    // Reçu par CE magasin, pour CE projet précis — sert de base "disponible" par
+    // Reçu par CE magasin, pour CE projet précis, sert de base "disponible" par
     // projet pour la répartition d'une vente à l'intérieur du magasin, voir
     // VenteOeufsImpl/VenteReformeImpl.disponibleParProjetDansMagasin.
     @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t " +
@@ -46,13 +46,13 @@ public interface MagasinTransfertRepo extends JpaRepository<MagasinTransfert, Lo
     Integer sumQuantiteByMagasinAndProjetAndType(@Param("magasinId") Long magasinId, @Param("projetId") Long projetId,
                                                   @Param("type") TypeStockMagasin type);
 
-    // Liste des projets ayant déjà transféré vers ce magasin pour ce type — évite de
+    // Liste des projets ayant déjà transféré vers ce magasin pour ce type, évite de
     // boucler sur TOUS les projets de la ferme pour calculer le disponible par projet.
     @Query("SELECT DISTINCT t.projet.id FROM MagasinTransfert t " +
         "WHERE t.magasin.id = :magasinId AND t.type = :type AND t.initialisation.removed = false")
     List<Long> findDistinctProjetIdsByMagasinAndType(@Param("magasinId") Long magasinId, @Param("type") TypeStockMagasin type);
 
-    // Total reçu par ce magasin, tous projets confondus — pour l'aperçu global de
+    // Total reçu par ce magasin, tous projets confondus, pour l'aperçu global de
     // stock du magasin (StockMagasinDTO), pas la répartition par projet.
     @Query("SELECT COALESCE(SUM(t.quantite), 0) FROM MagasinTransfert t " +
         "WHERE t.magasin.id = :magasinId AND t.type = :type AND t.initialisation.removed = false")

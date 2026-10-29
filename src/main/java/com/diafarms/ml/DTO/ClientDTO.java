@@ -24,7 +24,7 @@ public class ClientDTO {
     private String email;
     private LocalDateTime createdAt;
     // Positif = le client doit de l'argent à la ferme (vente à crédit), négatif =
-    // avance — voir SoldeClient. Rempli en bulk par ClientServiceImpl.list() (pas ici,
+    // avance, voir SoldeClient. Rempli en bulk par ClientServiceImpl.list() (pas ici,
     // fromEntity ne connaît pas le solde), 0.0 par défaut sinon.
     @lombok.Builder.Default
     private double solde = 0.0;
@@ -42,7 +42,7 @@ public class ClientDTO {
                 .build();
     }
 
-    // Projection légère pour les sélecteurs (dialogue de vente) — mêmes champs
+    // Projection légère pour les sélecteurs (dialogue de vente), mêmes champs
     // que fromEntity ici, gardé distinct pour rester cohérent avec le patron
     // toDTO/select des autres entités (Batiment, Magasin) si des champs
     // supplémentaires (ex: solde dû) devaient un jour être ajoutés au détail

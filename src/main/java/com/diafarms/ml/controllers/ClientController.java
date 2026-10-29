@@ -89,7 +89,7 @@ public class ClientController {
     }
 
     // Jumeau de payer-dette, dans l'autre sens : rend en argent une avance déjà payée
-    // par ce client. Réservé ADMIN/RESPONSABLE/COMPTABLE (jamais VENTE) — voir
+    // par ce client. Réservé ADMIN/RESPONSABLE/COMPTABLE (jamais VENTE), voir
     // ClientServiceImpl.ensureCanRembourser.
     @PostMapping("/{uniqueId}/rembourser")
     public ResponseEntity<ApiResponse<ClientDTO>> rembourser(@PathVariable String uniqueId, @RequestBody PayerDetteClientRequest request) {

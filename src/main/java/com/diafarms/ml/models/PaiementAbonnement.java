@@ -23,7 +23,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Une déclaration de paiement ("J'ai payé") pour un Abonnement — historique complet,
+// Une déclaration de paiement ("J'ai payé") pour un Abonnement, historique complet,
 // plusieurs lignes par ferme au fil du temps (même patron que
 // Salaire/PaiementSalaire : Abonnement = état courant, PaiementAbonnement =
 // historique des mouvements). Voir AbonnementServiceImpl.declarerPaiement/valider/

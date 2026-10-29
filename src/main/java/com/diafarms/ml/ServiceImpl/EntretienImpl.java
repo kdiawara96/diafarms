@@ -72,7 +72,7 @@ public class EntretienImpl implements EntretienService {
     // SoinsImpl, aucun appel à TransactionService.
 
     // Un poulailler tout juste nettoyé garde trace de la date sur son propre champ
-    // (déjà présent, jamais alimenté jusqu'ici) — seulement si plus récent que la
+    // (déjà présent, jamais alimenté jusqu'ici), seulement si plus récent que la
     // valeur existante, pour ne pas régresser sur une saisie rétroactive.
     private void mettreAJourDerniereMaintenance(Batiment batiment, LocalDate date) {
         if (batiment == null || date == null) return;

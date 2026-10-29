@@ -36,12 +36,12 @@ public class TransactionDTO {
     private Double montant;
     // Montant réellement encaissé pour cette transaction (vente à crédit partielle ou
     // totale : montant reste la valeur théorique des œufs/réforme sortis, montantReel
-    // reflète ce que le vendeur a effectivement rapporté — voir VenteOeufs/VenteReforme
+    // reflète ce que le vendeur a effectivement rapporté, voir VenteOeufs/VenteReforme
     // .montantRapporte et TransactionServiceImpl.enrichMontantReel). Égal à montant par
     // défaut (aucun écart connu) ; seul .list() calcule la vraie valeur pour les
     // transactions issues d'une vente, via un ratio par ligne de répartition.
     private Double montantReel;
-    // Client concerné — soit directement rattaché à la transaction (Transaction.client,
+    // Client concerné, soit directement rattaché à la transaction (Transaction.client,
     // ex: "Remboursement client", voir ClientServiceImpl.payerDette), soit dérivé de la vente
     // d'origine pour une transaction "Vente œufs"/"Vente réforme" avec client identifié
     // (voir VenteOeufs/VenteReforme.client, rempli par TransactionServiceImpl.
@@ -49,12 +49,12 @@ public class TransactionDTO {
     // un client.
     private String clientNom;
     // Non null seulement si sourceType = VENTE_OEUFS/VENTE_REFORME : uniqueId de la VENTE
-    // ENTIÈRE (pas cette seule part par projet) — voir TransactionServiceImpl.enrichMontantReel.
+    // ENTIÈRE (pas cette seule part par projet), voir TransactionServiceImpl.enrichMontantReel.
     // Sert au web/Ventes.tsx pour demander/confirmer la suppression de la vente depuis la
     // transaction affichée (supprimer la transaction seule ne touche ni au stock ni au
     // solde, voir VenteOeufsImpl/VenteReformeImpl.confirmerSuppression).
     private String venteUniqueId;
-    // Non null = une suppression de LA VENTE (pas de cette transaction) est en attente —
+    // Non null = une suppression de LA VENTE (pas de cette transaction) est en attente,
     // le web l'affiche pour proposer "Confirmer/Refuser" à un admin/responsable.
     private String venteDemandeSuppressionParNom;
     private String categorie;
@@ -67,15 +67,15 @@ public class TransactionDTO {
     private LocalDateTime createdAt;
     private SourceTransaction sourceType;
     private String sourceUniqueId;
-    // Rattachements facultatifs (null = ferme entière) — voir Transaction.site/batiment.
+    // Rattachements facultatifs (null = ferme entière), voir Transaction.site/batiment.
     private String siteUniqueId;
     private String siteNom;
     private String batimentUniqueId;
     private String batimentNom;
-    // Qui a initié la transaction (saisie manuelle ou vente à l'origine) — affiché sur
+    // Qui a initié la transaction (saisie manuelle ou vente à l'origine), affiché sur
     // la page Ventes quand un ADMIN regarde "tous les vendeurs", voir Ventes.tsx.
     private String creeParNom;
-    // Non null = suppression en attente de validation par un admin/responsable —
+    // Non null = suppression en attente de validation par un admin/responsable,
     // voir TransactionServiceImpl.demanderSuppression.
     private String demandeSuppressionParNom;
     private LocalDateTime dateDemandeSuppression;
@@ -90,7 +90,7 @@ public class TransactionDTO {
     // nature de list). Renseigné par enrichMontantReel.
     private boolean venteClient;
     // true = transaction verrouillée comptablement : générée par une vente OU par un
-    // paiement/remboursement client — ne se modifie ni ne se supprime depuis la
+    // paiement/remboursement client, ne se modifie ni ne se supprime depuis la
     // Comptabilité, seulement via sa source (vente, paiement, remboursement).
     private boolean verrouillee;
     // Transaction générée par une saisie (soins, aliment, investissement, salaire, coûts
@@ -175,7 +175,7 @@ public class TransactionDTO {
                 || s == SourceTransaction.INVESTISSEMENT || s == SourceTransaction.SALAIRE;
     }
 
-    // Verrou comptable étendu : ventes + paiements/remboursements client — voir
+    // Verrou comptable étendu : ventes + paiements/remboursements client, voir
     // TransactionServiceImpl.ensurePasLieeAUneVente.
     public static boolean isSourceVerrouillee(SourceTransaction s) {
         return isSourceVente(s) || s == SourceTransaction.PAIEMENT_CLIENT || s == SourceTransaction.REMBOURSEMENT_CLI;

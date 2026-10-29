@@ -13,7 +13,7 @@ import lombok.Setter;
 
 // Réglages tarifaires de la plateforme, une seule ligne (voir
 // AbonnementServiceImpl.getOuCreerConfig, créée avec des valeurs par défaut au
-// premier accès si absente) — modifiable par le SUPER_ADMIN, jamais codé en dur.
+// premier accès si absente), modifiable par le SUPER_ADMIN, jamais codé en dur.
 @Entity
 @Table(name = "abonnement_config")
 @Getter

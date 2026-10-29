@@ -54,7 +54,7 @@ import lombok.RequiredArgsConstructor;
 
 // Vente d'œufs (Finance) : vendue DEPUIS un magasin précis (voir Magasin), qui a
 // lui-même reçu son stock par des transferts explicites depuis un ou plusieurs projets
-// (voir MagasinTransfert) — remplace l'ancienne répartition automatique farm-wide à la
+// (voir MagasinTransfert), remplace l'ancienne répartition automatique farm-wide à la
 // vente. La répartition entre projets contributeurs (pour le chiffre d'affaires par
 // projet) se calcule maintenant à partir des transferts reçus par CE magasin, pas du
 // stock collecté de toute la ferme.
@@ -104,7 +104,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         return hasRole(u, "ADMIN") || hasRole(u, "SUPER_ADMIN");
     }
 
-    // Peut DEMANDER une suppression — jamais le vendeur (VENTE), même pour sa propre
+    // Peut DEMANDER une suppression, jamais le vendeur (VENTE), même pour sa propre
     // vente : il ne doit pas pouvoir effacer la trace d'un manquant sur l'argent qu'il
     // devait rapporter (voir SoldeVendeurServiceImpl). Même population que
     // TransactionServiceImpl.ensureCanDemanderSuppression.
@@ -114,7 +114,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
     }
 
-    // Peut CONFIRMER une demande, ou supprimer/restaurer directement — un cran plus
+    // Peut CONFIRMER une demande, ou supprimer/restaurer directement, un cran plus
     // strict qu'une demande (COMPTABLE exclu) : une vente déjà encaissée en partie ou
     // en totalité ne doit jamais disparaître sur la seule décision d'une personne qui
     // manipule l'argent au quotidien.
@@ -136,14 +136,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
         return paiementClientService.mode(raw, client.getFarm());
     }
 
-    /** BON -> pool de transfert OEUFS, CASSE -> pool OEUFS_CASSES — deux pools de stock
+    /** BON -> pool de transfert OEUFS, CASSE -> pool OEUFS_CASSES, deux pools de stock
      * magasin totalement séparés (voir CollecteOeufsImpl, TypeStockMagasin). */
     private TypeStockMagasin typeStock(TypeVenteOeufs typeOeuf) {
         return typeOeuf == TypeVenteOeufs.CASSE ? TypeStockMagasin.OEUFS_CASSES : TypeStockMagasin.OEUFS;
     }
 
     /** Stock (bon OU cassé selon typeOeuf) restant DANS ce magasin, projet par projet
-     * (ceux qui y ont transféré du stock) — sert de poids pour la répartition
+     * (ceux qui y ont transféré du stock), sert de poids pour la répartition
      * proportionnelle d'une vente entre les projets contributeurs de CE magasin précis. */
     /** Avant toute écriture : chaque part de la vente supprimée doit tenir dans le stock
      * actuel de son projet au magasin (magasin verrouillé). */
@@ -178,7 +178,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
     }
 
     /** Répartit la vente entre les projets contributeurs DE CE MAGASIN, sauvegarde les
-     * lignes de VenteOeufsRepartition et génère une Transaction par projet — factorisé
+     * lignes de VenteOeufsRepartition et génère une Transaction par projet, factorisé
      * pour être appelé identiquement par create() et update(). */
     private List<VenteOeufsRepartition> repartirEtCreerTransactions(VenteOeufs saved, Farm farm, int quantite, double montant, Utilisateurs creePar) {
         Map<Long, Integer> disponible = disponibleParProjetDansMagasin(saved.getMagasin(), saved.getTypeOeuf());
@@ -192,7 +192,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         // Traçabilité de l'écart directement dans la ligne (même texte identique sur
         // chaque part de cette vente, car montant/montantRapporte sont ceux de LA VENTE
-        // ENTIÈRE, pas de cette part précise) — sans ça, un "il reste 2500 à payer" sur
+        // ENTIÈRE, pas de cette part précise), sans ça, un "il reste 2500 à payer" sur
         // le solde vendeur ne permettait de retrouver AUCUNE ligne précise dans la table
         // des transactions. Voir aussi la carte Solde Vendeur (agrégée) sur Ventes.tsx.
         String suffixeEcart = suffixeEcartRapporte(saved.getMontant(), saved.getMontantRapporte());
@@ -488,7 +488,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         }
 
         // Vente à un client (avant OU après cette modification) : plus de montantRapporte
-        // manuel — l'argent reçu passe par un paiement enregistré depuis la fiche client
+        // manuel, l'argent reçu passe par un paiement enregistré depuis la fiche client
         // (voir PaiementClientService), pas par ce formulaire de vente.
         boolean venteAUnClient = ancienClient != null || v.getClient() != null;
         if (venteAUnClient && !retraitClient && data.getMontantRapporte() != null) {
@@ -541,7 +541,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
             }
         } else if (clientChanged) {
             // Client A -> client B : l'argent de A déjà imputé sur cette vente redevient
-            // une avance de A, et l'avance éventuelle de B règle la vente — ré-imputé plus
+            // une avance de A, et l'avance éventuelle de B règle la vente, ré-imputé plus
             // bas, une fois la vente sauvegardée.
             compteClientService.annulerImputationsCible(CibleImputation.VENTE_OEUFS, uniqueId, "Client de la vente modifié");
         } else if (data.getMontant() != null && v.getMontant() < nz(ancienMontant)) {
@@ -577,7 +577,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         // Quantité et/ou montant modifiés : on refait la répartition à zéro (les
         // anciennes lignes et leurs Transactions sont retirées puis recréées) plutôt
-        // que d'essayer de corriger les parts existantes au prorata — plus simple et
+        // que d'essayer de corriger les parts existantes au prorata, plus simple et
         // sans risque d'incohérence entre projets.
         List<VenteOeufsRepartition> lignesActuelles;
         if (redistribuer) {
@@ -645,14 +645,14 @@ public class VenteOeufsImpl implements VenteOeufsService {
 
         // Set explicite (jamais un toggle) : la transaction générée suit TOUJOURS l'état
         // qu'on vient de décider pour la vente, même si elle avait déjà été modifiée
-        // séparément entre-temps (ex: supprimée à part depuis la Comptabilité) — un
+        // séparément entre-temps (ex: supprimée à part depuis la Comptabilité), un
         // simple flip l'aurait remise dans le mauvais état dans ce cas.
         for (VenteOeufsRepartition r : repartitionRepo.findByVenteOeufs_UniqueId(uniqueId)) {
             transactionService.setRemovedBySource(r.getUniqueId(), removed);
         }
 
         // Supprimer une vente annule aussi son impact sur le solde (vendeur ou client
-        // selon qui le portait — et la restauration le réapplique) — sinon une dette
+        // selon qui le portait, et la restauration le réapplique), sinon une dette
         // resterait comptée pour une vente qui n'existe plus.
         // Livraison d'une commande : sa quantité quitte (ou retrouve) la commande. AVANT
         // imputer() : le statut de la commande décide si ses acomptes sont encore réservés
@@ -800,7 +800,7 @@ public class VenteOeufsImpl implements VenteOeufsService {
         Long farmId = currentUser.getFarm().getId();
 
         // Reste un indicateur farm-wide global (utile en reporting admin) : bon état
-        // (StockOeufsRegle) - ventes d'œufs bons, tous magasins confondus — distinct du stock par magasin
+        // (StockOeufsRegle) - ventes d'œufs bons, tous magasins confondus, distinct du stock par magasin
         // (voir MagasinService.getStock), qui seul plafonne une vente précise.
         int totalCollecte = nz(collecteOeufsRepo.sumOeufsCollectesByFarmId(farmId));
         int totalCasse = nz(collecteOeufsRepo.sumOeufsCassesByFarmId(farmId));

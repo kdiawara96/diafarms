@@ -73,7 +73,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final com.diafarms.ml.repository.PaiementClientRepo paiementClientRepo;
     private final com.diafarms.ml.repository.RemboursementClientRepo remboursementClientRepo;
     // @Lazy : évite tout risque de cycle de construction avec CompteClientService (lui-même
-    // consommé par PaiementClientService, ServiceImpl côté ventes/clients) — seul le ratio
+    // consommé par PaiementClientService, ServiceImpl côté ventes/clients), seul le ratio
     // réel/théorique d'une vente à client en a besoin, voir ratio(RepartitionRatioDTO).
     @Autowired
     @Lazy
@@ -83,7 +83,7 @@ public class TransactionServiceImpl implements TransactionService {
     private EncaissementProjetService encaissementProjetService;
 
     // Sentinelles "pas de filtre" pour les requêtes agrégat par date (voir
-    // TransactionRepo.countByProjetIdsAndStatut) — Postgres échoue à déterminer le
+    // TransactionRepo.countByProjetIdsAndStatut), Postgres échoue à déterminer le
     // type d'un paramètre comparé directement à NULL dans une requête COUNT/SUM
     // ("could not determine data type of parameter", SQLState 42P18), quelle que soit
     // la valeur réelle passée. deb()/fin() résolvent donc TOUJOURS une borne concrète
@@ -124,7 +124,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .anyMatch(r -> role.equalsIgnoreCase(r.getRole()));
     }
 
-    // Peut DEMANDER une suppression — même population que SalaireServiceImpl/
+    // Peut DEMANDER une suppression, même population que SalaireServiceImpl/
     // PersonnelServiceImpl.ensureCanManage.
     private void ensureCanDemanderSuppression(Utilisateurs u) {
         if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "COMPTABLE")) {
@@ -132,7 +132,7 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    // Peut CONFIRMER/REFUSER une demande, ou supprimer/restaurer directement — même
+    // Peut CONFIRMER/REFUSER une demande, ou supprimer/restaurer directement, même
     // autorité que valider/rejeter : ADMIN, ou responsable DU PROJET concerné.
     private void ensureCanConfirmerSuppression(Utilisateurs u, Projets projet) {
         if (!isAdmin(u) && !isResponsableDuProjet(u, projet)) {
@@ -169,7 +169,7 @@ public class TransactionServiceImpl implements TransactionService {
      * liste (éventuellement vide) = restreint aux transactions des projets où l'utilisateur
      * ciblé est responsableFinance.
      *
-     * Un COMPTABLE (pur ou cumulé) reste farm-wide, non scopé par cet axe — voir la classe
+     * Un COMPTABLE (pur ou cumulé) reste farm-wide, non scopé par cet axe, voir la classe
      * (COMPTABLE n'est jamais restreint par projet, contrairement à l'ancien FINANCIER).
      * Seul un RESPONSABLE pur est auto-restreint à SES projets (champ Projets.responsable),
      * pour son propre tableau de bord. Un ADMIN/SUPER_ADMIN peut se placer dans la vue d'un
@@ -195,7 +195,7 @@ public class TransactionServiceImpl implements TransactionService {
      * Restriction de la LISTE (/transactions/list) : un RESPONSABLE pur est auto-restreint
      * à ses propres projets (sa table Comptabilité scopée, avec pouvoir de valider/rejeter
      * dessus). Pour tout le monde d'autre (COMPTABLE farm-wide, cumul de rôles, Dashboard
-     * admin, page Ventes) la liste n'est PAS auto-restreinte — seul un ADMIN/SUPER_ADMIN
+     * admin, page Ventes) la liste n'est PAS auto-restreinte, seul un ADMIN/SUPER_ADMIN
      * qui fournit explicitement financierUniqueId se place dans la vue scopée d'un
      * comptable choisi (filtre "voir comme" de Comptabilité).
      */
@@ -232,7 +232,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     // Un RESPONSABLE a autorité sur les transactions/ventes rattachées à SES projets
     // (champ Projets.responsable, distinct de responsableProduction/responsableFinance
-    // qui ne donnent aucun pouvoir de validation) — jamais sur une transaction commune
+    // qui ne donnent aucun pouvoir de validation), jamais sur une transaction commune
     // (pas de projet précis) ni sur un autre projet que le sien.
     private boolean isResponsableDuProjet(Utilisateurs u, Projets projet) {
         return u != null && projet != null && projet.getResponsable() != null
@@ -241,10 +241,10 @@ public class TransactionServiceImpl implements TransactionService {
 
     /**
      * Restriction par CRÉATEUR de la LISTE : un VENTE pur ne voit que ses propres
-     * ventes, quel que soit vendeurUniqueId reçu du client — jamais celui d'un
-     * collègue (page Ventes, route bloquée pour COMPTABLE côté front — voir
+     * ventes, quel que soit vendeurUniqueId reçu du client, jamais celui d'un
+     * collègue (page Ventes, route bloquée pour COMPTABLE côté front, voir
      * App.tsx). Un ADMIN/SUPER_ADMIN ou un COMPTABLE pur peut choisir n'importe quel
-     * vendeur pour filtrer la page Comptabilité (ou aucun = ferme entière — COMPTABLE
+     * vendeur pour filtrer la page Comptabilité (ou aucun = ferme entière, COMPTABLE
      * y voit tout par défaut, jamais auto-scopé à ses propres transactions ; avant ce
      * correctif il l'était par erreur, en confondant avec la restriction VENTE
      * ci-dessus). Un RESPONSABLE/PRODUCTION (ou un cumul de rôles) n'est pas
@@ -589,7 +589,7 @@ public class TransactionServiceImpl implements TransactionService {
                     ? data.getPrixUnitaire()
                     : (data.getMontant() != null ? Math.round(data.getMontant() / data.getQuantite() * 100.0) / 100.0 : null));
         }
-        // Toute transaction est validée dès la création, quel que soit le créateur —
+        // Toute transaction est validée dès la création, quel que soit le créateur,
         // seul un rejet a posteriori (voir rejeter()) peut encore la faire basculer.
         // Avant : seul un ADMIN était auto-validé, les autres restaient EN_ATTENTE ;
         // changé sur demande explicite (le contrôle a priori n'apportait rien, le
@@ -640,7 +640,7 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(description);
         t.setMontant(montant);
         t.setCategorie(categorie);
-        // Toute vente est validée dès la création, quel que soit son créateur — voir
+        // Toute vente est validée dès la création, quel que soit son créateur, voir
         // le même changement dans create() ci-dessus. Un RESPONSABLE/ADMIN garde la
         // main pour rejeter une vente a posteriori (voir rejeter()), mais n'a plus à
         // "accepter" une vente d'un vendeur pur avant qu'elle compte réellement.
@@ -1054,7 +1054,7 @@ public class TransactionServiceImpl implements TransactionService {
         // Motif exigé pour supprimer, pas pour restaurer.
         String motifValide = Boolean.TRUE.equals(t.getInitialisation().getRemoved()) ? null : MotifSuppressionRequest.exiger(motif);
 
-        // Même autorité que valider/rejeter/confirmerSuppression — plus de
+        // Même autorité que valider/rejeter/confirmerSuppression, plus de
         // suppression/restauration directe sans passer par une demande, voir
         // demanderSuppression/confirmerSuppression.
         ensureCanConfirmerSuppression(currentUser, t.getProjet());
@@ -1253,7 +1253,7 @@ public class TransactionServiceImpl implements TransactionService {
         Utilisateurs currentUser = getCurrentUserSafe();
         Long farmId = currentUser != null && currentUser.getFarm() != null ? currentUser.getFarm().getId() : null;
 
-        // hasX/valeurs factices quand absent — voir TransactionRepo.search() : jamais
+        // hasX/valeurs factices quand absent, voir TransactionRepo.search() : jamais
         // comparer un paramètre à NULL dans ces requêtes (Postgres ne peut pas en
         // déterminer le type). Les valeurs factices (TypeTransaction.ENTREE,
         // StatutTransaction.VALIDE, "") ne sont jamais évaluées utilement grâce au
@@ -1315,11 +1315,11 @@ public class TransactionServiceImpl implements TransactionService {
 
     /** Corrige montantReel (initialisé = montant par TransactionDTO.fromEntity) pour
      * les transactions issues d'une vente à crédit partielle/totale (voir
-     * VenteOeufs/VenteReforme.montantRapporte) — montant reste la valeur théorique
+     * VenteOeufs/VenteReforme.montantRapporte), montant reste la valeur théorique
      * (quantité × prix), montantReel ce que le vendeur a effectivement rapporté ce
      * jour-là. sourceUniqueId pointe vers la LIGNE de répartition précise (voir
      * Transaction.sourceUniqueId), donc le ratio réel/théorique de LA VENTE ENTIÈRE
-     * s'applique tel quel à la part (montant) déjà attribuée à ce projet — même
+     * s'applique tel quel à la part (montant) déjà attribuée à ce projet, même
      * hypothèse proportionnelle que getVentesReelParProjet. Enrichit aussi clientNom
      * (même source, aucune requête supplémentaire). Recherche groupée (2 requêtes
      * max, pas une par transaction) pour rester utilisable sur une liste paginée. */
@@ -1436,7 +1436,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         long nbValide, nbAttente, nbRejete;
         Double totalEntrees, totalSorties, totalVenteOeufs, totalVenteReforme;
-        // Bornes toujours concrètes (jamais null) — voir deb()/fin().
+        // Bornes toujours concrètes (jamais null), voir deb()/fin().
         LocalDate dDeb = deb(dateDebut);
         LocalDate dFin = fin(dateFin);
 
@@ -1458,14 +1458,14 @@ public class TransactionServiceImpl implements TransactionService {
             totalVenteReforme = transactionRepo.sumMontantValideBySourceTypeAndDateRange(farmId, SourceTransaction.VENTE_REFORME, dDeb, dFin);
         }
 
-        // Ferme entière, jamais scopé par projet/comptable (voir TransactionStatsDTO) —
+        // Ferme entière, jamais scopé par projet/comptable (voir TransactionStatsDTO),
         // le montant réellement rapporté, la dette vendeur et la dette client sont des
         // notions de vendeur/client/ferme, pas de projet. La décomposition PAR PROJET
         // existe quand même séparément (voir getVentesReelParProjet ci-dessous,
         // consommée par Reporting.tsx) : ces chiffres-ci restent volontairement un
         // simple complément global, pas un rapport scopé. totalMontantRecuVentes ne
         // compte plus le théorique rapporté des ventes À CLIENT (celles-ci sont payées
-        // via PaiementClient, plus jamais via montantRapporte — voir
+        // via PaiementClient, plus jamais via montantRapporte, voir
         // VenteOeufsRepo/VenteReformeRepo.sumRapporteSansClient), sous peine de
         // double-compter le même encaissement.
         Farm farm = currentUser != null ? currentUser.getFarm() : null;
@@ -1477,13 +1477,13 @@ public class TransactionServiceImpl implements TransactionService {
         double montantRecuVentes = paiementsClients + rapporteSansClientOeufs + rapporteSansClientReforme + venteDiverseValidee;
         double duParVendeurs = nz(soldeVendeurRepo.sumSoldePositifByFarmId(farmId));
         // STALE : soldeClientRepo.sumSoldePositifByFarmId lisait une table de solde qui
-        // n'est plus tenue à jour (voir SoldeClientServiceImpl) — le solde est désormais
+        // n'est plus tenue à jour (voir SoldeClientServiceImpl), le solde est désormais
         // entièrement recalculé à partir des ventes/paiements/imputations/remboursements actifs.
         double duParClients = soldeClientService.sumSoldePositif(farm);
         double avancesClients = soldeClientService.sumAvances(farm);
 
         // Vendu/Encaissé/Remboursé/Dû/Avances (circuit argent client) : uniquement en
-        // vue ferme entière (jamais scopée) — encaissé/remboursé/dû/avances ne peuvent
+        // vue ferme entière (jamais scopée), encaissé/remboursé/dû/avances ne peuvent
         // pas être rattachés fiablement à un seul projet (paiements et remboursements
         // clients n'ont pas de projet).
         boolean vueParProjet = scopedProjetIds != null;
@@ -1581,7 +1581,7 @@ public class TransactionServiceImpl implements TransactionService {
         for (VenteRepartitionReelDTO ligne : lignes) {
             // Aucun écart déclaré sur cette vente (montantRapporte jamais saisi) : pas
             // de dette connue, la part théorique du projet compte pour son plein
-            // montant — même convention que sumMontantRapporteByFarmIdAndDateRange.
+            // montant, même convention que sumMontantRapporteByFarmIdAndDateRange.
             double ratio = (ligne.getVenteMontantRapporte() != null && ligne.getVenteMontant() != null && ligne.getVenteMontant() != 0)
                     ? ligne.getVenteMontantRapporte() / ligne.getVenteMontant()
                     : 1.0;

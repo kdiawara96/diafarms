@@ -9,11 +9,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Emplacement physique de la ferme (ex: "Site de Bambey", "Site de Thiès") — regroupe
+// Emplacement physique de la ferme (ex: "Site de Bambey", "Site de Thiès"), regroupe
 // poulaillers et magasins qui s'y trouvent (voir Batiment.site / Magasin.site). Une
 // ferme avec un seul emplacement n'a jamais besoin d'en créer un : le champ est
 // optionnel partout où il est utilisé. Latitude/longitude optionnelles, pensées pour
-// une cartographie future des emplacements de la ferme — aucun usage aujourd'hui côté
+// une cartographie future des emplacements de la ferme, aucun usage aujourd'hui côté
 // calculs, purement informatif.
 @Entity
 @Table(name = "sites")

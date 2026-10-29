@@ -21,7 +21,7 @@ import jakarta.servlet.http.HttpServletResponse;
 // que soit l'écran ou l'appli (web, mobile, appel direct). Le changement de mot de passe est
 // volontairement INTERDIT ici aussi (contrairement à un compte normal) : ces comptes ont des
 // identifiants FIXES partagés entre plusieurs personnes (ex: 5 visiteurs avec le même mot de
-// passe) — permettre à l'un d'eux de le changer casserait l'accès de tous les autres.
+// passe), permettre à l'un d'eux de le changer casserait l'accès de tous les autres.
 // Placé après le filtre bearer-token (voir SecurityConfiguration) pour que le JWT soit déjà lu.
 public class ConsultationSeuleFilter extends OncePerRequestFilter {
 
@@ -40,7 +40,7 @@ public class ConsultationSeuleFilter extends OncePerRequestFilter {
         String uri = request.getRequestURI();
         // Seule exception : marquer SES notifications comme lues (état personnel, pas une
         // donnée de la ferme). Le changement de mot de passe n'est PAS une exception ici,
-        // contrairement à un compte normal — voir le commentaire de classe ci-dessus.
+        // contrairement à un compte normal, voir le commentaire de classe ci-dessus.
         boolean autorise = uri.contains("/notifications/");
         if (!lecture && !autorise) {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();

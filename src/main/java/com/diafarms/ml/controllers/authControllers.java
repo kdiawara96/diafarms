@@ -72,7 +72,7 @@ public class authControllers {
         @RequestParam(value = "ouiRefresh", defaultValue = "false") boolean ouiRefresh,
         @RequestParam(value = "refreshToken", required = false) String refreshToken,
         // Le web ne peut jamais fournir refreshToken en paramètre (le cookie qui le
-        // porte est HttpOnly, donc invisible au JS) — pour grantType=refreshToken, on
+        // porte est HttpOnly, donc invisible au JS), pour grantType=refreshToken, on
         // retombe sur le cookie envoyé automatiquement par le navigateur. Le mobile
         // (sans jar de cookies) continue de passer le paramètre explicitement.
         @CookieValue(value = CookieAuthUtils.REFRESH_COOKIE, required = false) String refreshTokenCookie,
@@ -145,7 +145,7 @@ public class authControllers {
 
     // Route publique (voir SecurityConfiguration.publicFilterChain) : un cookie
     // access_token périmé/déjà révoqué ne doit jamais empêcher la déconnexion, donc
-    // pas de validation JWT automatique ici — on décode le cookie nous-mêmes,
+    // pas de validation JWT automatique ici, on décode le cookie nous-mêmes,
     // uniquement pour savoir QUI se déconnecte (voir revoquerSessionsWeb), sans
     // bloquer si le décodage échoue (cookie absent, expiré, invalide) : les
     // cookies sont de toute façon effacés dans tous les cas.

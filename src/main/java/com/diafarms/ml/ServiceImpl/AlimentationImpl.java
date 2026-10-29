@@ -49,7 +49,7 @@ public class AlimentationImpl implements AlimentationService {
     private final LogsServices logs;
     private final TransactionService transactionService;
 
-    // Génère/synchronise la sortie comptable liée à cet achat d'aliment — voir
+    // Génère/synchronise la sortie comptable liée à cet achat d'aliment, voir
     // TransactionService.syncSortie : plus besoin de ressaisir le coût manuellement
     // en Comptabilité, la Transaction suit automatiquement coutTotal.
     private void syncTransaction(Alimentation a, Utilisateurs currentUser) {

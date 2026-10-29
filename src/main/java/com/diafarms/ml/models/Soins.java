@@ -26,14 +26,14 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Entité unifiée pour toute saisie de santé sur un projet : vaccin, médicament ou
-// autre soin — remplace les deux anciennes entités séparées Soins/Vaccination
+// autre soin, remplace les deux anciennes entités séparées Soins/Vaccination
 // (fusionnées le 2026-09-16, voir migration SQL associée). Les deux existaient
 // historiquement séparées uniquement pour ne pas risquer de casser Vaccination en
 // développant Soins par-dessus ; ce risque n'existe plus, donc une seule table.
 //
 // Quand type = VACCINATION : prixUnitaire est renseigné et coutTotal est calculé
 // automatiquement (quantite * prixUnitaire), comme le faisait l'ancienne entité
-// Vaccination — voir calculerCoutTotal(). Pour MEDICAMENT/AUTRE, coutTotal reste une
+// Vaccination, voir calculerCoutTotal(). Pour MEDICAMENT/AUTRE, coutTotal reste une
 // saisie manuelle (pas de prix unitaire connu en général).
 @Entity
 @Table(name = "soins")
@@ -59,13 +59,13 @@ public class Soins {
     @Column(nullable = false, length = 30)
     private TypeSoin type;
 
-    // Nom du produit — nom du vaccin quand type = VACCINATION.
+    // Nom du produit, nom du vaccin quand type = VACCINATION.
     @Column(nullable = false, length = 150)
     private String produit;
 
     private Double quantite;
 
-    // Renseigné seulement pour un vaccin (nombre de doses/flacons) — voir
+    // Renseigné seulement pour un vaccin (nombre de doses/flacons), voir
     // calculerCoutTotal() ci-dessous.
     @Column(name = "prix_unitaire")
     private Double prixUnitaire;
@@ -73,7 +73,7 @@ public class Soins {
     @Column(name = "cout_total")
     private Double coutTotal;
 
-    // Pipe-joined, ex: "Oral | Injection" — renseigné seulement pour un vaccin.
+    // Pipe-joined, ex: "Oral | Injection", renseigné seulement pour un vaccin.
     @Column(name = "mode_administration", length = 255)
     private String modeAdministration;
 

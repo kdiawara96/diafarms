@@ -63,7 +63,7 @@ public class InvestissementServiceImpl implements InvestissementService {
 
     // Gestion des investissements réservée à ADMIN/SUPER_ADMIN, même périmètre que
     // le masquage de la page web (voir DashboardLayout.tsx navItems "Investissements"
-    // : hideFor RESPONSABLE/COMPTABLE/VENTE/PRODUCTION) — jusqu'ici aucune
+    // : hideFor RESPONSABLE/COMPTABLE/VENTE/PRODUCTION), jusqu'ici aucune
     // vérification n'existait côté serveur, n'importe quel compte connecté pouvait
     // créer/modifier/supprimer un investissement ou une répartition via l'API, le
     // masquage du menu ne protégeant rien.
@@ -163,7 +163,7 @@ public class InvestissementServiceImpl implements InvestissementService {
         }
     }
 
-    // Génère/synchronise la sortie comptable liée à cet achat — voir
+    // Génère/synchronise la sortie comptable liée à cet achat, voir
     // AlimentationImpl.syncTransaction pour le même principe. projetDedie = null pour
     // un investissement COMMUN (dépense de ferme, comme un salaire) ; renseigné pour un
     // investissement DÉDIÉ, afin que ce coût compte dans les sorties DU PROJET.
@@ -176,14 +176,14 @@ public class InvestissementServiceImpl implements InvestissementService {
     }
 
     // Recalcule montantAlloue de TOUTES les répartitions de cet investissement avec
-    // le taux mensuel ACTUEL (montant / dureeAmortissement) — indispensable dès que
+    // le taux mensuel ACTUEL (montant / dureeAmortissement), indispensable dès que
     // la durée de vie estimée change (ex : un actif dure finalement plus longtemps
     // que prévu grâce à l'entretien) : chaque projet ayant utilisé l'actif doit
     // refléter le coût mensuel réel une fois connu, pas l'ancien taux calculé avec
     // une durée sous-estimée. moisUtilises (fait historique : combien de mois CE
     // projet l'a utilisé) ne change jamais ici, seul le prix par mois est mis à
     // jour. Plafonné en cumulé sur le montant total (ordre chronologique) pour ne
-    // jamais allouer plus que ce que l'actif a réellement coûté à l'achat — avant ce
+    // jamais allouer plus que ce que l'actif a réellement coûté à l'achat, avant ce
     // correctif, chaque répartition était plafonnée individuellement sur le montant
     // TOTAL au lieu du reste réellement disponible, ce qui pouvait faire dépasser la
     // somme de toutes les répartitions au-delà du montant payé. Purement analytique
@@ -405,7 +405,7 @@ public class InvestissementServiceImpl implements InvestissementService {
 
         // Recalcule la part de CHAQUE projet ayant utilisé cet investissement avec le
         // taux mensuel actuel (montant/dureeAmortissement peuvent avoir changé
-        // ci-dessus) — voir recalculerRepartitions.
+        // ci-dessus), voir recalculerRepartitions.
         recalculerRepartitions(inv);
         repartitionRepo.saveAll(inv.getRepartitions());
 
@@ -526,7 +526,7 @@ public class InvestissementServiceImpl implements InvestissementService {
                 // Maintenant 10 jours donnera 1 mois complet au lieu de 0
                 repartition.setMoisUtilises((int) moisCalcul);
                 // montantAlloue calculé juste après par recalculerRepartitions, sur le
-                // reste réellement disponible — pas ici, pas sur le montant total brut.
+                // reste réellement disponible, pas ici, pas sur le montant total brut.
         } else {
                 // Par défaut, sans date de fin (utilisation continue au sein de la ferme), les valeurs restent à 0
                 repartition.setDateFin(null);
@@ -536,7 +536,7 @@ public class InvestissementServiceImpl implements InvestissementService {
 
         // 5. Sauvegarde de la répartition, puis recalcul de la part de CHAQUE projet
         // ayant utilisé cet investissement (celle-ci comprise) sur le reste
-        // réellement disponible — voir recalculerRepartitions.
+        // réellement disponible, voir recalculerRepartitions.
         inv.getRepartitions().add(repartition);
         recalculerRepartitions(inv);
         repartitionRepo.saveAll(inv.getRepartitions());

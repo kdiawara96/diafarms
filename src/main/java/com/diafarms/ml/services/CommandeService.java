@@ -16,17 +16,17 @@ public interface CommandeService {
     CommandeDTO annuler(String uniqueId, String motif, boolean rembourserAcompte, String mode);
 
     /** Clôture une commande livrée en partie seulement (on arrête là, le reste n'est plus
-     * livré) — motif obligatoire. Un éventuel trop-perçu reste en avance sur le client. */
+     * livré), motif obligatoire. Un éventuel trop-perçu reste en avance sur le client. */
     CommandeDTO cloturer(String uniqueId, String motif);
 
-    // Crée la vente (VenteOeufs/VenteReforme) correspondante — réutilise directement
+    // Crée la vente (VenteOeufs/VenteReforme) correspondante, réutilise directement
     // VenteOeufsService/VenteReformeService.create, marque la commande CONVERTIE.
     // Équivaut désormais à livrer(uniqueId, null, 0.0, null) : livre tout ce qui reste,
     // en un coup, sans compter de nouvel argent.
     CommandeDTO convertirEnVente(String uniqueId);
 
     /** Livre une commande, en partie ou en totalité (grosse commande livrée au fil de
-     * la collecte, en plusieurs fois) — crée une vente pour la quantité livrée cette
+     * la collecte, en plusieurs fois), crée une vente pour la quantité livrée cette
      * fois-ci, sans jamais dépasser ce qu'il reste. quantite null = tout ce qui reste
      * (comportement de convertirEnVente). montantRecu = argent NOUVEAU reçu à cette
      * livraison précise (0/null si rien de neuf : l'acompte/les paiements déjà faits sur
@@ -49,7 +49,7 @@ public interface CommandeService {
         return livrer(uniqueId, quantite, montantRecu, mode, null, null);
     }
 
-    /** Enregistre un paiement (acompte ou règlement) rattaché à cette commande —
+    /** Enregistre un paiement (acompte ou règlement) rattaché à cette commande,
      * PaiementClientCreate sans clientUniqueId (déduit de la commande). */
     CommandeDTO enregistrerPaiement(String uniqueId, PaiementClientCreate data);
 

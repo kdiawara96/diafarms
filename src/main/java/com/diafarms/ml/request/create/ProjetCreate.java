@@ -9,7 +9,7 @@ public class ProjetCreate {
     
     // Étape 1 : Informations générales
     private String titre;
-    private Long responsableId;      // Utilisateur RESPONSABLE — remplace l'ancien nomResponsable en texte libre
+    private Long responsableId;      // Utilisateur RESPONSABLE, remplace l'ancien nomResponsable en texte libre
     private String dateDebut;        // Changé en String pour le Front
     private String dateFinPrevue;    // Changé en String pour le Front
     private Integer nbSujets;
@@ -20,7 +20,7 @@ public class ProjetCreate {
     private Long responsableFinanceId;    // Changé en Long pour form.responsableFinanceId
     private String fournisseursPoussins;
     private Double autresDepense;
-    private String siteUniqueId; // optionnel — voir Projets.site
+    private String siteUniqueId; // optionnel, voir Projets.site
 
     // Étape 2 : Alimentation (Initiale)
     private String alimentNom;

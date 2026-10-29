@@ -37,7 +37,7 @@ public class Alimentation {
     @Column(name = "quantite_kg", nullable = false)
     private Double quantiteKg; // Quantité distribuée ou achetée en kg (
 
-    // Optionnel — si renseigné, génère/synchronise automatiquement une sortie
+    // Optionnel, si renseigné, génère/synchronise automatiquement une sortie
     // comptable liée à ce projet (voir AlimentationImpl.syncTransaction,
     // TransactionService.syncSortie) : plus besoin de ressaisir ce coût manuellement
     // en Comptabilité.

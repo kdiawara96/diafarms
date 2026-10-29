@@ -14,7 +14,7 @@ import lombok.Setter;
 /**
  * Projet associé à un utilisateur (responsable production et/ou finance), utilisé par
  * la modale "Profil & Accès Mobile Utilisateur" côté web pour lister ses derniers
- * projets — actifs et archivés confondus (voir ProjetsRepo.findRecentAssignedToUser).
+ * projets, actifs et archivés confondus (voir ProjetsRepo.findRecentAssignedToUser).
  */
 @Getter
 @Setter

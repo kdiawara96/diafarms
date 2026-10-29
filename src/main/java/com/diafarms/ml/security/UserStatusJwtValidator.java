@@ -25,7 +25,7 @@ import lombok.RequiredArgsConstructor;
  * Pour un token issu d'un QR (claim "type" = "QR_CODE", voir QRCodeService), on
  * revalide aussi l'accès mobile à chaque requête : un token de QR déjà distribué
  * doit cesser de fonctionner dès que l'admin désactive l'accès mobile du rôle,
- * sans attendre son expiration — contrairement à un token issu d'un login
+ * sans attendre son expiration, contrairement à un token issu d'un login
  * mot de passe (web ou mobile), déjà filtré une seule fois à l'émission (voir
  * AuthImpl.jwt) et qui n'a pas besoin de ce coût de revalidation à chaque requête.
  */
@@ -55,13 +55,13 @@ public class UserStatusJwtValidator implements OAuth2TokenValidator<Jwt> {
         boolean isQrCode = "QR_CODE".equals(token.getClaimAsString("type"));
 
         // Révocation immédiate à la déconnexion (voir Utilisateurs.tokenVersion /
-        // authControllers.logout) — ne s'applique jamais à un token QR mobile,
+        // authControllers.logout), ne s'applique jamais à un token QR mobile,
         // mécanisme distinct et volontairement persistant (pas de "déconnexion" côté
         // mobile qui doive le couper).
         if (!isQrCode) {
             // Number (pas Integer) : Nimbus décode les claims numériques du JWT en
             // Long, un cast direct vers Integer levait une ClassCastException à
-            // chaque requête authentifiée — bug bloquant introduit avec ce mécanisme,
+            // chaque requête authentifiée, bug bloquant introduit avec ce mécanisme,
             // corrigé ici.
             Number tokenVersionDuToken = token.getClaim("tokenVersion");
             int versionActuelle = user.getTokenVersion() != null ? user.getTokenVersion() : 0;

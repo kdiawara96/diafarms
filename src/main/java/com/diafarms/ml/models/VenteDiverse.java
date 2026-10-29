@@ -23,7 +23,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Vente de fientes ou "autre vente" — acte Finance, sans stock suivi, rattachée au
+// Vente de fientes ou "autre vente", acte Finance, sans stock suivi, rattachée au
 // Projet (projet non null) ou à toute la ferme (projet null, cas de toutes les anciennes). Avant, ces ventes n'étaient qu'une Transaction manuelle
 // (catégorie "Vente fientes"/"Autre vente") : la page Ventes devait alors les
 // reconstruire depuis la comptabilité. Maintenant la vente est l'enregistrement

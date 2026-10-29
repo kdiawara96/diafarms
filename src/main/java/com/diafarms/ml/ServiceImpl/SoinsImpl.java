@@ -84,7 +84,7 @@ public class SoinsImpl implements SoinsService {
         return joined.isBlank() ? null : joined;
     }
 
-    // Voir AlimentationImpl.syncTransaction — même principe. Un vaccin (doses + prix
+    // Voir AlimentationImpl.syncTransaction, même principe. Un vaccin (doses + prix
     // unitaire, coût calculé automatiquement) garde sa propre catégorie comptable
     // "Vaccination" pour ne pas mélanger les rapports existants avec les soins
     // génériques, même si les deux vivent maintenant dans la même table.

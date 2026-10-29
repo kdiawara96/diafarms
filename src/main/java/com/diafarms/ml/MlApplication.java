@@ -41,7 +41,7 @@ public class MlApplication implements CommandLineRunner {
 	private final RolesRepo rolesRepo;
     private final UtilisateursRepo utilisateursRepo;
 
-    // Fichier de seed du SUPER_ADMIN de bootstrap — voir SuperAdminSeed et
+    // Fichier de seed du SUPER_ADMIN de bootstrap, voir SuperAdminSeed et
     // loadSuperAdminSeed() : exécuté une seule fois (à la toute première mise en
     // route, quand aucun SUPER_ADMIN n'existe encore en base), jamais recommité avec
     // de vraies valeurs (voir super-admin-seed.example.json pour le modèle).
@@ -89,7 +89,7 @@ public class MlApplication implements CommandLineRunner {
         // =====================================================
         // SUPER_ADMIN est le SEUL rôle autorisé à exister sans ferme (compte
         // système de bootstrap, transversal à toutes les fermes, chargé de créer les
-        // ADMIN de chaque ferme) — tous les autres comptes (ADMIN, PRODUCTEUR,
+        // ADMIN de chaque ferme), tous les autres comptes (ADMIN, PRODUCTEUR,
         // FINANCIER) sont créés avec une ferme obligatoire via UtilisateurImpl (soit
         // une nouvelle ferme à l'inscription, soit celle de l'admin qui les crée).
         // Voir les vérifications `currentUser.getFarm() != null` ajoutées dans les
@@ -119,7 +119,7 @@ public class MlApplication implements CommandLineRunner {
                 admin.setStatut(true);
                 admin.setInitialisation(Initialisation.init());
 
-                // role — SUPER_ADMIN, jamais ADMIN : voir commentaire ci-dessus.
+                // role, SUPER_ADMIN, jamais ADMIN : voir commentaire ci-dessus.
                 Set<Roles> roles = new HashSet<>();
                 roles.add(rolesRepo.findByRole(roleSUPER_ADMIN));
                 admin.setRoles(roles);

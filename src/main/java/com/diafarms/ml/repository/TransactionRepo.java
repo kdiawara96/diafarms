@@ -33,10 +33,10 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
 
     // Retrouve la transaction "recette" générée automatiquement par une vente
     // (VenteOeufs/VenteReforme), pour la faire suivre (montant, removed) quand la
-    // vente source est modifiée ou supprimée — voir TransactionService.createFromSource.
+    // vente source est modifiée ou supprimée, voir TransactionService.createFromSource.
     Optional<Transaction> findBySourceUniqueId(String sourceUniqueId);
 
-    // Paiements/avances directs d'un client (ex: ClientServiceImpl.payerDette) — pas
+    // Paiements/avances directs d'un client (ex: ClientServiceImpl.payerDette), pas
     // liés à une vente, donc invisibles dans venteOeufsRepo/venteReformeRepo, mais ils
     // affectent bien le solde du client (voir ClientServiceImpl.getReport, qui les
     // fusionne dans l'historique pour que le client comprenne pourquoi son solde a
@@ -49,7 +49,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     // LEFT JOIN explicite sur t.projet : un chemin implicite "t.projet.uniqueId" dans le
     // WHERE forcerait un INNER JOIN au niveau SQL et ferait disparaître TOUTES les
     // transactions "Commune" (projet_id NULL) de la liste, même sans filtre projet actif.
-    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel —
+    // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel,
     // voir TransactionServiceImpl.deb()/fin() et le commentaire sur
     // countByProjetIdsAndStatut : comparer un paramètre directement à NULL
     // ("(:x IS NULL OR ...)") fait planter Postgres ("could not determine data type of
@@ -96,7 +96,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
 
     // Chiffre d'affaires réel d'un projet (voir ProjetsDTO.fromEntity/fromEntityList) :
     // uniquement les transactions rattachées directement (t.projet), pas celles
-    // "communes" concernant plusieurs projets (projetsConcernes) — sinon un JOIN sur
+    // "communes" concernant plusieurs projets (projetsConcernes), sinon un JOIN sur
     // cette relation ManyToMany ferait du fan-out et fausserait la somme.
     @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.projet.id = :projetId " +
         "AND t.initialisation.removed = false " +
@@ -106,13 +106,13 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     // ================================================================================
     // Vue "financier" (Comptabilité restreinte) : un FINANCIER ne voit que les
     // transactions des projets où il est responsableFinance (voir
-    // TransactionServiceImpl.resolveProjetIdsScope) — jamais les transactions
+    // TransactionServiceImpl.resolveProjetIdsScope), jamais les transactions
     // "Commune" (projet_id NULL), qui ne sont assignées à aucun projet précis. Un
     // ADMIN peut se placer dans cette même vue pour un financier choisi (filtre
     // "voir comme"), avec une période optionnelle en plus.
     // ================================================================================
 
-    // hasX = mêmes booléens de court-circuit que search() ci-dessus — voir son
+    // hasX = mêmes booléens de court-circuit que search() ci-dessus, voir son
     // commentaire pour le raisonnement complet.
     @Query("SELECT DISTINCT t FROM Transaction t JOIN t.projet p WHERE p.id IN :projetIds " +
         "AND t.initialisation.removed = false " +
@@ -135,11 +135,11 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
                                     @Param("venteClient") boolean venteClient, @Param("horsVenteClient") boolean horsVenteClient,
                               Pageable pageable);
 
-    // dateDebut/dateFin ATTENDUS NON-NULS (voir TransactionServiceImpl.deb()/fin()) —
+    // dateDebut/dateFin ATTENDUS NON-NULS (voir TransactionServiceImpl.deb()/fin()),
     // le pattern "(:dateX IS NULL OR ...)" utilisé ici avant faisait planter Postgres
     // avec "could not determine data type of parameter" (SQLState 42P18) dès que cette
     // requête était exécutée via le protocole étendu JDBC, QUELLE QUE SOIT la valeur
-    // réelle passée (même non-nulle) — Postgres ne peut pas inférer le type d'un
+    // réelle passée (même non-nulle), Postgres ne peut pas inférer le type d'un
     // paramètre comparé directement à NULL dans une requête agrégat (COUNT/SUM). Fix :
     // l'appelant résout toujours une borne concrète (sentinelles 1900-01-01/2999-12-31
     // pour "pas de filtre"), la requête compare directement sans jamais tester IS NULL.
@@ -161,7 +161,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     Double sumMontantValideByProjetIdsAndSourceType(@Param("projetIds") List<Long> projetIds, @Param("sourceType") SourceTransaction sourceType,
                                                      @Param("dateDebut") LocalDate dateDebut, @Param("dateFin") LocalDate dateFin);
 
-    // Farm-wide avec période optionnelle — utilisée par l'ADMIN quand il filtre par
+    // Farm-wide avec période optionnelle, utilisée par l'ADMIN quand il filtre par
     // date sans restreindre à un financier ("tous les financiers").
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.farm.id = :farmId AND t.initialisation.removed = false " +
         "AND t.statut = :statut " +
@@ -183,13 +183,13 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
 
     // ================================================================================
     // Vue "vendeur" (page Ventes restreinte) : un axe différent de la vue "financier"
-    // ci-dessus — restreint par QUI A CRÉÉ la transaction (t.creePar), pas par le
+    // ci-dessus, restreint par QUI A CRÉÉ la transaction (t.creePar), pas par le
     // projet. Un FINANCIER pur ne voit que ses propres ventes ; un ADMIN peut choisir
-    // n'importe quel vendeur (ou aucun = tout le monde) — voir
+    // n'importe quel vendeur (ou aucun = tout le monde), voir
     // TransactionServiceImpl.resolveVendeurScopeForList.
     // ================================================================================
 
-    // hasX = mêmes booléens de court-circuit que search() plus haut — voir son
+    // hasX = mêmes booléens de court-circuit que search() plus haut, voir son
     // commentaire pour le raisonnement complet.
     @Query("SELECT DISTINCT t FROM Transaction t WHERE t.farm.id = :farmId AND t.creePar.uniqueId = :creeParUniqueId " +
         "AND t.initialisation.removed = false " +
@@ -211,7 +211,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
                                        @Param("venteClient") boolean venteClient, @Param("horsVenteClient") boolean horsVenteClient,
                               Pageable pageable);
 
-    // Transactions rejetées créées par un utilisateur donné — sert à le notifier du
+    // Transactions rejetées créées par un utilisateur donné, sert à le notifier du
     // rejet (voir NotificationServiceImpl.addRejetNotification), pour qu'un
     // FINANCIER apprenne qu'une de ses ventes a été rejetée sans avoir à parcourir
     // Comptabilité (auquel il n'a de toute façon pas accès en détail).
@@ -220,7 +220,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
     List<Transaction> findRejeteesByCreeParId(@Param("creeParId") Long creeParId);
 
     // Transactions VALIDÉES directement rattachées à CE projet (jamais "Commune" ni
-    // projetsConcernes) — sert à RapportJournalierServiceImpl à reconstituer
+    // projetsConcernes), sert à RapportJournalierServiceImpl à reconstituer
     // EJA/DJA/ADJ jour par jour à partir de sourceType/type/montant.
     @Query("SELECT t FROM Transaction t WHERE t.projet.id = :projetId " +
         "AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE AND t.initialisation.removed = false")
@@ -249,7 +249,7 @@ public interface TransactionRepo extends JpaRepository<Transaction, Long> {
 
     // Circuit argent client (Comptabilité, TransactionServiceImpl.getStats) : entrées
     // d'argent hors transactions de vente (paiements clients, entrées manuelles, ventes
-    // diverses au comptant) — exclut VENTE_OEUFS/VENTE_REFORME qui portent le montant
+    // diverses au comptant), exclut VENTE_OEUFS/VENTE_REFORME qui portent le montant
     // THÉORIQUE (quantité×prix), pas l'argent réellement encaissé.
     @Query("SELECT COALESCE(SUM(t.montant), 0.0) FROM Transaction t WHERE t.farm.id = :farmId " +
            "AND t.initialisation.removed = false AND t.statut = com.diafarms.ml.enums.StatutTransaction.VALIDE " +

@@ -17,7 +17,7 @@ import com.diafarms.ml.services.VenteReformeService;
 
 import lombok.RequiredArgsConstructor;
 
-// Vente réforme (Finance) : à l'échelle de la ferme entière — pas de paramètre
+// Vente réforme (Finance) : à l'échelle de la ferme entière, pas de paramètre
 // projetUniqueId, contrairement aux endpoints Production (/reformes/*).
 @RestController
 @RequestMapping("/diafarms/api/v1/ventes-reforme")
@@ -50,7 +50,7 @@ public class VenteReformeControllers {
     }
 
     // Statistiques réforme : sujets vendus, poids vendu au kilo, prix moyen au kilo et par
-    // tête, poids moyen par sujet — voir StatsReformeDTO. Dates "yyyy-MM-dd" optionnelles.
+    // tête, poids moyen par sujet, voir StatsReformeDTO. Dates "yyyy-MM-dd" optionnelles.
     @GetMapping("/stats")
     public ResponseEntity<ApiResponse<com.diafarms.ml.DTO.StatsReformeDTO>> stats(
             @RequestParam(required = false) String dateDebut,
@@ -125,7 +125,7 @@ public class VenteReformeControllers {
         }
     }
 
-    // Suppression en deux temps (demande puis confirmation) — voir VenteReformeImpl :
+    // Suppression en deux temps (demande puis confirmation), voir VenteReformeImpl :
     // jamais le vendeur, même pour sa propre vente.
     @PutMapping("/demander-suppression/{uniqueId}")
     public ResponseEntity<ApiResponse<VenteReformeDTO>> demanderSuppression(@PathVariable String uniqueId,

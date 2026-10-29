@@ -51,7 +51,7 @@ import com.lowagie.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
 
 // Salaire = grille salariale d'un employé (mode MENSUEL/JOURNALIER/HORAIRE + taux) ;
-// PaiementSalaire = un paiement réel pour une période — voir Salaire.java/
+// PaiementSalaire = un paiement réel pour une période, voir Salaire.java/
 // PaiementSalaire.java. "Payer le salaire" calcule le montant selon le mode
 // (tauxBase directement en MENSUEL, tauxBase × quantite en JOURNALIER/HORAIRE) et
 // génère une vraie Transaction (TransactionService.createSortieCommune) plutôt que
@@ -131,7 +131,7 @@ public class SalaireServiceImpl implements SalaireService {
             s.getInitialisation().setUpdatedAt(java.time.LocalDateTime.now());
         }
         // Le taux change réellement (ou c'est un tout nouveau Salaire) : ferme
-        // l'enregistrement historique actif et en ouvre un nouveau — sans ça, payer
+        // l'enregistrement historique actif et en ouvre un nouveau, sans ça, payer
         // en retard une période antérieure à ce changement proposerait à tort le
         // NOUVEAU taux (voir resolveTauxPourPeriode, utilisé par payer()).
         boolean changementReel = nouveau || !modePaiement.equals(s.getModePaiement()) || !data.getTauxBase().equals(s.getTauxBase());
@@ -166,7 +166,7 @@ public class SalaireServiceImpl implements SalaireService {
         return SalaireDTO.fromEntity(saved, paiementSalaireRepo.findFirstBySalaire_IdOrderByPeriodeDesc(saved.getId()));
     }
 
-    // Taux réellement en vigueur pour la période demandée (format "AAAA-MM") — le
+    // Taux réellement en vigueur pour la période demandée (format "AAAA-MM"), le
     // dernier enregistrement SalaireHistorique dont dateEffective ne dépasse pas la
     // fin de ce mois-là. Si aucun (données antérieures à cette fonctionnalité, jamais
     // migrées), retombe sur le taux ACTUEL de la grille plutôt que d'échouer.
@@ -245,7 +245,7 @@ public class SalaireServiceImpl implements SalaireService {
         }
 
         // Taux réellement en vigueur pour CETTE période (pas forcément le taux actuel
-        // de la grille — voir resolveTauxPourPeriode) : sert au calcul automatique ET
+        // de la grille, voir resolveTauxPourPeriode) : sert au calcul automatique ET
         // gardé sur le paiement pour que le bulletin reste exact même si la grille
         // change plus tard (ex: paiement en retard d'un mois à l'ancien taux).
         TauxSalaireDTO tauxPeriode = resolveTauxPourPeriode(s, data.getPeriode());
@@ -369,7 +369,7 @@ public class SalaireServiceImpl implements SalaireService {
         }
         PaiementSalaire saved = paiementSalaireRepo.save(p);
 
-        // Répercute la correction sur la Transaction déjà créée pour ce paiement —
+        // Répercute la correction sur la Transaction déjà créée pour ce paiement,
         // voir payer() : sourceUniqueId = uniqueId du paiement.
         transactionService.updateMontantBySource(saved.getUniqueId(), saved.getMontantPaye());
 
@@ -430,7 +430,7 @@ public class SalaireServiceImpl implements SalaireService {
         );
     }
 
-    // Logo/tampon optionnels (voir Farm.logoNomMinio/tamponNomMinio) — mirroir de
+    // Logo/tampon optionnels (voir Farm.logoNomMinio/tamponNomMinio), mirroir de
     // FactureServiceImpl.chargerImage, un échec de chargement est traité comme
     // absent plutôt que de faire échouer toute la génération du PDF.
     private Image chargerImage(String nomMinio) {
@@ -452,7 +452,7 @@ public class SalaireServiceImpl implements SalaireService {
         Salaire s = p.getSalaire();
         Personnel employe = s.getEmploye();
         Farm farm = s.getFarm();
-        // Mode/taux réellement appliqués à CE paiement (voir payer()) — retombe sur le
+        // Mode/taux réellement appliqués à CE paiement (voir payer()), retombe sur le
         // taux ACTUEL de la grille seulement pour un paiement antérieur à cette
         // fonctionnalité (modePaiementApplique/tauxApplique alors null).
         ModePaiement modeBulletin = p.getModePaiementApplique() != null ? p.getModePaiementApplique() : s.getModePaiement();
@@ -465,7 +465,7 @@ public class SalaireServiceImpl implements SalaireService {
             document.open();
 
             // ===== En-tête : logo + identité de la ferme à gauche, titre + période à
-            // droite — voir Farm.nom/quartier/ville/pays/telephone1/telephone2/email,
+            // droite, voir Farm.nom/quartier/ville/pays/telephone1/telephone2/email,
             // configurables depuis Paramètres > Identité de la ferme côté web.
             PdfPTable header = new PdfPTable(2);
             header.setWidthPercentage(100);

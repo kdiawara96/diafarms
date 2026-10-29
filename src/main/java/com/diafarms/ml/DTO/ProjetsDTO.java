@@ -54,7 +54,7 @@ public class ProjetsDTO {
      private List<AlimentationDTO> alimentation;
      private RaceDTO race;
      private List<OccupationBatimentDTO> occupationBatiment;
-     // Vaccins/médicaments/autres soins réunis dans une seule liste — voir Soins.type
+     // Vaccins/médicaments/autres soins réunis dans une seule liste, voir Soins.type
      // (TypeSoin.VACCINATION == ancien VaccinationDTO, fusionné le 2026-09-16). Le
      // front filtre par type côté client pour ses deux sections visuelles distinctes.
      private List<SoinsDTO> soins;
@@ -66,7 +66,7 @@ public class ProjetsDTO {
      private Integer sujetsReformesCumulee;
      private Integer effectifVivant;
 
-     // Reflet direct de !initialisation.archive — absent du DTO jusqu'ici, le front
+     // Reflet direct de !initialisation.archive, absent du DTO jusqu'ici, le front
      // (Fiche Projet) n'avait aucun moyen de savoir si LE projet ouvert était déjà
      // clôturé (contrairement à ProjetsSelect.active, utilisé pour les listes/select).
      private Boolean active;
@@ -75,7 +75,7 @@ public class ProjetsDTO {
      /**
       * @param tauxPonte moyenne journalière récente d'œufs collectés / effectif
       *                   actuel (%), calculée par l'appelant (accès aux repos).
-      * @param mortaliteCumulee morts cumulés / effectif initial (%), idem — sans ce
+      * @param mortaliteCumulee morts cumulés / effectif initial (%), idem, sans ce
       *                   paramètre le champ restait null côté liste paginée des
       *                   projets (contrairement à fromEntity), d'où un "null" affiché
       *                   en clair par le front (ex: dialogue de clôture) au lieu d'un
@@ -85,7 +85,7 @@ public class ProjetsDTO {
       *                   cette colonne entité reste figée à 0.0 depuis la création du
       *                   projet (jamais recalculée), donc plus une vraie donnée de
       *                   chiffre d'affaires. Ne compte QUE les transactions rattachées
-      *                   à ce projet précis — les ventes d'œufs/réforme (Finance,
+      *                   à ce projet précis, les ventes d'œufs/réforme (Finance,
       *                   plafonnées à l'échelle de la ferme, voir VenteOeufsImpl/
       *                   VenteReformeImpl) génèrent des transactions "communes" et
       *                   n'apparaissent donc jamais dans ce chiffre par projet.
@@ -145,7 +145,7 @@ public class ProjetsDTO {
         * @param tauxPonte moyenne journalière récente d'œufs collectés / effectif
         *                   actuel (%), calculée par l'appelant (accès aux repos).
         * @param mortaliteCumulee morts cumulés / effectif initial (%), idem.
-        * @param chiffreAffairesReel voir fromEntityList — même remplacement de
+        * @param chiffreAffairesReel voir fromEntityList, même remplacement de
         *                   data.getChiffreAffaires() par la somme réelle des ventes
         *                   rattachées à ce projet (hors ventes œufs/réforme "communes").
         * @param sujetsReformesCumulee sujets réformés (Production) de ce projet, voir fromEntityList.

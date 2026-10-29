@@ -19,16 +19,16 @@ public interface PaiementAbonnementRepo extends JpaRepository<PaiementAbonnement
     Optional<PaiementAbonnement> findByUniqueId(String uniqueId);
 
     // Garde-fou "une seule déclaration en attente à la fois" pour une ferme donnée
-    // (via son Abonnement) — voir AbonnementServiceImpl.declarerPaiement.
+    // (via son Abonnement), voir AbonnementServiceImpl.declarerPaiement.
     Optional<PaiementAbonnement> findByAbonnement_IdAndStatut(Long abonnementId, StatutPaiementAbonnement statut);
 
     // Liste SUPER_ADMIN de toutes les déclarations en attente, toutes fermes
-    // confondues — voir AbonnementServiceImpl.listEnAttente.
+    // confondues, voir AbonnementServiceImpl.listEnAttente.
     @Query("SELECT p FROM PaiementAbonnement p WHERE p.statut = :statut ORDER BY p.dateDeclaration ASC")
     Page<PaiementAbonnement> findByStatutOrderByDateDeclarationAsc(@Param("statut") StatutPaiementAbonnement statut, Pageable pageable);
 
     // Historique complet des déclarations de paiement d'une ferme (voir
-    // AbonnementServiceImpl.getHistorique) — volume trivial (au plus quelques
+    // AbonnementServiceImpl.getHistorique), volume trivial (au plus quelques
     // dizaines de lignes sur toute la vie d'un abonnement), filtrage/pagination
     // faits côté service en Java plutôt qu'en JPQL avec paramètre optionnel
     // (évite le bug Postgres "(:param IS NULL OR ...)" sur un type énuméré).

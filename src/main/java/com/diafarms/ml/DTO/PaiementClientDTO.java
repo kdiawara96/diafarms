@@ -15,7 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Argent reçu d'un client — voir PaiementClient. impute/disponible sont recalculés à
+// Argent reçu d'un client, voir PaiementClient. impute/disponible sont recalculés à
 // la volée (jamais stockés) à partir des ImputationPaiement actives.
 @Getter
 @Setter

@@ -60,7 +60,7 @@ public class AbonnementServiceImpl implements AbonnementService {
 
     // Auto-injection paresseuse : nécessaire pour que l'appel à
     // creerEssaiPourFarmIsole depuis getOuCreerAbonnement passe par le proxy Spring
-    // (voir plus bas) — un appel this.creerEssaiPourFarmIsole(...) ignorerait
+    // (voir plus bas), un appel this.creerEssaiPourFarmIsole(...) ignorerait
     // complètement son @Transactional et l'exécuterait dans la transaction ambiante
     // de l'appelant, ce qui rendrait le rattrapage de la course de création (voir
     // getOuCreerAbonnement) inefficace : Postgres avorte toute la transaction sur
@@ -99,7 +99,7 @@ public class AbonnementServiceImpl implements AbonnementService {
 
     // Farm.nom est null par construction pour une ferme fraîchement inscrite (le nom
     // saisi à l'inscription est stocké sur Utilisateurs.farmName, jamais recopié sur
-    // Farm tant que l'ADMIN n'a pas visité Paramètres → Identité de la ferme) — un
+    // Farm tant que l'ADMIN n'a pas visité Paramètres → Identité de la ferme), un
     // UUID brut n'aide personne à identifier la ferme dans le portail SUPER_ADMIN ou
     // l'objet d'un email, donc on retombe sur le nom saisi à l'inscription avant
     // l'UUID en dernier recours.
@@ -113,7 +113,7 @@ public class AbonnementServiceImpl implements AbonnementService {
         return farm.getUniqueId();
     }
 
-    // Ligne unique de config, créée avec des valeurs par défaut si absente — voir
+    // Ligne unique de config, créée avec des valeurs par défaut si absente, voir
     // AbonnementConfig.
     private AbonnementConfig getOuCreerConfig() {
         AbonnementConfig config = configRepo.findFirstByOrderByIdAsc();
@@ -159,7 +159,7 @@ public class AbonnementServiceImpl implements AbonnementService {
 
     // Appelé depuis UtilisateurImpl.save() à l'inscription d'une NOUVELLE ferme :
     // doit rester dans la MÊME transaction que la création de la Farm elle-même
-    // (propagation par défaut, REQUIRED) — la ligne Farm n'est pas encore commitée
+    // (propagation par défaut, REQUIRED), la ligne Farm n'est pas encore commitée
     // tant que cette transaction n'a pas fini, donc une transaction isolée ici (comme
     // pour le chemin paresseux ci-dessous) ne verrait pas encore cette Farm et
     // échouerait sur la contrainte de clé étrangère.
@@ -184,7 +184,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     // Variante utilisée UNIQUEMENT par le chemin de création paresseuse ci-dessous,
     // pour une ferme PRÉEXISTANTE (donc déjà commitée depuis longtemps) : isolée
     // dans sa propre transaction (REQUIRES_NEW) pour qu'une violation de contrainte
-    // concurrente n'avorte que cette transaction-ci, jamais celle de l'appelant —
+    // concurrente n'avorte que cette transaction-ci, jamais celle de l'appelant,
     // voir le commentaire sur le champ `self` plus haut. Ne jamais appeler via
     // `this.`, seulement `self.creerEssaiPourFarmIsole(...)`, sous peine de rendre
     // ce @Transactional inerte.
@@ -194,7 +194,7 @@ public class AbonnementServiceImpl implements AbonnementService {
     }
 
     // Création paresseuse pour les fermes créées avant ce déploiement (voir spec,
-    // section "Erreurs et cas limites") — essai complet à partir d'AUJOURD'HUI,
+    // section "Erreurs et cas limites"), essai complet à partir d'AUJOURD'HUI,
     // jamais rétroactif à la vraie date d'inscription de la ferme.
     private Abonnement getOuCreerAbonnement(Farm farm) {
         return abonnementRepo.findByFarm_Id(farm.getId()).orElseGet(() -> {
@@ -205,7 +205,7 @@ public class AbonnementServiceImpl implements AbonnementService {
                 // Abonnement.tsx qui appellent toutes les deux GET /abonnements/moi au
                 // même chargement de page) : l'autre thread a déjà inséré la ligne, la
                 // contrainte unique sur Abonnement.farm a rejeté celle-ci dans SA PROPRE
-                // transaction (REQUIRES_NEW), qui a donc avorté seule — la transaction de
+                // transaction (REQUIRES_NEW), qui a donc avorté seule, la transaction de
                 // cet appelant reste saine. On relit la ligne existante au lieu de
                 // propager un 500.
             }

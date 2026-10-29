@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Endpoints pour la ferme courante — ville (WeatherService) et identité visuelle
+ * Endpoints pour la ferme courante, ville (WeatherService) et identité visuelle
  * (logo/tampon, insérés sur les factures et bulletins de salaire générés en PDF,
  * voir FactureServiceImpl/SalaireServiceImpl). Pas encore de gestion complète de la
  * ferme (nom, adresse...), à étendre si le besoin apparaît.
@@ -65,7 +65,7 @@ public class FarmController {
     }
 
     // Les URLs pré-signées MinIO pointent vers un hostname interne au réseau Docker
-    // (MINIO_URL), injoignable depuis le navigateur — d'où le logo/tampon qui ne
+    // (MINIO_URL), injoignable depuis le navigateur, d'où le logo/tampon qui ne
     // s'affichaient jamais en production. On sert donc les octets nous-mêmes via un
     // endpoint public (voir logo()/tampon() ci-dessous), construit ici en URL absolue
     // à partir de la requête entrante plutôt que d'un BASE_URL statique.
@@ -94,7 +94,7 @@ public class FarmController {
 
     // Publics (pas d'authentification) : un <img src="..."> ne transmet pas les
     // cookies cross-site en SameSite=Lax, il faut donc que ces routes soient
-    // accessibles sans session — voir SecurityConfiguration.publicFilterChain.
+    // accessibles sans session, voir SecurityConfiguration.publicFilterChain.
     // Identifiées par uniqueId de ferme (pas par utilisateur courant) précisément
     // pour pouvoir rester publiques sans exposer de données sensibles.
     @GetMapping("/{farmUniqueId}/logo")
@@ -124,7 +124,7 @@ public class FarmController {
         }
     }
 
-    // Coordonnées de la ferme (nom, adresse, contact) — un seul formulaire côté web
+    // Coordonnées de la ferme (nom, adresse, contact), un seul formulaire côté web
     // (Paramètres > Identité de la ferme), un seul endpoint ici plutôt qu'un par champ.
     // Chaîne vide/blanche => retiré (null), pas conservé tel quel.
     @PutMapping("/me/identite")

@@ -14,7 +14,7 @@ import lombok.Setter;
 
 // Une ligne = un taux qui a été en vigueur pour ce Salaire, sur une période donnée
 // (dateEffective -> dateFin, dateFin null = toujours en vigueur). Créée à chaque fois
-// que SalaireServiceImpl.definir() change réellement le mode/taux d'un Salaire — sans
+// que SalaireServiceImpl.definir() change réellement le mode/taux d'un Salaire, sans
 // ça, payer une période en retard après une augmentation de salaire proposerait à tort
 // le NOUVEAU taux pour un mois où l'ANCIEN était encore en vigueur (voir
 // SalaireServiceImpl.resolveTauxPourPeriode).
@@ -47,7 +47,7 @@ public class SalaireHistorique {
     @Column(name = "date_effective", nullable = false)
     private LocalDate dateEffective;
 
-    // null = toujours en vigueur (le taux "courant") — voir
+    // null = toujours en vigueur (le taux "courant"), voir
     // SalaireServiceImpl.definir, qui ferme l'ancien enregistrement actif avant d'en
     // ouvrir un nouveau.
     @Column(name = "date_fin")

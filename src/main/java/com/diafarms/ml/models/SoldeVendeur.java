@@ -11,10 +11,10 @@ import lombok.Setter;
 
 // Solde cumulé, reporté d'une vente à l'autre, entre le montant théorique et le
 // montant réellement rapporté par un vendeur (voir VenteOeufs/VenteReforme
-// .montant/montantRapporte) — positif = le vendeur doit de l'argent à la ferme
+// .montant/montantRapporte), positif = le vendeur doit de l'argent à la ferme
 // (dette), négatif = trop rapporté (crédit, ex: remboursement d'une dette
 // précédente). Un solde par (vendeur, ferme), mis à jour à chaque vente créée/
-// modifiée/supprimée par ce vendeur — voir SoldeVendeurServiceImpl.
+// modifiée/supprimée par ce vendeur, voir SoldeVendeurServiceImpl.
 @Entity
 @Table(name = "soldes_vendeur")
 @AllArgsConstructor

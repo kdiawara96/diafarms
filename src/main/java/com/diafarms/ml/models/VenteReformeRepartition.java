@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Ventilation d'une VenteReforme (Finance, ferme entière) entre les projets ayant
-// contribué au lot vendu — voir VenteOeufsRepartition pour le détail du mécanisme.
+// contribué au lot vendu, voir VenteOeufsRepartition pour le détail du mécanisme.
 @Entity
 @Table(name = "ventes_reforme_repartitions")
 @Getter

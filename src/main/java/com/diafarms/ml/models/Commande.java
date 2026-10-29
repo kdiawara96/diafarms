@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Ce qu'un client demande AVANT que la vente ne soit finalisée (quantité pas encore
-// livrée, paiement pas encore intégralement encaissé, éventuellement un acompte) —
+// livrée, paiement pas encore intégralement encaissé, éventuellement un acompte),
 // distincte d'une vente immédiate (VenteOeufs/VenteReforme). Une commande a toujours
 // un client (contrairement à une vente, où c'est optionnel) : une commande anonyme
 // n'a pas de sens, on ne peut pas prévenir quelqu'un qu'on ne connaît pas quand c'est
@@ -52,7 +52,7 @@ public class Commande {
     private Integer quantite;
 
     // Cumul déjà livré (via CommandeServiceImpl.livrer, appelée une ou plusieurs fois
-    // pour une grosse commande livrée au fil de la collecte) — NULL sur les commandes
+    // pour une grosse commande livrée au fil de la collecte), NULL sur les commandes
     // existantes avant ce champ, traité comme 0. Passe à CONVERTIE seulement une fois
     // quantiteLivree >= quantite ; reste CONFIRMEE/EN_ATTENTE entre deux livraisons
     // partielles.
@@ -86,7 +86,7 @@ public class Commande {
     @Column(name = "poids_estime_kg")
     private Double poidsEstimeKg;
 
-    // Acompte versé à la commande (optionnel) — encaissé et porté au solde du client
+    // Acompte versé à la commande (optionnel), encaissé et porté au solde du client
     // dès la création (voir CommandeServiceImpl.create/payerDette), PAS reporté à
     // nouveau sur la vente générée lors de la conversion (ça le compterait deux fois
     // sur le solde, voir CommandeServiceImpl.convertirEnVente).
@@ -104,7 +104,7 @@ public class Commande {
             columnDefinition = "varchar(20) not null default 'EN_ATTENTE'")
     private StatutCommande statut = StatutCommande.EN_ATTENTE;
 
-    // Renseigné uniquement une fois CONVERTIE — pointe vers VenteOeufs.uniqueId ou
+    // Renseigné uniquement une fois CONVERTIE, pointe vers VenteOeufs.uniqueId ou
     // VenteReforme.uniqueId selon `type` (jamais les deux, pas de FK directe : deux
     // entités cible possibles selon le type, même principe que Transaction.sourceUniqueId).
     @Column(name = "vente_unique_id", length = 50)
@@ -118,7 +118,7 @@ public class Commande {
     @JoinColumn(name = "farm_id", nullable = false)
     private Farm farm;
 
-    // Motif de clôture (livrée en partie, on arrête là) ou d'annulation (rien livré) —
+    // Motif de clôture (livrée en partie, on arrête là) ou d'annulation (rien livré),
     // voir CommandeServiceImpl.cloturer/annuler. Obligatoire (MotifSuppressionRequest),
     // mais nullable en base : vide tant que la commande suit son cours normal.
     @Column(name = "motif_fin", columnDefinition = "TEXT")

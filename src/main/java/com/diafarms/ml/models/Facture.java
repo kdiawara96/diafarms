@@ -12,13 +12,13 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Document de facturation généré depuis UNE vente (VenteOeufs/VenteReforme) ou UNE
-// commande CONVERTIE — jamais anonyme (client obligatoire, décision utilisateur
+// commande CONVERTIE, jamais anonyme (client obligatoire, décision utilisateur
 // 2026-08-12, même choix que Commande) : contrairement à SoldeClient (qui suit la
 // dette au fil des ventes), Facture est un snapshot figé au moment de l'émission
 // (quantité/prix/montants ne bougent plus après, même si la vente d'origine est
 // modifiée plus tard). montantPaye/statut peuvent évoluer via marquerPayee, qui
 // enregistre un vrai paiement (Transaction + SoldeClient), même mécanisme que
-// ClientServiceImpl.payerDette — voir FactureServiceImpl.
+// ClientServiceImpl.payerDette, voir FactureServiceImpl.
 @Entity
 @Table(name = "factures")
 @AllArgsConstructor
@@ -48,7 +48,7 @@ public class Facture {
     @Column(name = "date_emission", nullable = false)
     private LocalDate dateEmission;
 
-    // D'où vient la facture — sourceUniqueId pointe vers VenteOeufs.uniqueId,
+    // D'où vient la facture, sourceUniqueId pointe vers VenteOeufs.uniqueId,
     // VenteReforme.uniqueId ou Commande.uniqueId selon sourceType (même principe que
     // Commande.venteUniqueId / Transaction.sourceUniqueId : pas de FK directe, plusieurs
     // entités cibles possibles).
@@ -68,13 +68,13 @@ public class Facture {
     @Column(name = "prix_unitaire")
     private Double prixUnitaire;
 
-    // Snapshot figé au moment de l'émission — ne suit plus les modifications
+    // Snapshot figé au moment de l'émission, ne suit plus les modifications
     // ultérieures de la vente/commande d'origine.
     @Column(name = "montant_total", nullable = false)
     private Double montantTotal;
 
     // Non utilisé pour une facture non-legacy (montantPaye/statut recalculés à la volée
-    // depuis les imputations des lignes — voir FactureServiceImpl.toDto/FactureDTO) :
+    // depuis les imputations des lignes, voir FactureServiceImpl.toDto/FactureDTO) :
     // reste à 0 et n'est jamais mis à jour après la génération. Seule une facture legacy
     // (voir `legacy` ci-dessous) affiche encore cette valeur telle quelle.
     @Column(name = "montant_paye", nullable = false, columnDefinition = "double precision not null default 0")
@@ -93,7 +93,7 @@ public class Facture {
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     private Boolean legacy = false;
 
-    // Motif obligatoire (voir MotifSuppressionRequest) d'une annulation de facture —
+    // Motif obligatoire (voir MotifSuppressionRequest) d'une annulation de facture,
     // voir FactureServiceImpl.annuler. Les ventes qu'elle listait redeviennent
     // facturables (FactureLigneRepo.venteDejaFacturee exclut les factures ANNULEE) ;
     // les paiements déjà encaissés dessus ne sont pas touchés.

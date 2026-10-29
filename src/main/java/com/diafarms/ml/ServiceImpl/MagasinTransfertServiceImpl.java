@@ -33,7 +33,7 @@ import lombok.RequiredArgsConstructor;
 
 // Transfert = seule façon de faire entrer du stock (œufs/réforme) dans un magasin de
 // vente, plafonné par ce qui reste disponible pour LE PROJET SOURCE et n'a pas encore
-// été transféré ailleurs (voir disponibleATransfererDepuisProjet) — remplace la
+// été transféré ailleurs (voir disponibleATransfererDepuisProjet), remplace la
 // répartition automatique proportionnelle qui se faisait avant à la vente
 // (voir VenteOeufsImpl/VenteReformeImpl, désormais scopés par magasin).
 @Service
@@ -105,9 +105,9 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
         return Math.max(0, total - dejaTransfere);
     }
 
-    /** Combien chaque projet a déposé dans CE magasin de stockage — pool "bon"
-     * (collectés - cassés - non utilisables, voir StockOeufsRegle) OU pool "cassé" selon type, totalement séparés — moins ce
-     * qui en a déjà été transféré DEPUIS ce même magasin POUR CE TYPE — sert de base à
+    /** Combien chaque projet a déposé dans CE magasin de stockage, pool "bon"
+     * (collectés - cassés - non utilisables, voir StockOeufsRegle) OU pool "cassé" selon type, totalement séparés, moins ce
+     * qui en a déjà été transféré DEPUIS ce même magasin POUR CE TYPE, sert de base à
      * la répartition automatique d'un transfert entre projets contributeurs (voir
      * create() ci-dessous), même rôle que VenteOeufsImpl.disponibleParProjetDansMagasin
      * mais un cran plus tôt dans la chaîne (magasin de stockage, pas magasin de vente). */
@@ -224,13 +224,13 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             return List.of(MagasinTransfertDTO.fromEntity(saved));
         }
 
-        // Œufs (bons ou cassés) : la source est un magasin de stockage, pas un projet —
+        // Œufs (bons ou cassés) : la source est un magasin de stockage, pas un projet,
         // le vendeur/responsable ne se soucie pas de savoir quel projet a pondu quel
         // œuf, tous les œufs du magasin sont mélangés (dans leur pool respectif, bon ou
-        // cassé — jamais les deux ensemble). La répartition entre projets contributeurs
+        // cassé, jamais les deux ensemble). La répartition entre projets contributeurs
         // reste nécessaire en coulisses pour que le chiffre d'affaires remonte
         // correctement à chacun (voir VenteOeufsImpl), donc on la fait ici
-        // automatiquement — même algorithme que pour une vente (RepartitionUtil),
+        // automatiquement, même algorithme que pour une vente (RepartitionUtil),
         // sans montant associé (un transfert ne génère pas d'argent, juste un
         // mouvement physique).
         if (data.getMagasinStockageUniqueId() == null || data.getMagasinStockageUniqueId().isBlank()) {
@@ -283,7 +283,7 @@ public class MagasinTransfertServiceImpl implements MagasinTransfertService {
             if (premierId == null) premierId = saved.getId();
             resultats.add(MagasinTransfertDTO.fromEntity(saved));
         }
-        // Une seule entrée de log pour tout l'appel (pas une par projet contributeur) —
+        // Une seule entrée de log pour tout l'appel (pas une par projet contributeur),
         // ce sont des lignes techniques de répartition, pas des actions distinctes du
         // point de vue de l'utilisateur qui a lancé UN transfert.
         logs.addLogs(currentUser.getId(), premierId, "MagasinTransfert",

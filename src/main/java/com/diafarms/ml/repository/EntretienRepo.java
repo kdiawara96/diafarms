@@ -19,7 +19,7 @@ public interface EntretienRepo extends JpaRepository<Entretien, Long> {
     Optional<Entretien> findByUniqueId(String uniqueId);
 
     // LEFT JOIN explicite sur batiment : un chemin implicite dans le WHERE forcerait
-    // un INNER JOIN et ferait disparaître les entrées SITE (batiment_id null) — même
+    // un INNER JOIN et ferait disparaître les entrées SITE (batiment_id null), même
     // piège que SoinsRepo.search.
     // hasX = booléens toujours concrets qui court-circuitent chaque filtre optionnel, valeur
     // factice non nulle quand hasX = false : jamais de "(:x IS NULL OR ...)" (plantage

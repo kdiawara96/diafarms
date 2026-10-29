@@ -30,7 +30,7 @@ public class SoldeVendeurController {
         }
     }
 
-    // Le sien — visible par tout vendeur pour la carte KPI de son tableau de bord.
+    // Le sien, visible par tout vendeur pour la carte KPI de son tableau de bord.
     @GetMapping("/moi")
     public ResponseEntity<ApiResponse<SoldeVendeurDTO>> moi() {
         try {
@@ -40,7 +40,7 @@ public class SoldeVendeurController {
         }
     }
 
-    // Vue d'ensemble farm-wide — admin/responsable, pour repérer les dettes en cours.
+    // Vue d'ensemble farm-wide, admin/responsable, pour repérer les dettes en cours.
     @GetMapping("/list")
     public ResponseEntity<ApiResponse<List<SoldeVendeurDTO>>> list() {
         try {

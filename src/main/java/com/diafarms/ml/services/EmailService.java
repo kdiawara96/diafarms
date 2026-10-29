@@ -18,7 +18,7 @@ public interface EmailService {
 
     /**
      * Envoie un nouveau mot de passe généré par un ADMIN (bouton "Réinitialiser" sur
-     * la fiche utilisateur) — distinct de sendPasswordResetCode (code à saisir soi-même
+     * la fiche utilisateur), distinct de sendPasswordResetCode (code à saisir soi-même
      * via /forgot-password) : ici le mot de passe est déjà changé côté serveur, l'email
      * ne fait que le communiquer.
      */

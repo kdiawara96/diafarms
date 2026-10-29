@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 // Résultat agrégé par projet : montant théorique de ses ventes (œufs + réforme) sur
-// la période, et sa part du montant réellement rapporté — voir
+// la période, et sa part du montant réellement rapporté, voir
 // TransactionServiceImpl.getVentesReelParProjet. Sert au web (Reporting.tsx) à
 // corriger "Entrées" par projet, qui ne comptait jusqu'ici que le théorique.
 @Getter

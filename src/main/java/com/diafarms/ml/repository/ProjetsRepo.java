@@ -59,13 +59,13 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     @Query("SELECT p FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false")
     List<Projets> findAllActiveByFarm(@Param("farmId") Long farmId);
 
-    // LEFT JOIN explicites obligatoires ici — trouvé en creusant un bug réel de
+    // LEFT JOIN explicites obligatoires ici, trouvé en creusant un bug réel de
     // synchronisation mobile ("le projet ne vient pas") : une navigation implicite
     // (p.responsableProduction.uniqueId) génère un INNER JOIN par défaut en JPQL. Avec
     // 3 associations OPTIONNELLES combinées en OR (responsableProduction/Finance/
     // responsable), dès qu'UNE SEULE des trois est NULL pour un projet (cas courant :
     // "responsable" générique jamais renseigné), l'INNER JOIN correspondant élimine le
-    // projet ENTIER de la requête — même si responsableProduction/Finance matchaient
+    // projet ENTIER de la requête, même si responsableProduction/Finance matchaient
     // bien. Confirmé : la requête native équivalente (LEFT JOIN) trouvait le projet,
     // celle-ci (implicite) non. Voir aussi findRecentAssignedToUser, qui "marchait" par
     // simple coïncidence (elle ne teste pas p.responsable, jamais concernée par ce bug).
@@ -78,10 +78,10 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     List<Projets> findAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 
     // Variante triée/limitée de findAssignedToUser, pour la modale "Profil & Accès Mobile
-    // Utilisateur" côté web (derniers projets associés) — actifs ET archivés inclus
+    // Utilisateur" côté web (derniers projets associés), actifs ET archivés inclus
     // volontairement (seul le soft-delete "removed" est exclu), le statut actif/inactif
     // étant affiché tel quel plutôt que filtré.
-    // LEFT JOIN explicites — même raison que findAssignedToUser ci-dessus : sans ça, un
+    // LEFT JOIN explicites, même raison que findAssignedToUser ci-dessus : sans ça, un
     // projet avec responsableProduction OU responsableFinance null (mais pas les deux)
     // disparaîtrait à tort de la liste malgré une correspondance sur l'autre champ.
     @Query("SELECT p FROM Projets p " +
@@ -93,7 +93,7 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
     List<Projets> findRecentAssignedToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId, Pageable pageable);
 
     // Périmètre financier strict (Comptabilité restreinte) : uniquement les projets où
-    // l'utilisateur est responsableFinance, pas responsableProduction — voir
+    // l'utilisateur est responsableFinance, pas responsableProduction, voir
     // TransactionServiceImpl.resolveProjetIdsScope, qui l'utilise pour qu'un FINANCIER
     // (ou l'ADMIN filtrant "voir comme un financier") ne voie que ce qui relève de sa
     // responsabilité financière.
@@ -101,7 +101,7 @@ public interface ProjetsRepo extends JpaRepository<Projets, Long> {
            "AND p.responsableFinance.uniqueId = :userUniqueId")
     List<Long> findProjetIdsAssignedAsFinanceToUser(@Param("farmId") Long farmId, @Param("userUniqueId") String userUniqueId);
 
-    // Périmètre RESPONSABLE (gère/clôture, valide/rejette comptabilité+ventes) —
+    // Périmètre RESPONSABLE (gère/clôture, valide/rejette comptabilité+ventes),
     // uniquement les projets où l'utilisateur est LE responsable (champ dédié, pas
     // responsableProduction/responsableFinance), voir TransactionServiceImpl.
     @Query("SELECT p.id FROM Projets p WHERE p.farm.id = :farmId AND p.initialisation.removed = false " +

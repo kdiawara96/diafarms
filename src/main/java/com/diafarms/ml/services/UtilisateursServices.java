@@ -44,7 +44,7 @@ public interface UtilisateursServices {
     UtilisateursDTO regenerateQRCodeToken(String uniqueId);
     UtilisateursDTO revoquerUtilisateur(String uniqueId);
     // Supprime réellement si le compte n'a jamais rien créé dans le système (aucune
-    // donnée liée), sinon archive (corbeille) — voir UtilisateurImpl pour le détail
+    // donnée liée), sinon archive (corbeille), voir UtilisateurImpl pour le détail
     // du mécanisme (tentative isolée, repli automatique).
     String supprimerOuArchiverUtilisateur(String uniqueId);
     UtilisateursDTO restaurerUtilisateur(String uniqueId);
@@ -56,7 +56,7 @@ public interface UtilisateursServices {
     UtilisateursDTO resetPasswordAndNotify(String uniqueId);
 
     /** Invalide immédiatement tous les tokens web (mot de passe) déjà émis pour ce
-     * compte — appelé à la déconnexion (voir authControllers.logout). N'affecte
+     * compte, appelé à la déconnexion (voir authControllers.logout). N'affecte
      * jamais les tokens QR mobile, voir Utilisateurs.tokenVersion. */
     void revoquerSessionsWeb(String uniqueId);
 }

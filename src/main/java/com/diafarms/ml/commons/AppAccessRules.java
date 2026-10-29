@@ -6,11 +6,11 @@ import com.diafarms.ml.models.FarmAppSettings;
 
 // Logique de décision partagée par AuthImpl (login web/mobile), QRCodeController
 // (génération d'un QR) et UserStatusJwtValidator (revalidation à chaque requête pour
-// un token issu d'un QR) — un seul endroit pour ne jamais désynchroniser ces trois
+// un token issu d'un QR), un seul endroit pour ne jamais désynchroniser ces trois
 // points d'application. Un ADMIN/SUPER_ADMIN n'est jamais concerné par ces
 // restrictions ; un compte qui cumule plusieurs rôles (ex: PRODUCTION + COMPTABLE)
 // garde l'accès complet, même règle "hasOnlyRole" qu'ailleurs dans l'app (voir
-// src/lib/roles.ts côté web) — un rôle supplémentaire ne doit jamais RETIRER un
+// src/lib/roles.ts côté web), un rôle supplémentaire ne doit jamais RETIRER un
 // accès déjà acquis par un autre rôle. RESPONSABLE n'a pas de présence mobile du
 // tout (pas de bascule dédiée, voir FarmAppSettings) : un RESPONSABLE pur ne peut
 // jamais utiliser le mobile, quoi que configure l'admin.

@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // État courant de l'abonnement d'UNE ferme (une seule ligne par Farm, voir
-// AbonnementServiceImpl.creerEssaiPourFarm/getOuCreerAbonnement) — l'historique des
+// AbonnementServiceImpl.creerEssaiPourFarm/getOuCreerAbonnement), l'historique des
 // paiements déclarés/validés vit dans PaiementAbonnement, un par déclaration. Le
 // champ statut est mis à jour à chaque validation de paiement mais n'est jamais lu
 // directement pour décider d'un blocage : voir
@@ -60,7 +60,7 @@ public class Abonnement {
     private LocalDate dateFin;
 
     // Nullable tant qu'aucun paiement n'a jamais été validé (pendant l'essai
-    // initial) — renseignée à la première validation, voir
+    // initial), renseignée à la première validation, voir
     // AbonnementServiceImpl.valider.
     @Enumerated(EnumType.STRING)
     @Column(name = "periodicite", length = 20)

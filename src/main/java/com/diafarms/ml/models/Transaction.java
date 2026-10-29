@@ -61,7 +61,7 @@ public class Transaction {
 
     // Uniquement renseigné quand projet == null : projets que cette dépense/rentrée
     // commune concerne, pour le suivi par projet (simple rattachement, pas de
-    // répartition de montant — contrairement à InvestissementRepartition).
+    // répartition de montant, contrairement à InvestissementRepartition).
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "transaction_projets_concernes",
@@ -114,13 +114,13 @@ public class Transaction {
 
     private LocalDateTime dateValidation;
 
-    // Demande de suppression (pas une suppression directe) — voir
+    // Demande de suppression (pas une suppression directe), voir
     // TransactionServiceImpl.demanderSuppression/confirmerSuppression. Non null =
     // une suppression est en attente de validation par un admin/responsable, même
     // principe que statut/validateur mais sur une dimension différente (une
     // transaction déjà VALIDE peut avoir une suppression en attente). removed=true
     // une fois confirmée (Initialisation), ces deux champs restent renseignés pour
-    // la traçabilité — jamais remis à null après confirmation, seulement après un
+    // la traçabilité, jamais remis à null après confirmation, seulement après un
     // refus (la demande est alors annulée).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "demande_suppression_par_id")
@@ -138,16 +138,16 @@ public class Transaction {
 
     // Provenance de la transaction : MANUEL (saisie libre, formulaire Transaction
     // classique) ou générée automatiquement par une vente (VenteOeufs/VenteReforme,
-    // via TransactionService.createFromSource) — remplace le repérage fragile par
+    // via TransactionService.createFromSource), remplace le repérage fragile par
     // regex sur `description` ("Vente réforme - lot de N sujets") utilisé côté front
     // avant cette entité. sourceUniqueId pointe vers VenteOeufsRepartition.uniqueId ou
     // VenteReformeRepartition.uniqueId selon sourceType (jamais VenteOeufs/VenteReforme
-    // directement) — une vente farm-wide devient une Transaction PAR PROJET
+    // directement), une vente farm-wide devient une Transaction PAR PROJET
     // contributeur, sourceUniqueId identifie donc la LIGNE de répartition précise, pas
     // la vente entière (voir VenteOeufsImpl.repartirEtCreerTransactions).
     // columnDefinition avec DEFAULT explicite : indispensable pour que ddl-auto=update
     // puisse ajouter cette colonne NOT NULL sur la table `transactions` existante (déjà
-    // peuplée) — sans DEFAULT, Postgres refuse l'ALTER TABLE ADD COLUMN ... NOT NULL.
+    // peuplée), sans DEFAULT, Postgres refuse l'ALTER TABLE ADD COLUMN ... NOT NULL.
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false, length = 20,
             columnDefinition = "varchar(20) not null default 'MANUEL'")
@@ -157,17 +157,17 @@ public class Transaction {
     private String sourceUniqueId;
 
     // Qui a initié cette transaction (saisie manuelle ou vente œufs/réforme dont elle
-    // découle) — distinct de `validateur`, qui est qui a VALIDÉ/REJETÉ, pas qui a créé.
+    // découle), distinct de `validateur`, qui est qui a VALIDÉ/REJETÉ, pas qui a créé.
     // Nullable : les transactions déjà en base avant ce champ n'ont personne à y
     // mettre. Sert à restreindre la page Ventes à ses propres ventes pour un
     // FINANCIER (voir TransactionServiceImpl.resolveVendeurScopeForList), alors que
-    // Comptabilité restreint par projet (responsableFinance) — deux axes différents.
+    // Comptabilité restreint par projet (responsableFinance), deux axes différents.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
 
     // Client concerné, si pertinent (typiquement une transaction "Remboursement client",
-    // voir ClientServiceImpl.payerDette) — nullable, la plupart des transactions n'ont
+    // voir ClientServiceImpl.payerDette), nullable, la plupart des transactions n'ont
     // pas de client (dépenses, ventes directes...). Distinct du client d'une VenteOeufs/
     // VenteReforme (voir TransactionDTO.clientNom pour ces transactions-là, dérivé via
     // TransactionServiceImpl.enrichMontantReel plutôt que stocké ici) : ce champ sert

@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Contrôle, par ferme, quels rôles peuvent utiliser l'application mobile et/ou web —
+// Contrôle, par ferme, quels rôles peuvent utiliser l'application mobile et/ou web,
 // voir commons.AppAccessRules pour la logique de décision partagée entre AuthImpl
 // (login), QRCodeController (génération d'un QR) et UserStatusJwtValidator
 // (revalidation à chaque requête pour un token issu d'un QR). Tout est désactivé par
@@ -16,7 +16,7 @@ import lombok.Setter;
 // Un seul bouton par rôle/plateforme (pas de granularité par action comme l'ancien
 // FINANCIER à 5 drapeaux mobile) : depuis la refonte des rôles, chaque rôle a un jeu
 // d'actions mobile fixe (COMPTABLE = entrée/sortie, VENTE = vente œufs/réforme/
-// fientes), donc un simple on/off suffit — plus besoin de granularité par action.
+// fientes), donc un simple on/off suffit, plus besoin de granularité par action.
 // RESPONSABLE n'a pas de présence mobile du tout, donc pas de bascule mobile pour lui.
 @Entity
 @Table(name = "farm_app_settings")

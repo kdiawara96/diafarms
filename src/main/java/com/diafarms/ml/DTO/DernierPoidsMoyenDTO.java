@@ -8,7 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Poids moyen de la dernière session de pesée TERMINEE d'un projet — sert à estimer le
+// Poids moyen de la dernière session de pesée TERMINEE d'un projet, sert à estimer le
 // poids d'une commande/vente de réforme au kilo (GET /pesees/dernier-poids-moyen).
 @Getter
 @Setter

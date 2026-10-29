@@ -31,7 +31,7 @@ import com.diafarms.ml.services.ReformeService;
 import lombok.RequiredArgsConstructor;
 
 // Réforme (Production) : comptage pur des sujets retirés du cheptel vivant, plafonné
-// par l'effectif vivant du projet (nbSujets - mortalité - déjà réformé) — même
+// par l'effectif vivant du projet (nbSujets - mortalité - déjà réformé), même
 // principe que le plafond de ConsommationAlimentImpl, appliqué ici à un cheptel
 // plutôt qu'à un stock d'aliment. Ne contient aucun prix : la vente (avec montant)
 // est un acte Finance distinct et séparé (VenteReformeImpl), à l'échelle de la ferme.

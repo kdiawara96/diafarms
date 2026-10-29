@@ -35,7 +35,7 @@ import lombok.RequiredArgsConstructor;
 
 // Reconstitue, jour par jour depuis le début du projet, le tableau de suivi
 // production+finance qu'une ferme cliente tenait auparavant à la main (fichier Excel
-// "Poulailler" fourni par Hamidou Diawara) — à partir des vraies données déjà en base
+// "Poulailler" fourni par Hamidou Diawara), à partir des vraies données déjà en base
 // (CollecteOeufs, Mortalite, Reforme, Transaction), sans aucune nouvelle saisie. Voir
 // Paramètres > "Export Hamidou Diawara" côté web pour le déclencheur.
 @Service
@@ -148,7 +148,7 @@ public class RapportJournalierServiceImpl implements RapportJournalierService {
 
         // Dernier prix de vente d'œufs BON connu, farm-wide (la vente n'est pas
         // rattachée à un seul projet), reporté jour après jour tant qu'aucune vente
-        // plus récente n'est connue — voir VenteOeufsRepo.findAllBonByFarmIdOrderByDateAsc.
+        // plus récente n'est connue, voir VenteOeufsRepo.findAllBonByFarmIdOrderByDateAsc.
         // VenteOeufs.prixUnitaire est le prix d'UN œuf : prix moyen du jour (montant total
         // / œufs vendus), puis x 30 pour le prix d'une alvéole.
         java.util.TreeMap<LocalDate, double[]> ventesParJour = new java.util.TreeMap<>();

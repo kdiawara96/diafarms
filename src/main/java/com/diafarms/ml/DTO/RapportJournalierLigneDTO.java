@@ -8,7 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Une ligne = un jour calendaire du cycle d'un projet — voir
+// Une ligne = un jour calendaire du cycle d'un projet, voir
 // RapportJournalierServiceImpl. Reconstitue en un seul tableau ce qui est éclaté dans
 // CollecteOeufs/Mortalite/Reforme/Transaction, à la manière du suivi manuel Excel qui a
 // inspiré ce rapport (colonnes abrégées conservées en commentaire pour s'y retrouver).

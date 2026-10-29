@@ -17,7 +17,7 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
 
     Optional<VenteReforme> findByUniqueId(String uniqueId);
 
-    // Historique des ventes réforme d'un client précis — voir ClientServiceImpl.getReport.
+    // Historique des ventes réforme d'un client précis, voir ClientServiceImpl.getReport.
     @Query("SELECT v FROM VenteReforme v WHERE v.client.uniqueId = :clientUniqueId AND v.farm.id = :farmId " +
         "AND v.initialisation.removed = false ORDER BY v.date DESC")
     List<VenteReforme> findByClientUniqueIdAndFarmId(@Param("clientUniqueId") String clientUniqueId, @Param("farmId") Long farmId);
@@ -32,7 +32,7 @@ public interface VenteReformeRepo extends JpaRepository<VenteReforme, Long> {
     // Voir VenteOeufsRepo.sumMontantRapporteByFarmIdAndDateRange (même raisonnement :
     // montantRapporte optionnel, une vente où il n'a jamais été renseigné n'a pas de
     // dette connue et compte pour son montant théorique complet).
-    // dateDebut/dateFin ATTENDUS NON-NULS — voir TransactionRepo.countByProjetIdsAndStatut
+    // dateDebut/dateFin ATTENDUS NON-NULS, voir TransactionRepo.countByProjetIdsAndStatut
     // pour le raisonnement (le pattern "IS NULL OR" plantait Postgres sur ce type de
     // requête agrégat, quelle que soit la valeur réelle passée).
     @Query("SELECT COALESCE(SUM(COALESCE(v.montantRapporte, v.montant)), 0) FROM VenteReforme v " +

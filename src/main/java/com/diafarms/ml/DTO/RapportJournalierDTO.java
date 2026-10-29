@@ -18,7 +18,7 @@ public class RapportJournalierDTO {
     private String projetTitre;
     private Integer nbSujetsDepart;
     // Achat sujets + Autres charges (transactions générées à la création du projet,
-    // voir ProjetImpl.syncAchatSujets/syncAutresCharges) — le capital à récupérer
+    // voir ProjetImpl.syncAchatSujets/syncAutresCharges), le capital à récupérer
     // avant que le projet ne soit "amorti", voir RapportJournalierLigneDTO.resteAAmortir.
     private Double depensesInitiales;
     private List<RapportJournalierLigneDTO> lignes;

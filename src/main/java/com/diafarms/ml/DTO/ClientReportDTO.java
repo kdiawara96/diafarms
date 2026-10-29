@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 // Rapport complet d'un client : combien acheté (théorique), combien payé (réel,
-// COALESCE(montantRapporte, montant) par vente — voir VenteOeufsRepo.
+// COALESCE(montantRapporte, montant) par vente, voir VenteOeufsRepo.
 // sumMontantRapporteByFarmIdAndDateRange pour le même raisonnement), combien il doit
 // encore (solde, voir SoldeClient), et l'historique chronologique de ses achats.
 @Getter

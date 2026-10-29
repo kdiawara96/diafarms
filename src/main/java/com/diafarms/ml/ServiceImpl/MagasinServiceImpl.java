@@ -106,7 +106,7 @@ public class MagasinServiceImpl implements MagasinService {
         return MagasinDTO.fromEntity(saved);
     }
 
-    // Pertinent seulement pour un magasin de STOCKAGE — pas de vérification stricte du
+    // Pertinent seulement pour un magasin de STOCKAGE, pas de vérification stricte du
     // type ici, même convention que seuilAlerteAlveoles (jamais imposé en base, juste
     // sans effet si le magasin est de type VENTE, voir CollecteOeufsImpl).
     private Magasin resolveMagasinVenteParDefaut(String uniqueId, Utilisateurs currentUser) {
@@ -135,7 +135,7 @@ public class MagasinServiceImpl implements MagasinService {
             // Un magasin VENTE qui passe en STOCKAGE devient inutilisable pour tout
             // stock qu'il contient encore : on ne peut transférer QUE vers un magasin
             // VENTE (jamais en sens inverse), et on ne peut vendre que depuis un
-            // magasin VENTE — un stock non vendu resterait donc définitivement coincé.
+            // magasin VENTE, un stock non vendu resterait donc définitivement coincé.
             // Voir aussi resolveMagasinVenteParDefaut ci-dessus (même famille de
             // contrainte : "type" a des conséquences concrètes, pas juste un label).
             if (m.getType() == TypeMagasin.VENTE && nouveauType != TypeMagasin.VENTE) {

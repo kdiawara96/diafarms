@@ -115,7 +115,7 @@ public class ProjetsControllers {
         }
     }
 
-    // Clôture d'un projet — distinct de /delete (corbeille) : voir
+    // Clôture d'un projet, distinct de /delete (corbeille) : voir
     // ProjetImpl.cloturerProjet. C'est cette action, explicite côté admin, qui fait
     // disparaître un projet du mobile hors ligne (ProjetsSelect.active), pas sa date
     // de fin prévue. Rejette explicitement un projet déjà clôturé (voir rouvrirProjet
@@ -135,7 +135,7 @@ public class ProjetsControllers {
         }
     }
 
-    // Réouverture d'un projet clôturé — refusée si la date de fin prévue est déjà
+    // Réouverture d'un projet clôturé, refusée si la date de fin prévue est déjà
     // passée (voir ProjetImpl.rouvrirProjet). Le stock d'aliment déjà transféré vers
     // un autre projet lors de la clôture (transferer-stock) n'est jamais restitué.
     @PutMapping("/rouvrir/{uniqueId}")
@@ -153,7 +153,7 @@ public class ProjetsControllers {
     }
 
         // Transfert du stock d'aliment restant vers un autre projet, typiquement juste
-        // avant la clôture — voir ProjetImpl.transfererStock.
+        // avant la clôture, voir ProjetImpl.transfererStock.
         @PutMapping("/{uniqueId}/transferer-stock/{projetCibleUniqueId}")
         public ResponseEntity<ApiResponse<String>> transfererStock(
                 @PathVariable String uniqueId,

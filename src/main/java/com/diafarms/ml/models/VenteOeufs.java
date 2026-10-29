@@ -26,11 +26,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-// Vente d'œufs — acte Finance, plafonnée par le total collecté (CollecteOeufs,
+// Vente d'œufs, acte Finance, plafonnée par le total collecté (CollecteOeufs,
 // Production) de TOUTE LA FERME moins ce qui a déjà été vendu (voir
 // VenteOeufsImpl.getStock). N'est pas rattachée à UN projet : elle est répartie au
 // prorata du stock disponible de chaque projet contributeur (voir repartitions,
-// VenteOeufsRepartition) — chaque part génère sa propre Transaction "entrée"
+// VenteOeufsRepartition), chaque part génère sa propre Transaction "entrée"
 // directement liée à son projet, pour que le chiffre d'affaires par projet reste exact.
 @Entity
 @Table(name = "ventes_oeufs")
@@ -60,12 +60,12 @@ public class VenteOeufs {
     @Column(name = "prix_unitaire")
     private Double prixUnitaire;
 
-    // Montant théorique (quantité × prix, ou saisi librement) — voir montantRapporte
+    // Montant théorique (quantité × prix, ou saisi librement), voir montantRapporte
     // ci-dessous pour le montant réellement encaissé par le vendeur ce jour-là.
     @Column(nullable = false)
     private Double montant;
 
-    // Ce que le vendeur a réellement rapporté ce jour-là — peut différer de `montant`
+    // Ce que le vendeur a réellement rapporté ce jour-là, peut différer de `montant`
     // (dette si inférieur, remboursement d'une dette précédente si supérieur). Nullable :
     // une vente créée par un ADMIN/RESPONSABLE (pas un vendeur terrain) n'a pas
     // toujours cette distinction. Voir SoldeVendeur pour le solde cumulé qui en découle.
@@ -77,20 +77,20 @@ public class VenteOeufs {
     private Farm farm;
 
     // Nullable pour compat avec les ventes créées avant l'introduction des magasins
-    // (stock farm-wide à l'époque) — obligatoire pour toute nouvelle vente, voir
+    // (stock farm-wide à l'époque), obligatoire pour toute nouvelle vente, voir
     // VenteOeufsImpl.create(). Le plafond de stock et la répartition entre projets
     // se calculent désormais à l'intérieur de CE magasin, pas farm-wide.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "magasin_id")
     private Magasin magasin;
 
-    // Vendeur — sert à imputer l'écart théorique/rapporté à SON solde (SoldeVendeur),
+    // Vendeur, sert à imputer l'écart théorique/rapporté à SON solde (SoldeVendeur),
     // et au filtre "mes ventes" (comme Transaction.creePar sur la Transaction générée).
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cree_par_id")
     private Utilisateurs creePar;
 
-    // Client — optionnel ("vente directe" sans client identifié toujours possible).
+    // Client, optionnel ("vente directe" sans client identifié toujours possible).
     // Quand renseigné, l'écart théorique/rapporté est imputé à SON solde (SoldeClient)
     // plutôt qu'à celui du vendeur (SoldeVendeur) : ce n'est pas le vendeur qui est en
     // tort, c'est une vente à crédit pas encore intégralement payée par ce client. Voir
@@ -102,7 +102,7 @@ public class VenteOeufs {
     @OneToMany(mappedBy = "venteOeufs", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VenteOeufsRepartition> repartitions;
 
-    // BON (défaut) ou CASSE — pool de stock par magasin totalement séparé, voir
+    // BON (défaut) ou CASSE, pool de stock par magasin totalement séparé, voir
     // TypeVenteOeufs. columnDefinition avec DEFAULT explicite : indispensable pour que
     // ddl-auto=update puisse ajouter cette colonne NOT NULL sur la table déjà peuplée
     // (même raison que Transaction.sourceType).
@@ -111,7 +111,7 @@ public class VenteOeufs {
             columnDefinition = "varchar(10) not null default 'BON'")
     private TypeVenteOeufs typeOeuf = TypeVenteOeufs.BON;
 
-    // Non null = suppression en attente de validation par un admin/responsable — voir
+    // Non null = suppression en attente de validation par un admin/responsable, voir
     // VenteOeufsImpl.demanderSuppression/confirmerSuppression. Un vendeur (VENTE) ne
     // peut ni demander ni confirmer la suppression d'une vente, même la sienne : il ne
     // doit pas pouvoir effacer la trace d'un manquant sur l'argent qu'il devait rapporter.
@@ -121,7 +121,7 @@ public class VenteOeufs {
 
     private java.time.LocalDateTime dateDemandeSuppression;
 
-    // Pourquoi la suppression a été demandée — obligatoire (voir MotifSuppressionRequest),
+    // Pourquoi la suppression a été demandée, obligatoire (voir MotifSuppressionRequest),
     // conservé après confirmation pour la traçabilité, effacé si la demande est refusée.
     @Column(name = "motif_suppression", columnDefinition = "TEXT")
     private String motifSuppression;

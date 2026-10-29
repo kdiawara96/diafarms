@@ -13,7 +13,7 @@ import com.diafarms.ml.others.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
 
-// Toutes les ventes (œufs, réforme, fientes, autres) lues dans leurs propres tables —
+// Toutes les ventes (œufs, réforme, fientes, autres) lues dans leurs propres tables,
 // voir VenteListeImpl.
 @RestController
 @RequestMapping("/diafarms/api/v1/ventes")

@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Météo courante via Open-Meteo (gratuit, sans clé API) — géocode le nom de ville de
+ * Météo courante via Open-Meteo (gratuit, sans clé API), géocode le nom de ville de
  * la ferme puis récupère température/humidité actuelles. Résultat mis en cache en
  * mémoire par ville (TTL) car cet appel est fait à chaque calcul de notifications,
  * potentiellement pour plusieurs projets d'une même ferme en boucle.
