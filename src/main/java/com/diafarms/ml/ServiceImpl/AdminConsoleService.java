@@ -901,6 +901,35 @@ public class AdminConsoleService {
         return detailFerme(farmUniqueId);
     }
 
+    // Correction de l'e-mail d'un utilisateur par l'équipe (adresse mal saisie à
+    // l'inscription) : changé directement, sans code de confirmation.
+    @Transactional
+    public AdminConsoleDTO.FermeDetail modifierEmail(String farmUniqueId, String userUniqueId, String email) {
+        Utilisateurs sa = superAdmin();
+        Farm f = fermeOu400(farmUniqueId);
+        Utilisateurs u = utilisateursRepo.findByUniqueId(userUniqueId == null ? "" : userUniqueId)
+                .filter(x -> x.getFarm() != null && x.getFarm().getId().equals(f.getId()))
+                .orElseThrow(() -> new IllegalArgumentException("Utilisateur introuvable dans cette ferme."));
+        String mail = email == null ? "" : email.trim();
+        if (mail.length() > 254 || !mail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+            throw new IllegalArgumentException("L'adresse e-mail n'est pas valide.");
+        }
+        if (mail.equalsIgnoreCase(u.getEmail() == null ? "" : u.getEmail().trim())) {
+            throw new IllegalArgumentException("C'est déjà son adresse e-mail.");
+        }
+        if (utilisateursRepo.findByEmailIgnoreCase(mail).stream().anyMatch(o -> !o.getId().equals(u.getId()))) {
+            throw new IllegalArgumentException("Cette adresse e-mail est déjà utilisée par un autre compte.");
+        }
+        String ancien = u.getEmail();
+        u.setEmail(mail);
+        u.setEmailEnAttente(null);
+        u.setEmailCode(null);
+        u.setEmailCodeExpiry(null);
+        utilisateursRepo.save(u);
+        journaliser(sa, f, "E-mail de " + u.getFullName() + " changé : " + ancien + " devient " + mail);
+        return detailFerme(farmUniqueId);
+    }
+
     // Tarif spécial (prix fixe par mois) d'une ferme, ou son retrait (prixMensuelFixe null).
     // Remplace le prix par poule à partir du prochain renouvellement : la période déjà
     // payée ne change pas. Journalisé sans le montant ni le motif (voir journaliser).

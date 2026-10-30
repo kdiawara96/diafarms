@@ -91,6 +91,14 @@ public class AdminConsoleController {
         });
     }
 
+    // Correction de l'e-mail d'un utilisateur de la ferme : {"email": "..."}.
+    @PostMapping("/fermes/{farmUniqueId}/utilisateurs/{userUniqueId}/email")
+    public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> modifierEmail(@PathVariable String farmUniqueId,
+            @PathVariable String userUniqueId, @RequestBody(required = false) Map<String, String> request) {
+        return repondre("E-mail modifié", () -> service.modifierEmail(farmUniqueId, userUniqueId,
+                request == null ? null : request.get("email")));
+    }
+
     @PostMapping("/fermes/{farmUniqueId}/reactiver")
     public ResponseEntity<ApiResponse<AdminConsoleDTO.FermeDetail>> reactiver(@PathVariable String farmUniqueId) {
         return repondre("Ferme réactivée", () -> service.reactiver(farmUniqueId));
