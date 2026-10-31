@@ -139,7 +139,9 @@ public class Utilisateurs {
 
    
     //MAPPAGE ENTRE LA CLASSE UTILISATEURS ET LA CLASSE ROLES
-    @ManyToMany(fetch = FetchType.EAGER, cascade = CascadeType.REMOVE)
+    // Pas de cascade : les rôles sont partagés par tous les comptes, supprimer un
+    // utilisateur ne doit retirer que ses lignes de roles_users, jamais le rôle.
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "roles_users", joinColumns = {
             @JoinColumn(name = "id_utilisateurs") },
             inverseJoinColumns = {

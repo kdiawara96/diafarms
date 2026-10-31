@@ -631,7 +631,15 @@ public class UtilisateurImpl implements UtilisateursServices {
 
         Utilisateurs u = acces.cible(uniqueId, false);
 
-        if (self.tenterSuppressionReelle(u.getId())) {
+        boolean supprime;
+        try {
+            supprime = self.tenterSuppressionReelle(u.getId());
+        } catch (RuntimeException e) {
+            // Toute autre erreur de la base (transaction avortée, contrainte...) :
+            // on archive plutôt que de remonter un message technique.
+            supprime = false;
+        }
+        if (supprime) {
             return "Compte supprimé définitivement.";
         }
 
