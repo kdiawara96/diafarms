@@ -421,6 +421,13 @@ public class ProjetImpl implements ProjetServices {
         // base pour échouer proprement sans laisser de projet à moitié créé.
         validerOccupationsPourCreation(data.getOccupations(), data.getNbSujets(), currentUser);
 
+        // Aliment de départ : quantite_kg est NOT NULL. Un nom d'aliment sans quantité
+        // faisait échouer toute la création avec l'erreur Hibernate brute
+        // ("not-null property references a null...quantiteKg"), vu en prod le 2026-11-03.
+        if (data.getAlimentNom() != null && !data.getAlimentNom().trim().isEmpty() && data.getQuantiteKg() == null) {
+            throw new IllegalArgumentException("Indiquez la quantité d'aliment en kg, ou videz le nom de l'aliment.");
+        }
+
         Long raceId = data.getRaceId();
         Race race = null;
         // 2. Vérifier et récupérer la race
