@@ -89,6 +89,14 @@ public class ClientServiceImpl implements ClientService {
         }
     }
 
+    // Corriger un client (nom, téléphone...) : tous ceux qui travaillent avec les clients.
+    // La suppression reste réservée à l'administrateur et au responsable (ensureCanManage).
+    private void ensureCanEdit(Utilisateurs u) {
+        if (!isAdmin(u) && !hasRole(u, "RESPONSABLE") && !hasRole(u, "VENTE") && !hasRole(u, "COMPTABLE")) {
+            throw new IllegalArgumentException("Vous n'avez pas les droits pour modifier un client.");
+        }
+    }
+
     private void ensureCanManage(Utilisateurs u) {
         if (!isAdmin(u) && !hasRole(u, "RESPONSABLE")) {
             throw new IllegalArgumentException("Seul un administrateur ou un responsable peut modifier/supprimer un client.");
@@ -168,7 +176,7 @@ public class ClientServiceImpl implements ClientService {
     @Transactional
     public ClientDTO update(String uniqueId, ClientCreate data) {
         Utilisateurs currentUser = getCurrentUserSafe();
-        ensureCanManage(currentUser);
+        ensureCanEdit(currentUser);
 
         Client c = clientRepo.findByUniqueId(uniqueId);
         if (c == null) {
