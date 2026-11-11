@@ -93,6 +93,12 @@ public class Transaction {
     @Column(nullable = false)
     private String categorie;
 
+    // true : catégorie « Autre » précisée par l'utilisateur ; categorie contient alors cette
+    // nature (ex. « Gardiennage »). Sert à l'export (Catégorie = Autre, Nature = categorie).
+    // Null pour les anciennes transactions.
+    @Column(name = "categorie_autre")
+    private Boolean categorieAutre;
+
     // Facultatifs (colonnes nullables) : quantité achetée et prix unitaire, saisis pour une
     // dépense Santé / Vétérinaire (doses, flacons...). montant reste le total payé.
     @Column(name = "quantite")

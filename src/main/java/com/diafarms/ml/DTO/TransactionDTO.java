@@ -58,6 +58,8 @@ public class TransactionDTO {
     // le web l'affiche pour proposer "Confirmer/Refuser" à un admin/responsable.
     private String venteDemandeSuppressionParNom;
     private String categorie;
+    // Catégorie « Autre » précisée : la nature saisie (égale à categorie), sinon null.
+    private String nature;
     private Double quantite;
     private Double prixUnitaire;
     private StatutTransaction statut;
@@ -137,6 +139,7 @@ public class TransactionDTO {
                 .montantReel(t.getMontant()) // corrigé ensuite par enrichMontantReel si pertinent
                 .clientNom(t.getClient() != null ? t.getClient().getNom() : null) // idem si issue d'une vente
                 .categorie(t.getCategorie())
+                .nature(Boolean.TRUE.equals(t.getCategorieAutre()) ? t.getCategorie() : null)
                 .statut(t.getStatut())
                 .commentaireRejet(t.getCommentaireRejet())
                 .validateurNom(t.getValidateur() != null ? t.getValidateur().getFullName() : null)

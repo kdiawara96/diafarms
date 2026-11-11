@@ -509,6 +509,13 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     /** « Autre » + précision -> la précision devient la catégorie (voir TransactionCreate). */
+    /** Catégorie « Autre » avec une nature précisée (voir Transaction.categorieAutre). */
+    static boolean estNatureAutre(String categorie, String precision) {
+        String c = categorie == null || categorie.isBlank() ? null : categorie.trim();
+        boolean p = precision != null && !precision.isBlank();
+        return p && (c == null || "autre".equalsIgnoreCase(c));
+    }
+
     static String categorieEffective(String categorie, String precision) {
         String c = categorie == null || categorie.isBlank() ? null : categorie.trim();
         String p = precision == null || precision.isBlank() ? null : precision.trim();
@@ -543,6 +550,7 @@ public class TransactionServiceImpl implements TransactionService {
             throw new IllegalArgumentException("Type de transaction inconnu : " + data.getType() + " (attendu ENTREE ou SORTIE).");
         }
         data.setType(data.getType().trim().toUpperCase());
+        boolean natureAutre = estNatureAutre(data.getCategorie(), data.getCategoriePrecision());
         data.setCategorie(categorieEffective(data.getCategorie(), data.getCategoriePrecision()));
         // Montant au franc (voir Franc) ; sans montant mais avec quantité x prix unitaire
         // (Santé), le serveur le calcule lui-même.
@@ -582,6 +590,7 @@ public class TransactionServiceImpl implements TransactionService {
         t.setDescription(data.getDescription());
         t.setMontant(data.getMontant());
         t.setCategorie(data.getCategorie());
+        t.setCategorieAutre(natureAutre ? Boolean.TRUE : null);
         if (data.getQuantite() != null && data.getQuantite() > 0) {
             t.setQuantite(data.getQuantite());
             // Prix unitaire facultatif : absent, il se déduit du total payé.
@@ -865,6 +874,8 @@ public class TransactionServiceImpl implements TransactionService {
             String categorie = categorieEffective(data.getCategorie() != null ? data.getCategorie() : t.getCategorie(),
                     data.getCategoriePrecision());
             t.setCategorie(categorie != null ? categorie : "Autre"); // colonne NOT NULL
+            t.setCategorieAutre(estNatureAutre(data.getCategorie() != null ? data.getCategorie() : t.getCategorie(),
+                    data.getCategoriePrecision()) ? Boolean.TRUE : null);
         }
         // Mêmes règles qu'à la création, sur les seuls champs modifiés (une ancienne
         // transaction hors règle reste modifiable sur ses autres champs).
