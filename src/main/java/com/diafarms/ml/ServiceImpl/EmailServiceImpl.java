@@ -20,6 +20,10 @@ public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
 
+    // Les accès du mail servent sur le web ; le mobile s'ouvre ensuite par le QR code.
+    static final String LIEN_APP_WEB = "https://app.cocoricoferme.com/login";
+    static final String LIEN_VIDEO = "https://www.youtube.com/watch?v=xkBuuq9Qqyw";
+
     @Value("${spring.mail.username}")
     private String fromAddress;
 
@@ -132,12 +136,14 @@ public class EmailServiceImpl implements EmailService {
             Identifiant : %s
             Nouveau mot de passe temporaire : %s
 
+            Ces accès servent sur le site : %s
+
             Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre prochaine connexion.
 
             Si vous n'êtes pas à l'origine de cette demande, contactez votre administrateur.
 
             L'équipe Cocorico
-            """.formatted(fullName, username, newPassword);
+            """.formatted(fullName, username, newPassword, LIEN_APP_WEB);
     }
 
     private String buildAdminResetHtmlBody(String fullName, String username, String newPassword) {
@@ -150,11 +156,12 @@ public class EmailServiceImpl implements EmailService {
                 <p style="margin: 4px 0;"><strong>Identifiant :</strong> %s</p>
                 <p style="margin: 4px 0;"><strong>Nouveau mot de passe temporaire :</strong> %s</p>
               </div>
+              <p>Ces accès servent sur le site : <a href="%s" style="color: #15803d; font-weight: bold;">app.cocoricoferme.com</a></p>
               <p>Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre prochaine connexion.</p>
               <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, contactez votre administrateur.</p>
               <p>L'équipe Cocorico</p>
             </div>
-            """.formatted(fullName, username, newPassword);
+            """.formatted(fullName, username, newPassword, LIEN_APP_WEB);
     }
 
     private String buildResetPlainTextBody(String fullName, String code) {
@@ -196,12 +203,18 @@ public class EmailServiceImpl implements EmailService {
             Identifiant : %s
             Mot de passe temporaire : %s
 
+            Ces accès servent sur le site : %s
+            (sur ordinateur ou dans le navigateur du téléphone).
+            Pour vous servir de l'application mobile, connectez-vous d'abord sur le site, ouvrez la page Utilisateurs, affichez votre QR code et scannez-le avec l'application.
+
             Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre première connexion.
+
+            Découvrez Cocorico en vidéo : %s
 
             Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
 
             L'équipe Cocorico
-            """.formatted(fullName, username, password);
+            """.formatted(fullName, username, password, LIEN_APP_WEB, LIEN_VIDEO);
     }
 
     private String buildHtmlBody(String fullName, String username, String password) {
@@ -214,11 +227,17 @@ public class EmailServiceImpl implements EmailService {
                 <p style="margin: 4px 0;"><strong>Identifiant :</strong> %s</p>
                 <p style="margin: 4px 0;"><strong>Mot de passe temporaire :</strong> %s</p>
               </div>
+              <p><strong>Ces accès servent sur le site</strong> (sur ordinateur ou dans le navigateur du téléphone) :</p>
+              <p style="text-align: center; margin: 20px 0;">
+                <a href="%s" style="background: #15803d; color: #ffffff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-weight: bold;">Se connecter sur app.cocoricoferme.com</a>
+              </p>
+              <p>Pour vous servir de l'application mobile : connectez-vous d'abord sur le site, ouvrez la page <strong>Utilisateurs</strong>, affichez votre <strong>QR code</strong> et scannez-le avec l'application.</p>
               <p>Pour votre sécurité, un changement de mot de passe vous sera demandé dès votre première connexion.</p>
+              <p>▶ <a href="%s" style="color: #15803d; font-weight: bold;">Découvrez Cocorico en vidéo</a></p>
               <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
               <p>L'équipe Cocorico</p>
             </div>
-            """.formatted(fullName, username, password);
+            """.formatted(fullName, username, password, LIEN_APP_WEB, LIEN_VIDEO);
     }
 
     private String buildAbonnementAValiderPlainTextBody(String farmNom, Double montant,
