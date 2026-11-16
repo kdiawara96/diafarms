@@ -40,6 +40,7 @@ public class AdminConsoleController {
     private final com.diafarms.ml.ServiceImpl.ResumeHebdoService resumeHebdo;
     private final com.diafarms.ml.ServiceImpl.ParrainageService parrainage;
     private final com.diafarms.ml.ServiceImpl.CreditService credit;
+    private final com.diafarms.ml.ServiceImpl.FermesInactivesService inactives;
 
     private <T> ResponseEntity<ApiResponse<T>> repondre(String message, Supplier<T> action) {
         try {
@@ -211,5 +212,19 @@ public class AdminConsoleController {
             service.verifierSuperAdmin();
             return parrainage.tous();
         });
+    }
+
+    // Fermes vides inactives : statistiques du tableau de bord et liste des suppressions prévues.
+    @GetMapping("/fermes-inactives")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.ServiceImpl.FermesInactivesService.Etat>> fermesInactives() {
+        return repondre("Fermes inactives", inactives::etat);
+    }
+
+    // active=false : liste seulement (aucun e-mail, aucune suppression).
+    @PostMapping("/fermes-inactives/mode")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.ServiceImpl.FermesInactivesService.Etat>> modeFermesInactives(
+            @RequestParam boolean active) {
+        return repondre(active ? "Suppression automatique activée" : "Suppression automatique désactivée",
+                () -> inactives.changerMode(active));
     }
 }

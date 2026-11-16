@@ -82,4 +82,9 @@ public class AbonnementConfig {
     // (après avoir envoyé ses saisies). Nullable : null ou 0 = aucune version imposée.
     @Column(name = "version_mobile_minimale")
     private Integer versionMobileMinimale;
+
+    // Suppression automatique des fermes vides inactives (voir FermesInactivesService).
+    // null ou false = liste seulement : rien n'est envoyé ni supprimé.
+    @Column(name = "suppression_inactifs_active")
+    private Boolean suppressionInactifsActive;
 }

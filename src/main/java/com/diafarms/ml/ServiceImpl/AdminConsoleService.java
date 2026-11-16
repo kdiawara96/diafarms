@@ -760,6 +760,18 @@ public class AdminConsoleService {
         if (supers != null && supers > 0) {
             throw new IllegalArgumentException("Cette ferme contient un compte super admin : elle ne peut pas être supprimée.");
         }
+        effacerFerme(f, sa.getId(), "Suppression définitive de la ferme " + nom);
+    }
+
+    /**
+     * Efface la ferme et toutes ses lignes (sans aucun contrôle d'accès ni de nom : les
+     * appelants vérifient avant). Utilisé par la console et par FermesInactivesService.
+     * auteurId null = tâche automatique (pas de ligne dans le journal de la ferme, qui
+     * disparaît de toute façon).
+     */
+    @Transactional
+    public int effacerFerme(Farm f, Long auteurId, String action) {
+        String nom = nom(f);
 
         // Clés étrangères : table enfant, colonne -> table parente (colonne id).
         List<String[]> fks = new ArrayList<>();
@@ -827,9 +839,13 @@ public class AdminConsoleService {
         }
 
         int lignes = ids.values().stream().mapToInt(java.util.Set::size).sum();
-        LOG.info("Ferme {} ({}) supprimée par {} : {} ligne(s) dans {} table(s)", nom, f.getUniqueId(), sa.getId(), lignes, ids.size());
-        logs.addLogs(sa.getId(), f.getId(), ENTITE_ADMIN_FERME, ("Suppression définitive de la ferme " + nom
-                + " (" + ids.getOrDefault("utilisateurs", java.util.Set.of()).size() + " utilisateur(s))"));
+        LOG.info("Ferme {} ({}) supprimée par {} : {} ligne(s) dans {} table(s)", nom, f.getUniqueId(),
+                auteurId == null ? "la tâche automatique" : auteurId, lignes, ids.size());
+        if (auteurId != null) {
+            logs.addLogs(auteurId, f.getId(), ENTITE_ADMIN_FERME, (action
+                    + " (" + ids.getOrDefault("utilisateurs", java.util.Set.of()).size() + " utilisateur(s))"));
+        }
+        return lignes;
     }
 
     private static String liste(java.util.Collection<Long> ids) {
