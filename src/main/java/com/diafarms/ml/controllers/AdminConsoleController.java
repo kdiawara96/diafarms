@@ -41,6 +41,7 @@ public class AdminConsoleController {
     private final com.diafarms.ml.ServiceImpl.ParrainageService parrainage;
     private final com.diafarms.ml.ServiceImpl.CreditService credit;
     private final com.diafarms.ml.ServiceImpl.FermesInactivesService inactives;
+    private final com.diafarms.ml.ServiceImpl.MessageGroupeService messageGroupe;
 
     private <T> ResponseEntity<ApiResponse<T>> repondre(String message, Supplier<T> action) {
         try {
@@ -226,5 +227,18 @@ public class AdminConsoleController {
             @RequestParam boolean active) {
         return repondre(active ? "Suppression automatique activée" : "Suppression automatique désactivée",
                 () -> inactives.changerMode(active));
+    }
+
+    // Message à un groupe d'utilisateurs : action = apercu (rien n'est envoyé), essai (à soi)
+    // ou envoyer (en arrière-plan).
+    @PostMapping("/message-groupe/{action}")
+    public ResponseEntity<ApiResponse<com.diafarms.ml.ServiceImpl.MessageGroupeService.Resultat>> messageGroupe(
+            @PathVariable String action, @org.springframework.web.bind.annotation.RequestBody com.diafarms.ml.ServiceImpl.MessageGroupeService.Demande demande) {
+        return switch (action) {
+            case "apercu" -> repondre("Destinataires", () -> messageGroupe.apercu(demande));
+            case "essai" -> repondre("E-mail d'essai envoyé", () -> messageGroupe.essai(demande));
+            case "envoyer" -> repondre("Envoi lancé", () -> messageGroupe.envoyer(demande));
+            default -> repondre("Action inconnue", () -> { throw new IllegalArgumentException("Action inconnue : " + action); });
+        };
     }
 }

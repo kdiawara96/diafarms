@@ -204,18 +204,7 @@ public class FermesInactivesService {
 
     Etat calculer(LocalDate auj) {
         boolean actif = modeActif();
-        List<Ligne> lignes = jdbc.query("SELECT f.id, f.unique_id, "
-                + "COALESCE(NULLIF(f.nom, ''), (SELECT u2.farm_name FROM utilisateurs u2 WHERE u2.farm_id = f.id "
-                + "  AND u2.farm_name IS NOT NULL ORDER BY u2.id LIMIT 1), 'Sans nom'), f.telephone1, "
-                + "(SELECT MIN(u.created_at) FROM utilisateurs u WHERE u.farm_id = f.id), "
-                + "(SELECT MAX(u.last_login) FROM utilisateurs u WHERE u.farm_id = f.id) "
-                + "FROM farms f WHERE COALESCE(f.exclure_statistiques, false) = false",
-                (rs, i) -> {
-                    java.sql.Timestamp c = rs.getTimestamp(5), l = rs.getTimestamp(6);
-                    return new Ligne(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                            c != null ? c.toLocalDateTime().toLocalDate() : null,
-                            l != null ? l.toLocalDateTime().toLocalDate() : null);
-                });
+        List<Ligne> lignes = lignes();
         List<Long> ids = lignes.stream().map(Ligne::id).toList();
         Set<Long> vides = videsParmi(ids);
         Set<Long> protegees = protegees();
@@ -223,12 +212,11 @@ public class FermesInactivesService {
 
         int jamais = 0, connecteesVides = 0, commencees = 0, actives = 0;
         for (Ligne l : lignes) {
-            if (vides.contains(l.id())) {
-                if (l.derniereConnexion() == null) jamais++; else connecteesVides++;
-            } else if (etapes.getOrDefault(l.id(), GuideDemarrageService.Etapes.vide()).saisie()) {
-                actives++;
-            } else {
-                commencees++;
+            switch (situation(l, vides, etapes)) {
+                case JAMAIS_CONNECTEE -> jamais++;
+                case CONNECTEE_SANS_RIEN -> connecteesVides++;
+                case COMMENCE_SANS_SAISIE -> commencees++;
+                default -> actives++;
             }
         }
 
@@ -266,6 +254,41 @@ public class FermesInactivesService {
         fermes.sort(Comparator.comparing(FermeInactive::suppressionLe));
         return new Etat(actif, AVERTISSEMENT_JOURS, SUPPRESSION_JOURS,
                 new Statistiques(lignes.size(), jamais, connecteesVides, commencees, actives), fermes);
+    }
+
+    private List<Ligne> lignes() {
+        return jdbc.query("SELECT f.id, f.unique_id, "
+                + "COALESCE(NULLIF(f.nom, ''), (SELECT u2.farm_name FROM utilisateurs u2 WHERE u2.farm_id = f.id "
+                + "  AND u2.farm_name IS NOT NULL ORDER BY u2.id LIMIT 1), 'Sans nom'), f.telephone1, "
+                + "(SELECT MIN(u.created_at) FROM utilisateurs u WHERE u.farm_id = f.id), "
+                + "(SELECT MAX(u.last_login) FROM utilisateurs u WHERE u.farm_id = f.id) "
+                + "FROM farms f WHERE COALESCE(f.exclure_statistiques, false) = false",
+                (rs, i) -> {
+                    java.sql.Timestamp c = rs.getTimestamp(5), l = rs.getTimestamp(6);
+                    return new Ligne(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
+                            c != null ? c.toLocalDateTime().toLocalDate() : null,
+                            l != null ? l.toLocalDateTime().toLocalDate() : null);
+                });
+    }
+
+    public enum Situation { JAMAIS_CONNECTEE, CONNECTEE_SANS_RIEN, COMMENCE_SANS_SAISIE, UTILISE }
+
+    private static Situation situation(Ligne l, Set<Long> vides, Map<Long, GuideDemarrageService.Etapes> etapes) {
+        if (vides.contains(l.id())) {
+            return l.derniereConnexion() == null ? Situation.JAMAIS_CONNECTEE : Situation.CONNECTEE_SANS_RIEN;
+        }
+        return etapes.getOrDefault(l.id(), GuideDemarrageService.Etapes.vide()).saisie()
+                ? Situation.UTILISE : Situation.COMMENCE_SANS_SAISIE;
+    }
+
+    // Situation de chaque ferme hors statistiques exclues (utilisé par MessageGroupeService).
+    public Map<Long, Situation> situations() {
+        List<Ligne> lignes = lignes();
+        Set<Long> vides = videsParmi(lignes.stream().map(Ligne::id).toList());
+        Map<Long, GuideDemarrageService.Etapes> etapes = guide.etapes(null);
+        Map<Long, Situation> res = new HashMap<>();
+        for (Ligne l : lignes) res.put(l.id(), situation(l, vides, etapes));
+        return res;
     }
 
     // Fermes sans aucune ligne dans les tables de données (liste calculée depuis la base :

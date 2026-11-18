@@ -323,7 +323,7 @@ public class EmailServiceImpl implements EmailService {
                     .append("<h2 style=\"color: #b45309;\">Abonnement</h2>")
                     .append("<p>").append(escapeHtml(bonjour)).append("</p>");
             for (String paragraphe : message.split("\n\n")) {
-                html.append("<p>").append(escapeHtml(paragraphe).replace("\n", "<br>")).append("</p>");
+                html.append("<p>").append(liens(escapeHtml(paragraphe)).replace("\n", "<br>")).append("</p>");
             }
             html.append("<p>L'équipe Cocorico</p></div>");
             helper.setText(texte, html.toString());
@@ -360,7 +360,7 @@ public class EmailServiceImpl implements EmailService {
                     .append("<h2 style=\"color: #b45309;\">").append(escapeHtml(titre)).append("</h2>")
                     .append("<p>").append(escapeHtml(bonjour)).append("</p>");
             for (String paragraphe : message.split("\n\n")) {
-                html.append("<p>").append(escapeHtml(paragraphe).replace("\n", "<br>")).append("</p>");
+                html.append("<p>").append(liens(escapeHtml(paragraphe)).replace("\n", "<br>")).append("</p>");
             }
             html.append("<p>L'équipe Cocorico</p></div>");
             helper.setText(texte, html.toString());
@@ -370,6 +370,12 @@ public class EmailServiceImpl implements EmailService {
             log.error("Échec de l'envoi de l'e-mail « {} » à {} : {}", sujet, to, e.getMessage());
             return false;
         }
+    }
+
+    // Adresses web cliquables (texte déjà échappé : & est devenu &amp;, ce qui reste valide dans href).
+    static String liens(String html) {
+        return html.replaceAll("(https?://[^\\s<]+[^\\s<.,;:!?)])",
+                "<a href=\"$1\" style=\"color: #15803d; font-weight: bold;\">$1</a>");
     }
 
     private static String escapeHtml(String s) {
